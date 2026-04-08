@@ -1,0 +1,12 @@
+{
+  "name": "bti-voice",
+  "version": "1.0.0",
+  "scripts": {
+    "build":          "npm install --prefix server && npm install --prefix client && npm run build --prefix client",
+    "start":          "node server/index.js",
+    "build:electron": "npm install --prefix client && ELECTRON=true VITE_API_URL=YOUR_RAILWAY_URL npm run build --prefix client && cd electron && npm install && npm run build:win"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
