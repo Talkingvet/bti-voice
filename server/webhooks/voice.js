@@ -5,6 +5,88 @@ const { getIO } = require('../socket');
 
 const router = express.Router();
 
+// ── Auto-log a call to the BTI Voice DB + Zoho ────────────────────────────────
+// Called from <Dial> action URLs — fires for every call regardless of Twilio
+// console statusCallback config. Fire-and-forget, never throws.
+function autoLogCall({ callSid, from, to, duration, direction, status }) {
+  if (!callSid || !from) return;
+  setImmediate(async () => {
+    try {
+      const port = process.env.PORT || 3000;
+
+      // Deduplicate: if already logged by the frontend, skip
+      const { rows: existing } = await pool.query(
+        'SELECT id FROM calls WHERE twilio_call_sid = $1', [callSid]
+      );
+      if (existing.length > 0) {
+        console.log(`[autoLog] ${callSid} already in DB — skipping`);
+        return;
+      }
+
+      const phone   = direction === 'inbound' ? from : to;
+      const digits  = (phone || '').replace(/\D/g, '');
+      const e164    = digits.length === 10 ? '+1' + digits
+                    : digits.length === 11 && digits.startsWith('1') ? '+' + digits
+                    : phone;
+      const tenDigit = digits.length === 11 ? digits.slice(1) : digits;
+
+      // Find or create contact
+      let contact = null;
+      for (const p of [e164, phone, tenDigit]) {
+        const { rows } = await pool.query(
+          'SELECT * FROM contacts WHERE phone_number = $1', [p]
+        );
+        if (rows[0]) { contact = rows[0]; break; }
+      }
+      if (!contact) {
+        const { rows } = await pool.query(
+          'INSERT INTO contacts (phone_number, name) VALUES ($1, $2) RETURNING *',
+          [e164, e164]
+        );
+        contact = rows[0];
+      }
+
+      // Find or create conversation
+      let { rows: [conv] } = await pool.query(
+        'SELECT * FROM conversations WHERE contact_id = $1 ORDER BY created_at DESC LIMIT 1',
+        [contact.id]
+      );
+      if (!conv) {
+        const { rows } = await pool.query(
+          'INSERT INTO conversations (contact_id, last_message_at) VALUES ($1, NOW()) RETURNING *',
+          [contact.id]
+        );
+        conv = rows[0];
+      }
+
+      const { rows: [call] } = await pool.query(`
+        INSERT INTO calls
+          (conversation_id, direction, duration, status, twilio_call_sid, started_at, ended_at)
+        VALUES ($1, $2, $3, $4, $5, NOW() - ($3 || ' seconds')::interval, NOW())
+        RETURNING *
+      `, [conv.id, direction, duration, status, callSid]);
+
+      console.log(`[autoLog] ✓ Logged call ${callSid} (${status}) for ${phone}`);
+
+      // Sync to Zoho
+      if (process.env.ZOHO_REFRESH_TOKEN) {
+        fetch(`http://localhost:${port}/api/zoho/log-call`, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ call_id: call.id }),
+        }).catch(e => console.error('[autoLog→Zoho]', e.message));
+      }
+
+      // Notify connected clients
+      const io = getIO();
+      if (io) io.emit('call_logged', { call_id: call.id });
+
+    } catch (e) {
+      console.error('[autoLog] failed:', e.message);
+    }
+  });
+}
+
 // ── Outbound: browser → PSTN ──────────────────────────────────────────────────
 router.post('/outbound', async (req, res) => {
   const { To } = req.body;
@@ -198,12 +280,20 @@ router.post('/ivr-gather', async (req, res) => {
 
 // ── Sequential ring: next agent in waterfall ──────────────────────────────────
 router.post('/next-agent', async (req, res) => {
-  const { DialCallStatus } = req.body;
+  const { DialCallStatus, CallSid, From, To, DialCallDuration } = req.body;
   const twiml = new twilio.twiml.VoiceResponse();
 
-  console.log(`[next-agent] DialCallStatus=${DialCallStatus}`);
+  console.log(`[next-agent] DialCallStatus=${DialCallStatus} CallSid=${CallSid}`);
 
   if (DialCallStatus === 'completed' || DialCallStatus === 'answered') {
+    autoLogCall({
+      callSid:   CallSid,
+      from:      From,
+      to:        To,
+      duration:  parseInt(DialCallDuration) || 0,
+      direction: 'inbound',
+      status:    'completed',
+    });
     res.set('Content-Type', 'text/xml');
     return res.send(twiml.toString());
   }
@@ -224,14 +314,26 @@ router.post('/next-agent', async (req, res) => {
 });
 
 // ── No-answer fallback — called when a single-agent dial fails ────────────────
-// Twilio fires this when the <Dial> action URL is hit after no-answer/busy/failed
+// Twilio fires this when the <Dial> action URL is hit after no-answer/busy/failed.
+// It is ALSO called when DialCallStatus=completed (call answered and finished).
+// We use this as our most reliable call-logging hook — no Twilio console config needed.
 router.post('/no-answer', async (req, res) => {
-  const { DialCallStatus } = req.body;
+  const { DialCallStatus, CallSid, From, To, DialCallDuration } = req.body;
   const twiml = new twilio.twiml.VoiceResponse();
 
-  console.log(`[no-answer] DialCallStatus=${DialCallStatus}`);
+  console.log(`[no-answer] DialCallStatus=${DialCallStatus} CallSid=${CallSid} From=${From}`);
 
-  // If the call was actually connected, do nothing
+  // Log the call to BTI Voice DB + Zoho regardless of outcome
+  autoLogCall({
+    callSid:   CallSid,
+    from:      From,
+    to:        To,
+    duration:  parseInt(DialCallDuration) || 0,
+    direction: 'inbound',
+    status:    (DialCallStatus === 'completed' || DialCallStatus === 'answered') ? 'completed' : 'missed',
+  });
+
+  // If the call was actually connected, return empty TwiML (call is done)
   if (DialCallStatus === 'completed' || DialCallStatus === 'answered') {
     res.set('Content-Type', 'text/xml');
     return res.send(twiml.toString());
