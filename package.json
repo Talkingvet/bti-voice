@@ -4,7 +4,7 @@
   "scripts": {
     "build":          "npm install --prefix server && npm install --prefix client && npm run build --prefix client",
     "start":          "node server/index.js",
-    "build:electron": "npm install --prefix client && ELECTRON=true VITE_API_URL=YOUR_RAILWAY_URL npm run build --prefix client && cd electron && npm install && npm run build:win"
+    "build:electron": "npm install --prefix client && npm run build:electron --prefix client && cd electron && npm install && npm run build:win -- --dir"
   },
   "engines": {
     "node": ">=18"

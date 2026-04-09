@@ -35,6 +35,8 @@
     "files": [
       "main.js",
       "preload.js",
+      "widget-preload.js",
+      "call-widget.html",
       "assets/**"
     ]
   }

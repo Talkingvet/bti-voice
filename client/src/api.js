@@ -35,7 +35,30 @@ export const api = {
   calls:         ()                    => request('/calls'),
   logCall:       (conversation_id, duration, direction) => request('/calls/log', { method: 'POST', body: { conversation_id, duration, direction } }),
   voiceToken:    ()                    => request('/calls/token', { method: 'POST' }),
+  logCallByPhone: (phone, duration, direction, startedAt, callSid) =>
+    request('/calls/log-by-phone', { method: 'POST', body: { phone, duration, direction, started_at: startedAt, call_sid: callSid } }),
   newMessage:    ({ to_number, from_agent_id, body }) =>
     request('/conversations/new-message', { method: 'POST', body: { to_number, from_agent_id, body } }),
   activity:      () => request('/activity'),
+
+  // Voicemails
+  voicemails:        ()           => request('/calls/voicemails'),
+  markVoicemailPlayed: (id)       => request(`/calls/voicemails/${id}/played`, { method: 'PATCH' }),
+
+  // Zoho CRM
+  zohoStatus: ()     => request('/zoho/status'),
+  zohoTest:   ()     => request('/zoho/test'),
+
+  // Active call controls (hold, resume, blind transfer)
+  holdCall:          (callSid)                => request('/calls/hold',     { method: 'POST', body: { callSid } }),
+  resumeCall:        (callSid, agentId)       => request('/calls/resume',   { method: 'POST', body: { callSid, agentId } }),
+  transferCall:      (callSid, targetAgentId) => request('/calls/transfer', { method: 'POST', body: { callSid, targetAgentId } }),
+
+  // IVR / phone tree
+  ivrSettings:       ()           => request('/ivr/settings'),
+  ivrSaveSettings:   (data)       => request('/ivr/settings', { method: 'PUT', body: data }),
+  ivrMenu:           ()           => request('/ivr/menu'),
+  ivrAddItem:        (data)       => request('/ivr/menu', { method: 'POST', body: data }),
+  ivrUpdateItem:     (id, data)   => request(`/ivr/menu/${id}`, { method: 'PUT', body: data }),
+  ivrDeleteItem:     (id)         => request(`/ivr/menu/${id}`, { method: 'DELETE' }),
 }

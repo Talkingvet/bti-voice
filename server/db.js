@@ -75,6 +75,42 @@ async function migrate() {
     ALTER TABLE contacts ADD COLUMN IF NOT EXISTS zoho_synced_at  TIMESTAMPTZ;
   `);
 
+  // IVR / phone tree tables
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ivr_settings (
+      id               INTEGER PRIMARY KEY DEFAULT 1,
+      enabled          BOOLEAN DEFAULT false,
+      greeting         TEXT    DEFAULT 'Thank you for calling. Please listen carefully to the following options.',
+      timeout          INTEGER DEFAULT 10,
+      default_agent_id INTEGER REFERENCES agents(id),
+      updated_at       TIMESTAMP DEFAULT NOW(),
+      CONSTRAINT single_row CHECK (id = 1)
+    );
+
+    CREATE TABLE IF NOT EXISTS ivr_menus (
+      id                SERIAL PRIMARY KEY,
+      digit             VARCHAR(1)   NOT NULL,
+      label             VARCHAR(100) NOT NULL,
+      destination_type  VARCHAR(20)  NOT NULL DEFAULT 'all_agents',
+      destination_value VARCHAR(100),
+      sort_order        INTEGER      DEFAULT 0,
+      is_active         BOOLEAN      DEFAULT true,
+      created_at        TIMESTAMP    DEFAULT NOW()
+    );
+  `);
+
+  // Safe additive migrations
+  await pool.query(`
+    ALTER TABLE ivr_settings ADD COLUMN IF NOT EXISTS default_agent_id INTEGER REFERENCES agents(id);
+    ALTER TABLE ivr_settings ADD COLUMN IF NOT EXISTS voice VARCHAR(60) DEFAULT 'Polly.Joanna-Neural';
+    ALTER TABLE calls ADD COLUMN IF NOT EXISTS recording_url   TEXT;
+    ALTER TABLE calls ADD COLUMN IF NOT EXISTS voicemail_text  TEXT;
+    ALTER TABLE calls ADD COLUMN IF NOT EXISTS played          BOOLEAN DEFAULT false;
+    ALTER TABLE calls ADD COLUMN IF NOT EXISTS transcription   TEXT;
+    ALTER TABLE calls ADD COLUMN IF NOT EXISTS ai_summary      TEXT;
+    ALTER TABLE calls ADD COLUMN IF NOT EXISTS recording_sid   VARCHAR(50);
+  `);
+
   console.log('[db] Migrations complete.');
 }
 

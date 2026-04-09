@@ -148,12 +148,69 @@ router.post('/log-sms', async (req, res) => {
   }
 });
 
+// ── POST /api/zoho/add-note ────────────────────────────────────────────────────
+// Add a freeform note to a contact. Used for AI call summaries.
+router.post('/add-note', async (req, res) => {
+  const { contact_id, note, title } = req.body;
+  if (!contact_id || !note) return res.status(400).json({ error: 'contact_id and note required' });
+
+  try {
+    const { rows: [contact] } = await pool.query(
+      'SELECT * FROM contacts WHERE id = $1', [contact_id]
+    );
+    if (!contact) return res.status(404).json({ error: 'Contact not found' });
+
+    const zohoId = await resolveZohoId(contact_id, contact.phone_number);
+    if (!zohoId) return res.json({ skipped: true, reason: 'Contact not found in Zoho CRM' });
+
+    await zohoAPI('POST', '/Notes', {
+      data: [{
+        Note_Title:   title || `Call Summary — ${new Date().toLocaleDateString()}`,
+        Note_Content: note,
+        Parent_Id:    { id: zohoId },
+        $se_module:   'Contacts',
+      }]
+    });
+
+    res.json({ success: true, zoho_contact_id: zohoId });
+  } catch (e) {
+    console.error('[Zoho add-note]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── GET /api/zoho/status ───────────────────────────────────────────────────────
+// Returns which credentials are configured — never exposes actual values.
+router.get('/status', (req, res) => {
+  const required = ['ZOHO_CLIENT_ID', 'ZOHO_CLIENT_SECRET', 'ZOHO_REFRESH_TOKEN'];
+  const optional = ['ZOHO_API_DOMAIN'];
+
+  const missing  = required.filter(k => !process.env[k]);
+  const present  = required.filter(k => !!process.env[k]);
+  const configured = missing.length === 0;
+
+  res.json({
+    configured,
+    present,
+    missing,
+    optional: {
+      ZOHO_API_DOMAIN: process.env.ZOHO_API_DOMAIN || 'https://www.zohoapis.com (default)',
+    },
+  });
+});
+
 // ── GET /api/zoho/test ─────────────────────────────────────────────────────────
-// Quick connectivity check — returns the Zoho org info if credentials work.
+// Quick connectivity check — fetches first contact to verify token + scope.
 router.get('/test', async (req, res) => {
   try {
-    const org = await zohoAPI('GET', '/org');
-    res.json({ ok: true, org: org?.org?.[0]?.company_name || 'Connected' });
+    const result = await zohoAPI('GET', '/Contacts?per_page=1&fields=id,Full_Name,Phone');
+    const contact = result?.data?.[0];
+    res.json({
+      ok:             true,
+      message:        'Zoho CRM connected',
+      sample_contact: contact?.Full_Name || 'No contacts found',
+      sample_phone:   contact?.Phone    || '',
+    });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }

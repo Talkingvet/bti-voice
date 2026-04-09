@@ -1,7 +1,8 @@
 /* Calls tab — Logs + Voicemails sub-tabs, date-grouped, Zoho-style compact */
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { api } from '../../api'
 import { useColors } from '../../useColors'
+import { getSocket } from '../../socket'
 
 /* ── Helpers ─────────────────────────────────────────────────────── */
 function fmtTime(d) {
@@ -57,12 +58,44 @@ const ST = {
 export default function CallsTab({ agent }) {
   const C = useColors()
   const [subTab,     setSubTab]     = useState('logs')
-  const [calls,      setCalls]      = useState([])
-  const [filter,     setFilter]     = useState('all')
-  const [voicemails, setVoicemails] = useState(MOCK_VOICEMAILS)
-  const [playingVm,  setPlayingVm]  = useState(null)
+  const [calls,       setCalls]      = useState([])
+  const [filter,      setFilter]     = useState('all')
+  const [voicemails,  setVoicemails] = useState([])
+  const [playingVm,   setPlayingVm]  = useState(null)
+  const [unreadVm,     setUnreadVm]    = useState(0)
+  const [expandedCall, setExpandedCall] = useState(null)
 
-  useEffect(() => { api.calls().then(setCalls).catch(console.error) }, [])
+  const loadCalls = useCallback(() => {
+    api.calls().then(setCalls).catch(console.error)
+  }, [])
+
+  const loadVoicemails = useCallback(() => {
+    api.voicemails().then(vms => {
+      setVoicemails(vms)
+      setUnreadVm(vms.filter(v => !v.played).length)
+    }).catch(console.error)
+  }, [])
+
+  useEffect(() => {
+    loadCalls()
+    loadVoicemails()
+    const socket = getSocket()
+    socket.on('call_logged', loadCalls)
+    socket.on('new_voicemail', (vm) => {
+      setVoicemails(prev => [vm, ...prev])
+      setUnreadVm(n => n + 1)
+    })
+    socket.on('call_transcribed', ({ call_id, transcription, ai_summary }) => {
+      setCalls(prev => prev.map(c =>
+        c.id === call_id ? { ...c, transcription, ai_summary } : c
+      ))
+    })
+    return () => {
+      socket.off('call_logged', loadCalls)
+      socket.off('new_voicemail')
+      socket.off('call_transcribed')
+    }
+  }, [loadCalls, loadVoicemails])
 
   /* Filter calls */
   const filteredCalls = calls.filter(c => {
@@ -73,7 +106,7 @@ export default function CallsTab({ agent }) {
   })
 
   const callGroups = groupByDate(filteredCalls, 'started_at')
-  const vmGroups   = groupByDate(voicemails, 'date')
+  const vmGroups   = groupByDate(voicemails, 'received_at')
 
   return (
     <div style={{ ...S.page, background: C.bg }}>
@@ -82,7 +115,10 @@ export default function CallsTab({ agent }) {
       <SubTabs
         active={subTab}
         onChange={setSubTab}
-        tabs={[{ id: 'logs', label: 'Logs' }, { id: 'voicemails', label: 'Voicemails' }]}
+        tabs={[
+          { id: 'logs',       label: 'Logs' },
+          { id: 'voicemails', label: unreadVm > 0 ? `Voicemails (${unreadVm})` : 'Voicemails' },
+        ]}
         C={C}
       />
 
@@ -116,7 +152,13 @@ export default function CallsTab({ agent }) {
             ) : callGroups.map((row, i) =>
               row.type === 'header'
                 ? <DateHeader key={`h-${i}`} label={row.label} C={C} />
-                : <CallRow key={row.data.id} call={row.data} C={C} />
+                : <CallRow
+                  key={row.data.id}
+                  call={row.data}
+                  expanded={expandedCall === row.data.id}
+                  onToggle={() => setExpandedCall(p => p === row.data.id ? null : row.data.id)}
+                  C={C}
+                />
             )}
           </div>
         </>
@@ -159,63 +201,105 @@ function DateHeader({ label, C }) {
 }
 
 /* ── Call row ────────────────────────────────────────────────────── */
-function CallRow({ call, C }) {
+function CallRow({ call, expanded, onToggle, C }) {
   const isMissed  = call.status === 'missed'
   const isInbound = call.direction === 'inbound'
   const color     = isMissed ? '#ef4444' : isInbound ? '#22c55e' : '#4f9cf9'
   const duration  = fmtDuration(call.duration)
+  const hasDetail = call.recording_url || call.transcription || call.ai_summary
 
   return (
-    <div style={{ ...S.row, borderBottom: `1px solid ${C.borderItem}` }}>
-      {/* Direction icon */}
-      <div style={{ ...S.callIcon, color }}>
-        <CallDirIcon direction={call.direction} missed={isMissed} />
+    <>
+      <div
+        style={{ ...S.row, borderBottom: expanded ? 'none' : `1px solid ${C.borderItem}`, cursor: hasDetail ? 'pointer' : 'default' }}
+        onClick={hasDetail ? onToggle : undefined}
+      >
+        <div style={{ ...S.callIcon, color }}>
+          <CallDirIcon direction={call.direction} missed={isMissed} />
+        </div>
+        <div style={S.rowInfo}>
+          <div style={{ ...S.rowName, color: C.text }}>
+            {call.contact_name || call.contact_number || 'Unknown'}
+          </div>
+          <div style={{ ...S.rowMeta, color: C.textSec }}>
+            {call.agent_name && (
+              <span style={{ color: call.agent_color, fontWeight: 600 }}>{call.agent_name}</span>
+            )}
+            {call.contact_number && call.contact_name && (
+              <span style={{ color: C.textMuted }}> · {call.contact_number}</span>
+            )}
+          </div>
+        </div>
+        <div style={S.rowRight}>
+          <div style={{ ...S.rowTime, color: C.textMuted }}>{fmtTime(call.started_at)}</div>
+          {duration
+            ? <div style={{ ...S.rowDur, color: C.textSec }}>⏱ {duration}</div>
+            : <div style={{ ...S.rowDur, color: '#ef4444' }}>Missed</div>
+          }
+        </div>
+        {hasDetail && (
+          <div style={{ color: C.textMuted, fontSize: 12, paddingLeft: 4 }}>{expanded ? '▾' : '▸'}</div>
+        )}
       </div>
 
-      {/* Info */}
-      <div style={S.rowInfo}>
-        <div style={{ ...S.rowName, color: C.text }}>
-          {call.contact_name || call.contact_number || 'Unknown'}
-        </div>
-        <div style={{ ...S.rowMeta, color: C.textSec }}>
-          {call.agent_name && (
-            <span style={{ color: call.agent_color, fontWeight: 600 }}>{call.agent_name}</span>
+      {expanded && (
+        <div style={{ background: C.surface, borderBottom: `1px solid ${C.borderItem}`, padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {call.recording_url && (
+            <div>
+              <div style={{ ...S.rowTime, color: C.textMuted, marginBottom: 4 }}>RECORDING</div>
+              <audio controls style={{ width: '100%', height: 36 }} src={call.recording_url} />
+            </div>
           )}
-          {call.contact_number && call.contact_name && (
-            <span style={{ color: C.textMuted }}> · {call.contact_number}</span>
+          {call.ai_summary && (
+            <div>
+              <div style={{ ...S.rowTime, color: C.textMuted, marginBottom: 4 }}>AI SUMMARY</div>
+              <div style={{ fontSize: 12, color: C.text, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{call.ai_summary}</div>
+            </div>
+          )}
+          {call.transcription && (
+            <details>
+              <summary style={{ fontSize: 11, color: C.textMuted, cursor: 'pointer', userSelect: 'none' }}>Full Transcript</summary>
+              <div style={{ fontSize: 11, color: C.textSec, lineHeight: 1.6, marginTop: 6, whiteSpace: 'pre-wrap' }}>{call.transcription}</div>
+            </details>
           )}
         </div>
-      </div>
-
-      {/* Time + duration */}
-      <div style={S.rowRight}>
-        <div style={{ ...S.rowTime, color: C.textMuted }}>{fmtTime(call.started_at)}</div>
-        {duration
-          ? <div style={{ ...S.rowDur, color: C.textSec }}>⏱ {duration}</div>
-          : <div style={{ ...S.rowDur, color: '#ef4444' }}>Missed</div>
-        }
-      </div>
-    </div>
+      )}
+    </>
   )
 }
 
 /* ── Voicemail row ───────────────────────────────────────────────── */
 function VmRow({ vm, isPlaying, onToggle, C }) {
+  const isNew = !vm.played
+  const time  = vm.received_at || vm.date
+
   return (
     <>
-      <div
-        style={{ ...S.row, borderBottom: `1px solid ${C.borderItem}`, background: !vm.read ? (C.hover || 'rgba(79,156,249,0.05)') : 'transparent' }}
-      >
-        <div style={{ ...S.vmIcon, color: vm.read ? C.textMuted : '#4f9cf9' }}>
+      <div style={{
+        ...S.row, borderBottom: `1px solid ${C.borderItem}`,
+        background: isNew ? 'rgba(79,156,249,0.05)' : 'transparent',
+      }}>
+        <div style={{ ...S.vmIcon, color: isNew ? '#4f9cf9' : C.textMuted }}>
           <VmIcon />
         </div>
         <div style={S.rowInfo}>
-          <div style={{ ...S.rowName, color: C.text }}>{vm.from}</div>
-          <div style={{ ...S.rowMeta, color: C.textSec }}>{vm.number}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ ...S.rowName, color: C.text }}>
+              {vm.contact_name || vm.from || 'Unknown'}
+            </span>
+            {isNew && (
+              <span style={{ fontSize: 9, fontWeight: 700, background: '#4f9cf9', color: 'white', borderRadius: 4, padding: '1px 5px' }}>
+                NEW
+              </span>
+            )}
+          </div>
+          {vm.from && vm.contact_name && vm.from !== vm.contact_name && (
+            <div style={{ ...S.rowMeta, color: C.textSec }}>{vm.from}</div>
+          )}
         </div>
         <div style={S.rowRight}>
-          <div style={{ ...S.rowTime, color: C.textMuted }}>{fmtTime(vm.date)}</div>
-          <div style={{ ...S.rowDur, color: C.textSec }}>⏱ {fmtDuration(vm.duration) || `${vm.duration}s`}</div>
+          <div style={{ ...S.rowTime, color: C.textMuted }}>{time ? fmtTime(time) : ''}</div>
+          <div style={{ ...S.rowDur, color: C.textSec }}>⏱ {fmtDuration(vm.duration) || `${vm.duration || 0}s`}</div>
         </div>
         <button
           style={{ ...S.playBtn, background: isPlaying ? '#4f9cf9' : C.surface, color: isPlaying ? 'white' : C.textSec, border: `1px solid ${isPlaying ? '#4f9cf9' : C.borderSoft}` }}
@@ -226,16 +310,19 @@ function VmRow({ vm, isPlaying, onToggle, C }) {
         </button>
       </div>
 
-      {/* Inline mini-player */}
+      {/* Inline audio player */}
       {isPlaying && (
         <div style={{ ...S.miniPlayer, background: C.surface, borderBottom: `1px solid ${C.border}` }}>
-          <div style={{ ...S.playerTitle, color: C.textMuted }}>Voicemail · {fmtDuration(vm.duration) || `${vm.duration}s`}</div>
-          <div style={S.progressBar}>
-            <div style={{ ...S.progressFill, width: '0%' }} />
-          </div>
-          <div style={{ ...S.playerNote, color: C.textMuted }}>
-            Full playback requires Twilio Voice configured with a phone number.
-          </div>
+          {vm.recording_url ? (
+            <audio
+              controls
+              autoPlay
+              style={{ width: '100%', height: 36, outline: 'none' }}
+              src={vm.recording_url}
+            />
+          ) : (
+            <div style={{ ...S.playerNote, color: C.textMuted }}>No recording available.</div>
+          )}
         </div>
       )}
     </>
@@ -265,11 +352,6 @@ function VmIcon() {
   )
 }
 
-/* ── Mock voicemail data (replace with real API when Twilio is set up) ── */
-const MOCK_VOICEMAILS = [
-  { id: 1, from: 'Unknown Caller',   number: '+15551234567', duration: 47, date: new Date(Date.now() - 86400000 * 18).toISOString(), read: false },
-  { id: 2, from: 'Ranch Pet Clinic', number: '+15559876543', duration: 12, date: new Date(Date.now() - 86400000 * 25).toISOString(), read: true  },
-]
 
 /* ── Styles ─────────────────────────────────────────────────────── */
 const S = {

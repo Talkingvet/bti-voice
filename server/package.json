@@ -15,7 +15,10 @@
     "jsonwebtoken": "^9.0.2",
     "pg": "^8.11.3",
     "socket.io": "^4.7.4",
-    "twilio": "^4.23.0"
+    "twilio": "^4.23.0",
+    "openai": "^4.47.1",
+    "node-fetch": "^2.7.0",
+    "form-data": "^4.0.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.0"

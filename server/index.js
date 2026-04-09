@@ -24,6 +24,7 @@ app.use('/api/messages',      require('./routes/messages'));
 app.use('/api/calls',         require('./routes/calls'));
 app.use('/api/activity',      require('./routes/activity'));
 app.use('/api/zoho',          require('./routes/zohoSync'));
+app.use('/api/ivr',           require('./routes/ivr'));
 
 // ── Twilio Webhooks ───────────────────────────────────────────
 app.use('/webhooks/sms',       require('./webhooks/sms'));

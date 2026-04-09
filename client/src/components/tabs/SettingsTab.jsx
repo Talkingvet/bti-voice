@@ -1,383 +1,845 @@
-/* Settings tab — fully theme-aware, no hardcoded light colors */
-import { useState } from 'react'
-import { useTheme } from '../../ThemeContext'
-import { useColors } from '../../useColors'
+/* Settings tab — single scrollable page, sections grouped */
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { useTheme }    from '../../ThemeContext'
+import { useColors }   from '../../useColors'
+import { api }         from '../../api'
+import { getSoundPrefs, setSoundPref, startRingtone, stopRingtone, playDTMF } from '../../dtmf'
 
 export default function SettingsTab({ agent, onLogout }) {
   const C = useColors()
-  const [tab, setTab] = useState('profile')
-
-  const navItems = [
-    { id: 'profile',       icon: '👤', label: 'Profile' },
-    { id: 'team',          icon: '👥', label: 'Team' },
-    { id: 'notifications', icon: '🔔', label: 'Notifications' },
-    { id: 'appearance',    icon: '🎨', label: 'Appearance' },
-    { id: 'about',         icon: 'ℹ️',  label: 'About' },
-  ]
 
   return (
-    <div style={{ ...S.wrap, background: C.bg }}>
-      {/* Left nav */}
-      <div style={{ ...S.nav, background: C.panel, borderRight: `1px solid ${C.border}` }}>
-        {navItems.map(({ id, icon, label }) => (
-          <button
-            key={id}
-            style={{
-              ...S.navBtn,
-              color: tab === id ? '#4f9cf9' : C.textSec,
-              background: tab === id ? 'rgba(79,156,249,0.12)' : 'transparent',
-              fontWeight: tab === id ? 600 : 500,
-            }}
-            onClick={() => setTab(id)}
-          >
-            <span style={S.navIcon}>{icon}</span>
-            {label}
-          </button>
-        ))}
-        <div style={{ flex: 1 }} />
-        <button
-          style={{ ...S.logoutBtn, border: `1px solid ${C.border}`, color: '#ef4444', background: 'rgba(239,68,68,0.08)' }}
-          onClick={onLogout}
-        >
-          Sign Out
-        </button>
-      </div>
+    <div style={{ ...S.page, background: C.bg }}>
+      <div style={S.scroll}>
+        <ProfileSection  agent={agent} C={C} />
+        <TeamSection     C={C} />
+        <AudioSection    C={C} />
+        <AppearanceSection C={C} />
+        <IVRSection      C={C} />
+        <ZohoCRMSection  C={C} />
+        <AboutSection    C={C} />
 
-      {/* Content */}
-      <div style={{ ...S.content, background: C.bg }}>
-        {tab === 'profile'       && <ProfilePanel       agent={agent} C={C} />}
-        {tab === 'team'          && <TeamPanel           C={C} />}
-        {tab === 'notifications' && <NotifPanel          C={C} />}
-        {tab === 'appearance'    && <AppearancePanel     C={C} />}
-        {tab === 'about'         && <AboutPanel          C={C} />}
+        <div style={{ padding: '8px 16px 24px' }}>
+          <button
+            style={{ ...S.logoutBtn, border: `1px solid rgba(239,68,68,0.4)`, color: '#ef4444', background: 'rgba(239,68,68,0.08)' }}
+            onClick={onLogout}
+          >
+            Sign Out
+          </button>
+        </div>
       </div>
     </div>
   )
 }
 
-/* ── Shared section wrapper ─────────────────────────────────────── */
-function Section({ title, children, C }) {
+/* ── Shared components ──────────────────────────────────────────────────────── */
+function SectionHeader({ title, C }) {
   return (
-    <div style={{ ...P.section, background: C.panel, border: `1px solid ${C.border}` }}>
-      <div style={{ ...P.sectionTitle, borderBottom: `1px solid ${C.borderSoft}`, color: C.textMuted }}>
-        {title}
-      </div>
+    <div style={{ ...S.sectionHeader, color: C.textMuted }}>
+      {title}
+    </div>
+  )
+}
+
+function Card({ children, C }) {
+  return (
+    <div style={{ ...S.card, background: C.panel, border: `1px solid ${C.border}` }}>
       {children}
     </div>
   )
 }
 
-/* ── Profile panel ──────────────────────────────────────────────── */
-function ProfilePanel({ agent, C }) {
+function ToggleRow({ label, desc, value, onChange, C, last }) {
   return (
-    <div style={P.page}>
-      <Section title="YOUR PROFILE" C={C}>
-        <div style={P.avatarRow}>
-          <div style={{ ...P.avatar, background: agent.color || '#3b82f6' }}>
-            {agent.initials || agent.name?.slice(0, 2).toUpperCase()}
+    <div style={{ ...S.row, borderBottom: last ? 'none' : `1px solid ${C.borderSoft}` }}>
+      <div style={{ flex: 1 }}>
+        <div style={{ ...S.rowLabel, color: C.text }}>{label}</div>
+        {desc && <div style={{ ...S.rowDesc, color: C.textMuted }}>{desc}</div>}
+      </div>
+      <button
+        style={{ ...S.toggle, background: value ? '#4f9cf9' : C.surface }}
+        onClick={() => onChange(!value)}
+      >
+        <div style={{ ...S.toggleThumb, left: value ? 21 : 3 }} />
+      </button>
+    </div>
+  )
+}
+
+function FieldRow({ label, value, hint, colorValue, C, last }) {
+  return (
+    <div style={{ ...S.row, borderBottom: last ? 'none' : `1px solid ${C.borderSoft}` }}>
+      <div style={{ ...S.rowDesc, color: C.textMuted, width: 110, flexShrink: 0 }}>{label}</div>
+      {colorValue ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ width: 14, height: 14, borderRadius: 3, background: colorValue }} />
+          <span style={{ ...S.rowLabel, color: C.text }}>{value}</span>
+        </div>
+      ) : (
+        <div style={{ ...S.rowLabel, color: C.text }}>{value}</div>
+      )}
+      {hint && <div style={{ ...S.rowDesc, color: C.textMuted, marginTop: 2 }}>{hint}</div>}
+    </div>
+  )
+}
+
+/* ── Profile section ────────────────────────────────────────────────────────── */
+function ProfileSection({ agent, C }) {
+  const [curr, setCurr]       = useState('')
+  const [next, setNext]       = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [pwMsg, setPwMsg]     = useState('')
+
+  async function savePassword() {
+    if (next !== confirm) { setPwMsg('Passwords do not match'); return }
+    try {
+      await fetch('/api/agents/me/password', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('bti_token')}` },
+        body: JSON.stringify({ current_password: curr, new_password: next }),
+      })
+      setPwMsg('Password changed ✓')
+      setCurr(''); setNext(''); setConfirm('')
+    } catch { setPwMsg('Failed — check current password') }
+    setTimeout(() => setPwMsg(''), 3000)
+  }
+
+  return (
+    <div style={S.section}>
+      <SectionHeader title="PROFILE" C={C} />
+      <Card C={C}>
+        <div style={{ ...S.avatarRow, borderBottom: `1px solid ${C.borderSoft}` }}>
+          <div style={{ ...S.avatar, background: agent.color || '#3b82f6' }}>
+            {agent.initials || agent.name?.slice(0,2).toUpperCase()}
           </div>
           <div>
-            <div style={{ ...P.agentName, color: C.text }}>{agent.name}</div>
-            <div style={{ ...P.agentUser, color: C.textMuted }}>@{agent.username}</div>
+            <div style={{ ...S.rowLabel, color: C.text, fontSize: 14 }}>{agent.name}</div>
+            <div style={{ ...S.rowDesc, color: C.textMuted }}>@{agent.username}</div>
           </div>
         </div>
-        <Field label="Full name"    value={agent.name} C={C} />
-        <Field label="Username"     value={agent.username} C={C} />
-        <Field
-          label="Phone number"
-          value={agent.phone_number !== 'TBD' ? agent.phone_number : 'Not assigned'}
-          hint="Contact admin to change your Twilio number"
+        <FieldRow label="Full name"    value={agent.name} C={C} />
+        <FieldRow label="Username"     value={agent.username} C={C} />
+        <FieldRow label="Phone"        value={agent.phone_number !== 'TBD' ? agent.phone_number : 'Not assigned'} hint="Contact admin to change" C={C} />
+        <FieldRow label="Color"        value={agent.color} colorValue={agent.color} C={C} last />
+      </Card>
+
+      <Card C={C}>
+        <div style={{ ...S.cardTitle, color: C.textMuted, borderBottom: `1px solid ${C.borderSoft}` }}>CHANGE PASSWORD</div>
+        {[
+          { label: 'Current password', val: curr,    set: setCurr    },
+          { label: 'New password',     val: next,    set: setNext    },
+          { label: 'Confirm new',      val: confirm, set: setConfirm },
+        ].map(({ label, val, set }, i, arr) => (
+          <div key={label} style={{ ...S.row, borderBottom: i < arr.length - 1 ? `1px solid ${C.borderSoft}` : 'none' }}>
+            <div style={{ ...S.rowDesc, color: C.textMuted, width: 130, flexShrink: 0 }}>{label}</div>
+            <input
+              style={{ ...S.input, background: C.inputBg, border: `1px solid ${C.inputBorder}`, color: C.text, flex: 1 }}
+              type="password" value={val} onChange={e => set(e.target.value)}
+            />
+          </div>
+        ))}
+        <div style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button style={S.primaryBtn} onClick={savePassword}>Save Password</button>
+          {pwMsg && <span style={{ fontSize: 12, color: pwMsg.includes('✓') ? '#22c55e' : '#ef4444' }}>{pwMsg}</span>}
+        </div>
+      </Card>
+    </div>
+  )
+}
+
+/* ── Team section ───────────────────────────────────────────────────────────── */
+function TeamSection({ C }) {
+  const [agents, setAgents] = useState([])
+  useEffect(() => { api.agents().then(setAgents).catch(console.error) }, [])
+
+  return (
+    <div style={S.section}>
+      <SectionHeader title="TEAM" C={C} />
+      <Card C={C}>
+        {agents.length === 0 && (
+          <div style={{ ...S.row, color: C.textMuted }}>Loading team…</div>
+        )}
+        {agents.map((m, i) => (
+          <div key={m.id} style={{ ...S.row, borderBottom: i < agents.length - 1 ? `1px solid ${C.borderSoft}` : 'none' }}>
+            <div style={{ ...S.avatar, width: 32, height: 32, fontSize: 11, background: m.color || '#3b82f6', flexShrink: 0 }}>
+              {m.initials || m.name?.slice(0,2).toUpperCase()}
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ ...S.rowLabel, color: C.text }}>{m.name}</div>
+              <div style={{ ...S.rowDesc, color: C.textMuted }}>{m.phone_number !== 'TBD' ? m.phone_number : 'No number assigned'}</div>
+            </div>
+            <div style={{ ...S.badge, background: 'rgba(34,197,94,0.12)', color: '#22c55e' }}>
+              <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#22c55e' }} />
+              active
+            </div>
+          </div>
+        ))}
+      </Card>
+    </div>
+  )
+}
+
+/* ── Audio section ──────────────────────────────────────────────────────────── */
+function AudioSection({ C }) {
+  const [prefs, setPrefs] = useState(getSoundPrefs())
+  const fileRef = useRef(null)
+  const [previewMsg, setPreviewMsg] = useState('')
+
+  function update(key, val) { setSoundPref(key, val); setPrefs(getSoundPrefs()) }
+
+  function previewRingtone() {
+    startRingtone()
+    setTimeout(() => { stopRingtone(); setPreviewMsg('') }, 3500)
+    setPreviewMsg('Playing…')
+  }
+
+  function handleUpload(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = ev => {
+      localStorage.setItem('bti_custom_ringtone', ev.target.result)
+      update('ringtoneChoice', 'custom')
+      setPreviewMsg('Saved ✓')
+      setTimeout(() => setPreviewMsg(''), 2000)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const DTMF_STYLES  = [
+    { id: 'phone', label: 'Phone',  desc: 'Classic dual-tone' },
+    { id: 'soft',  label: 'Soft',   desc: 'Quieter, longer' },
+    { id: 'click', label: 'Click',  desc: 'Short subtle click' },
+  ]
+  const RINGTONES = [
+    { id: 'default', label: 'Default' },
+    { id: 'classic', label: 'Classic Double Ring' },
+    { id: 'soft',    label: 'Soft Chime' },
+    { id: 'custom',  label: 'Custom (upload)' },
+  ]
+
+  return (
+    <div style={S.section}>
+      <SectionHeader title="AUDIO" C={C} />
+
+      <Card C={C}>
+        <ToggleRow
+          label="Noise suppression"
+          desc="Filters background noise and echo from your microphone during calls"
+          value={prefs.noiseSuppression}
+          onChange={v => {
+            update('noiseSuppression', v)
+            window.dispatchEvent(new Event('bti_noise_pref_change'))
+          }}
           C={C}
         />
-        <Field label="Color" value={agent.color} colorValue={agent.color} C={C} />
-      </Section>
+        <ToggleRow label="Dialpad tones"  desc="DTMF sounds when pressing keys"   value={prefs.dtmf}       onChange={v => update('dtmf', v)}       C={C} />
+        <ToggleRow label="Ringtone"       desc="Sound on incoming calls"           value={prefs.ringtone}   onChange={v => update('ringtone', v)}   C={C} />
+        <ToggleRow label="Call sounds"    desc="Connected and disconnected beeps"  value={prefs.callSounds} onChange={v => update('callSounds', v)} C={C} last />
+      </Card>
 
-      <Section title="CHANGE PASSWORD" C={C}>
-        <Field label="Current password" type="password" editable C={C} />
-        <Field label="New password"     type="password" editable C={C} />
-        <Field label="Confirm new"      type="password" editable C={C} />
-        <div style={{ padding: '10px 16px 14px' }}>
-          <button style={P.saveBtn}>Save Password</button>
-        </div>
-      </Section>
-    </div>
-  )
-}
-
-/* ── Team panel ─────────────────────────────────────────────────── */
-function TeamPanel({ C }) {
-  const members = [
-    { name: 'Shawn', initials: 'SH', color: '#3b82f6', phone: 'TBD', status: 'online' },
-    { name: 'Danny', initials: 'DN', color: '#10b981', phone: 'TBD', status: 'online' },
-    { name: 'Raven', initials: 'RV', color: '#8b5cf6', phone: 'TBD', status: 'online' },
-  ]
-  return (
-    <div style={P.page}>
-      <Section title="TEAM MEMBERS" C={C}>
-        {members.map(m => (
-          <div key={m.name} style={{ ...P.memberRow, borderBottom: `1px solid ${C.borderSoft}` }}>
-            <div style={{ ...P.memberAvatar, background: m.color }}>{m.initials}</div>
-            <div style={P.memberInfo}>
-              <div style={{ ...P.memberName, color: C.text }}>{m.name}</div>
-              <div style={{ ...P.memberPhone, color: C.textMuted }}>{m.phone !== 'TBD' ? m.phone : 'No number assigned'}</div>
-            </div>
-            <div style={{ ...P.onlineBadge, background: 'rgba(34,197,94,0.12)', color: '#22c55e' }}>
-              <div style={{ ...P.onlineDot, background: '#22c55e' }} />
-              online
-            </div>
-          </div>
-        ))}
-      </Section>
-
-      <Section title="PHONE NUMBERS" C={C}>
-        <div style={{ ...P.infoBox, background: C.surface, border: `1px solid ${C.borderSoft}`, color: C.textSec }}>
-          Phone numbers will appear here once your team's Twilio numbers are configured.
-          Each team member gets their own Twilio number, but all messages appear in this shared inbox.
-        </div>
-      </Section>
-    </div>
-  )
-}
-
-/* ── Notifications panel ────────────────────────────────────────── */
-function NotifPanel({ C }) {
-  const [prefs, setPrefs] = useState({
-    newSMS:      true,
-    inboundCall: true,
-    missedCall:  true,
-    doubleText:  true,
-    sound:       true,
-  })
-  const toggle = key => setPrefs(p => ({ ...p, [key]: !p[key] }))
-
-  const rows = [
-    { key: 'newSMS',      label: 'New inbound SMS',    desc: 'Notify when a customer sends a message' },
-    { key: 'inboundCall', label: 'Incoming call',       desc: 'Notify when a call comes in' },
-    { key: 'missedCall',  label: 'Missed call',         desc: 'Notify when a call is not answered' },
-    { key: 'doubleText',  label: 'Double-text warning', desc: 'Alert when two agents text the same customer' },
-    { key: 'sound',       label: 'Sound effects',       desc: 'Play a sound with notifications' },
-  ]
-
-  return (
-    <div style={P.page}>
-      <Section title="NOTIFICATION PREFERENCES" C={C}>
-        {rows.map(({ key, label, desc }) => (
-          <div key={key} style={{ ...P.toggleRow, borderBottom: `1px solid ${C.borderSoft}` }}>
+      <Card C={C}>
+        <div style={{ ...S.cardTitle, color: C.textMuted, borderBottom: `1px solid ${C.borderSoft}` }}>DIALPAD TONE STYLE</div>
+        {DTMF_STYLES.map((st, i) => (
+          <div
+            key={st.id}
+            onClick={() => { update('dtmfStyle', st.id); playDTMF('5') }}
+            style={{ ...S.row, cursor: 'pointer', borderBottom: i < DTMF_STYLES.length - 1 ? `1px solid ${C.borderSoft}` : 'none', background: prefs.dtmfStyle === st.id ? 'rgba(79,156,249,0.07)' : 'transparent' }}
+          >
+            <Radio selected={prefs.dtmfStyle === st.id} />
             <div>
-              <div style={{ ...P.toggleLabel, color: C.text }}>{label}</div>
-              <div style={{ ...P.toggleDesc,  color: C.textMuted }}>{desc}</div>
+              <div style={{ ...S.rowLabel, color: C.text }}>{st.label}</div>
+              <div style={{ ...S.rowDesc, color: C.textMuted }}>{st.desc}</div>
             </div>
-            <button
-              style={{ ...P.toggle, background: prefs[key] ? '#4f9cf9' : C.surface }}
-              onClick={() => toggle(key)}
-              aria-label={label}
-            >
-              <div style={{ ...P.toggleThumb, left: prefs[key] ? 21 : 3 }} />
-            </button>
           </div>
         ))}
-      </Section>
+      </Card>
+
+      <Card C={C}>
+        <div style={{ ...S.cardTitle, color: C.textMuted, borderBottom: `1px solid ${C.borderSoft}` }}>RINGTONE</div>
+        {RINGTONES.map((rt, i) => (
+          <div
+            key={rt.id}
+            onClick={() => update('ringtoneChoice', rt.id)}
+            style={{ ...S.row, cursor: 'pointer', borderBottom: i < RINGTONES.length - 1 ? `1px solid ${C.borderSoft}` : 'none', background: prefs.ringtoneChoice === rt.id ? 'rgba(79,156,249,0.07)' : 'transparent' }}
+          >
+            <Radio selected={prefs.ringtoneChoice === rt.id} />
+            <div style={{ ...S.rowLabel, color: C.text }}>{rt.label}</div>
+          </div>
+        ))}
+        <div style={{ padding: '10px 14px', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button style={S.primaryBtn} onClick={previewRingtone}>▶ Preview</button>
+          <button style={{ ...S.primaryBtn, background: C.surface, color: C.text, border: `1px solid ${C.border}` }} onClick={() => fileRef.current?.click()}>
+            Upload (.mp3, .wav)
+          </button>
+          <input ref={fileRef} type="file" accept=".mp3,.wav,.ogg,.m4a" style={{ display: 'none' }} onChange={handleUpload} />
+          {previewMsg && <span style={{ fontSize: 12, color: C.textSec }}>{previewMsg}</span>}
+        </div>
+      </Card>
+
+      {window.electronAPI && <StartupCard C={C} />}
     </div>
   )
 }
 
-/* ── Appearance panel ───────────────────────────────────────────── */
-function AppearancePanel({ C }) {
+function Radio({ selected }) {
+  return (
+    <div style={{ width: 16, height: 16, borderRadius: '50%', border: `2px solid ${selected ? '#4f9cf9' : '#6b7280'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginRight: 4 }}>
+      {selected && <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#4f9cf9' }} />}
+    </div>
+  )
+}
+
+function StartupCard({ C }) {
+  const [autoLaunch, setAutoLaunch] = useState(false)
+  useEffect(() => { window.electronAPI?.getAutoLaunch?.().then(v => setAutoLaunch(!!v)).catch(() => {}) }, [])
+  async function toggle(val) {
+    try { await window.electronAPI?.setAutoLaunch?.(val); setAutoLaunch(val) } catch {}
+  }
+  return (
+    <Card C={C}>
+      <ToggleRow label="Launch at login" desc="Open BTI Voice automatically when you log in to Windows" value={autoLaunch} onChange={toggle} C={C} last />
+    </Card>
+  )
+}
+
+/* ── Appearance section ─────────────────────────────────────────────────────── */
+function AppearanceSection({ C }) {
   const { theme, toggleTheme } = useTheme()
   const isDark = theme === 'dark'
 
   return (
-    <div style={P.page}>
-      <Section title="THEME" C={C}>
-        <div style={{ ...P.toggleRow, borderBottom: `1px solid ${C.borderSoft}` }}>
-          <div>
-            <div style={{ ...P.toggleLabel, color: C.text }}>Dark Mode</div>
-            <div style={{ ...P.toggleDesc, color: C.textMuted }}>
-              {isDark ? 'Using dark charcoal theme' : 'Using light theme'}
+    <div style={S.section}>
+      <SectionHeader title="APPEARANCE" C={C} />
+      <Card C={C}>
+        <ToggleRow label="Dark Mode" desc={isDark ? 'Using dark charcoal theme' : 'Using light theme'} value={isDark} onChange={toggleTheme} C={C} last />
+      </Card>
+    </div>
+  )
+}
+
+/* ── IVR / Phone Tree section ───────────────────────────────────────────────── */
+function IVRSection({ C }) {
+  const [settings, setSettings]   = useState({ enabled: false, greeting: '', timeout: 10 })
+  const [menu,     setMenu]       = useState([])
+  const [loading,  setLoading]    = useState(true)
+  const [saving,   setSaving]     = useState(false)
+  const [msg,      setMsg]        = useState('')
+  const [agents,   setAgents]     = useState([])
+  const [showAdd,  setShowAdd]    = useState(false)
+  const [newItem,  setNewItem]    = useState({ digit: '', label: '', destination_type: 'all_agents', destination_value: '' })
+  const [seqAgents, setSeqAgents] = useState([]) // ordered agent IDs for sequential type
+
+  useEffect(() => {
+    Promise.all([api.ivrSettings(), api.ivrMenu(), api.agents()])
+      .then(([s, m, a]) => { setSettings(s); setMenu(m); setAgents(a) })
+      .catch(console.error)
+      .finally(() => setLoading(false))
+  }, [])
+
+  async function saveSettings() {
+    setSaving(true)
+    try {
+      const updated = await api.ivrSaveSettings(settings)
+      setSettings(updated)
+      flash('Saved ✓')
+    } catch { flash('Save failed', true) }
+    setSaving(false)
+  }
+
+  async function addItem() {
+    if (!newItem.digit || !newItem.label) return
+    if (newItem.destination_type === 'sequential' && seqAgents.length < 1) return
+    const destValue = newItem.destination_type === 'sequential'
+      ? JSON.stringify(seqAgents)
+      : newItem.destination_value
+    try {
+      const item = await api.ivrAddItem({ ...newItem, destination_value: destValue, sort_order: menu.length })
+      setMenu(m => [...m, item])
+      setNewItem({ digit: '', label: '', destination_type: 'all_agents', destination_value: '' })
+      setSeqAgents([])
+      setShowAdd(false)
+    } catch { flash('Failed to add option', true) }
+  }
+
+  async function deleteItem(id) {
+    try {
+      await api.ivrDeleteItem(id)
+      setMenu(m => m.filter(x => x.id !== id))
+    } catch { flash('Failed to delete', true) }
+  }
+
+  function flash(text, isErr = false) {
+    setMsg({ text, err: isErr })
+    setTimeout(() => setMsg(''), 3000)
+  }
+
+  const DEST_TYPES = [
+    { id: 'all_agents', label: 'Ring all agents'   },
+    { id: 'sequential', label: 'Ring in sequence'  },
+    { id: 'agent',      label: 'Specific agent'    },
+    { id: 'voicemail',  label: 'Voicemail'         },
+  ]
+
+  const DIGITS = ['1','2','3','4','5','6','7','8','9','0','*','#']
+  const usedDigits = menu.map(m => m.digit)
+
+  if (loading) return null
+
+  return (
+    <div style={S.section}>
+      <SectionHeader title="PHONE TREE (IVR)" C={C} />
+
+      {/* Enable toggle + greeting */}
+      <Card C={C}>
+        <ToggleRow
+          label="Enable Phone Tree"
+          desc="Callers hear a menu before being connected"
+          value={settings.enabled}
+          onChange={v => setSettings(s => ({ ...s, enabled: v }))}
+          C={C}
+        />
+        <div style={{ padding: '10px 14px', borderTop: `1px solid ${C.borderSoft}` }}>
+          <div style={{ ...S.rowDesc, color: C.textMuted, marginBottom: 6 }}>Greeting message (read aloud to callers)</div>
+          <textarea
+            value={settings.greeting}
+            onChange={e => setSettings(s => ({ ...s, greeting: e.target.value }))}
+            rows={3}
+            style={{
+              width: '100%', boxSizing: 'border-box',
+              background: C.inputBg, border: `1px solid ${C.inputBorder}`,
+              color: C.text, borderRadius: 6, padding: '7px 10px',
+              fontSize: 12, resize: 'vertical', fontFamily: 'inherit',
+            }}
+          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+            <div style={{ ...S.rowDesc, color: C.textMuted }}>No-answer timeout (sec)</div>
+            <input
+              type="number" min={5} max={30}
+              value={settings.timeout}
+              onChange={e => setSettings(s => ({ ...s, timeout: parseInt(e.target.value) || 10 }))}
+              style={{ ...S.input, background: C.inputBg, border: `1px solid ${C.inputBorder}`, color: C.text, width: 60 }}
+            />
+          </div>
+          <div style={{ marginTop: 10 }}>
+            <div style={{ ...S.rowDesc, color: C.textMuted, marginBottom: 6 }}>
+              Default routing — who gets all other calls (no digit pressed, invalid key, etc.)
+            </div>
+            <select
+              value={settings.default_agent_id || ''}
+              onChange={e => setSettings(s => ({ ...s, default_agent_id: e.target.value || null }))}
+              style={{ ...S.input, background: C.inputBg, border: `1px solid ${C.inputBorder}`, color: C.text, width: '100%' }}
+            >
+              <option value="">Ring all agents</option>
+              {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          </div>
+
+          <div style={{ marginTop: 10 }}>
+            <div style={{ ...S.rowDesc, color: C.textMuted, marginBottom: 6 }}>
+              Voice — how callers hear your menu
+            </div>
+            <select
+              value={settings.voice || 'Polly.Joanna-Neural'}
+              onChange={e => setSettings(s => ({ ...s, voice: e.target.value }))}
+              style={{ ...S.input, background: C.inputBg, border: `1px solid ${C.inputBorder}`, color: C.text, width: '100%' }}
+            >
+              <optgroup label="Female (Recommended)">
+                <option value="Polly.Joanna-Neural">Joanna — Natural American Female ★</option>
+                <option value="Polly.Kendra-Neural">Kendra — Warm American Female</option>
+                <option value="Polly.Salli-Neural">Salli — Bright American Female</option>
+                <option value="Polly.Ruth-Neural">Ruth — Conversational Female</option>
+              </optgroup>
+              <optgroup label="Male">
+                <option value="Polly.Matthew-Neural">Matthew — Natural American Male</option>
+                <option value="Polly.Stephen-Neural">Stephen — Conversational Male</option>
+              </optgroup>
+            </select>
+            <div style={{ ...S.rowDesc, color: C.textMuted, marginTop: 4 }}>
+              All voices use Amazon Polly Neural — significantly more natural than standard TTS.
             </div>
           </div>
+        </div>
+        <div style={{ padding: '8px 14px 12px', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button style={S.primaryBtn} onClick={saveSettings} disabled={saving}>
+            {saving ? 'Saving…' : 'Save Settings'}
+          </button>
+          {msg && <span style={{ fontSize: 12, color: msg.err ? '#ef4444' : '#22c55e' }}>{msg.text}</span>}
+        </div>
+      </Card>
+
+      {/* Menu items */}
+      <Card C={C}>
+        <div style={{ ...S.cardTitle, color: C.textMuted, borderBottom: `1px solid ${C.borderSoft}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingRight: 14 }}>
+          <span>MENU OPTIONS</span>
           <button
-            style={{ ...P.toggle, background: isDark ? '#4f9cf9' : C.surface }}
-            onClick={toggleTheme}
-            aria-label="Toggle dark mode"
+            style={{ ...S.primaryBtn, padding: '3px 10px', fontSize: 11 }}
+            onClick={() => setShowAdd(v => !v)}
           >
-            <div style={{ ...P.toggleThumb, left: isDark ? 21 : 3 }} />
+            {showAdd ? 'Cancel' : '+ Add Option'}
           </button>
         </div>
 
-        <div style={{ padding: '12px 16px' }}>
-          <div style={{ ...P.previewLabel, color: C.textMuted }}>Preview</div>
-          <div style={{ ...P.previewShell, background: isDark ? '#161b24' : '#f4f6f9', border: `1px solid ${C.border}` }}>
-            <div style={{ height: 10, background: isDark ? '#1d2330' : '#1a2035', borderRadius: '3px 3px 0 0', display: 'flex', alignItems: 'center', paddingLeft: 5, gap: 2 }}>
-              <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#4f9cf9' }} />
-              <div style={{ flex: 1, height: 2, background: 'rgba(255,255,255,0.15)', borderRadius: 1, margin: '0 4px' }} />
+        {menu.length === 0 && !showAdd && (
+          <div style={{ ...S.row, color: C.textMuted, fontSize: 12 }}>
+            No menu options yet. Add your first option above.
+          </div>
+        )}
+
+        {menu.map((item, i) => (
+          <div key={item.id} style={{ ...S.row, borderBottom: i < menu.length - 1 || showAdd ? `1px solid ${C.borderSoft}` : 'none' }}>
+            <div style={{ width: 28, height: 28, borderRadius: 7, background: 'rgba(79,156,249,0.15)', color: '#4f9cf9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 13, flexShrink: 0 }}>
+              {item.digit}
             </div>
-            <div style={{ display: 'flex', height: 38 }}>
-              <div style={{ flex: 1, background: isDark ? '#161b24' : '#f4f6f9', padding: '5px 7px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <div style={{ height: 5, background: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.12)', borderRadius: 2, width: '70%' }} />
-                <div style={{ height: 4, background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)', borderRadius: 2, width: '50%' }} />
-                <div style={{ height: 4, background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)', borderRadius: 2, width: '60%' }} />
+            <div style={{ flex: 1 }}>
+              <div style={{ ...S.rowLabel, color: C.text }}>{item.label}</div>
+              <div style={{ ...S.rowDesc, color: C.textMuted }}>
+                {item.destination_type === 'agent'
+                  ? `→ ${agents.find(a => String(a.id) === String(item.destination_value))?.name || 'Agent'}`
+                  : item.destination_type === 'voicemail'
+                  ? '→ Voicemail'
+                  : item.destination_type === 'sequential'
+                  ? `→ ${(() => { try { return JSON.parse(item.destination_value || '[]').map(id => agents.find(a => String(a.id) === String(id))?.name || '?').join(' → ') } catch { return '?' } })()} (in order)`
+                  : '→ Ring all agents'}
               </div>
             </div>
-            <div style={{ height: 12, background: isDark ? '#1d2330' : '#ffffff', borderTop: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-around', padding: '0 4px' }}>
-              {[0,1,2,3,4].map(i => (
-                <div key={i} style={{ width: 8, height: 8, borderRadius: '50%', background: i === 1 ? '#4f9cf9' : (isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.15)') }} />
-              ))}
+            <button
+              onClick={() => deleteItem(item.id)}
+              style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 16, padding: '0 4px' }}
+            >×</button>
+          </div>
+        ))}
+
+        {showAdd && (
+          <div style={{ padding: '12px 14px', borderTop: menu.length > 0 ? `1px solid ${C.borderSoft}` : 'none', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              {/* Digit picker */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div style={{ ...S.rowDesc, color: C.textMuted }}>Digit</div>
+                <select
+                  value={newItem.digit}
+                  onChange={e => setNewItem(n => ({ ...n, digit: e.target.value }))}
+                  style={{ ...S.input, background: C.inputBg, border: `1px solid ${C.inputBorder}`, color: C.text, width: 60 }}
+                >
+                  <option value="">–</option>
+                  {DIGITS.filter(d => !usedDigits.includes(d)).map(d => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Label */}
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div style={{ ...S.rowDesc, color: C.textMuted }}>Label (spoken to caller)</div>
+                <input
+                  style={{ ...S.input, background: C.inputBg, border: `1px solid ${C.inputBorder}`, color: C.text, width: '100%' }}
+                  placeholder="e.g. Sales, Support…"
+                  value={newItem.label}
+                  onChange={e => setNewItem(n => ({ ...n, label: e.target.value }))}
+                />
+              </div>
+            </div>
+
+            {/* Destination */}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div style={{ ...S.rowDesc, color: C.textMuted }}>Route to</div>
+                <select
+                  value={newItem.destination_type}
+                  onChange={e => setNewItem(n => ({ ...n, destination_type: e.target.value, destination_value: '' }))}
+                  style={{ ...S.input, background: C.inputBg, border: `1px solid ${C.inputBorder}`, color: C.text }}
+                >
+                  {DEST_TYPES.map(dt => <option key={dt.id} value={dt.id}>{dt.label}</option>)}
+                </select>
+              </div>
+
+              {newItem.destination_type === 'agent' && (
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <div style={{ ...S.rowDesc, color: C.textMuted }}>Agent</div>
+                  <select
+                    value={newItem.destination_value}
+                    onChange={e => setNewItem(n => ({ ...n, destination_value: e.target.value }))}
+                    style={{ ...S.input, background: C.inputBg, border: `1px solid ${C.inputBorder}`, color: C.text, width: '100%' }}
+                  >
+                    <option value="">Select agent…</option>
+                    {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            {/* Sequential ring builder */}
+            {newItem.destination_type === 'sequential' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ ...S.rowDesc, color: C.textMuted }}>Ring order — first available agent answers</div>
+
+                {/* Current sequence */}
+                {seqAgents.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {seqAgents.map((id, idx) => {
+                      const name = agents.find(a => String(a.id) === String(id))?.name || '?'
+                      return (
+                        <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'rgba(79,156,249,0.12)', borderRadius: 6, padding: '3px 8px' }}>
+                          <span style={{ ...S.rowDesc, color: '#4f9cf9', fontWeight: 700 }}>{idx + 1}.</span>
+                          <span style={{ ...S.rowLabel, color: C.text, fontSize: 12 }}>{name}</span>
+                          <button onClick={() => setSeqAgents(s => s.filter((_, i) => i !== idx))}
+                            style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 14, padding: '0 2px', lineHeight: 1 }}>×</button>
+                        </div>
+                      )
+                    })}
+                    {seqAgents.length > 1 && <span style={{ ...S.rowDesc, color: C.textMuted, alignSelf: 'center' }}>→ voicemail if no answer</span>}
+                  </div>
+                )}
+
+                {/* Add agent to sequence */}
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <select
+                    defaultValue=""
+                    onChange={e => {
+                      const id = e.target.value
+                      if (id && !seqAgents.includes(id)) setSeqAgents(s => [...s, id])
+                      e.target.value = ''
+                    }}
+                    style={{ ...S.input, background: C.inputBg, border: `1px solid ${C.inputBorder}`, color: C.text, flex: 1 }}
+                  >
+                    <option value="">+ Add agent to sequence…</option>
+                    {agents.filter(a => !seqAgents.includes(String(a.id))).map(a => (
+                      <option key={a.id} value={a.id}>{a.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+
+            <button
+              style={{ ...S.primaryBtn, alignSelf: 'flex-start' }}
+              onClick={addItem}
+              disabled={!newItem.digit || !newItem.label}
+            >
+              Add Option
+            </button>
+          </div>
+        )}
+      </Card>
+
+      {settings.enabled && menu.length > 0 && (
+        <div style={{ padding: '0 4px 8px', fontSize: 11, color: C.textMuted, lineHeight: 1.5 }}>
+          💡 Callers hear: "{settings.greeting}" followed by each option. If they don't press anything within {settings.timeout}s, all agents are rung.
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ── About section ──────────────────────────────────────────────────────────── */
+/* ── Zoho CRM section ───────────────────────────────────────────────────────── */
+function ZohoCRMSection({ C }) {
+  const [status,    setStatus]    = useState(null)   // { configured, present, missing }
+  const [testing,   setTesting]   = useState(false)
+  const [testResult,setTestResult]= useState(null)   // { ok, message, sample_contact } | { ok:false, error }
+  const [copied,    setCopied]    = useState('')
+
+  const load = useCallback(() => {
+    api.zohoStatus().then(setStatus).catch(console.error)
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  async function runTest() {
+    setTesting(true)
+    setTestResult(null)
+    try {
+      const r = await api.zohoTest()
+      setTestResult(r)
+    } catch (e) {
+      setTestResult({ ok: false, error: e.message })
+    }
+    setTesting(false)
+  }
+
+  function copy(text, key) {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(key)
+      setTimeout(() => setCopied(''), 1500)
+    })
+  }
+
+  const configured = status?.configured
+  const isDark = C.bg === '#161b24' || C.bg?.includes('1')
+
+  const ENV_VARS = [
+    { key: 'ZOHO_CLIENT_ID',     label: 'Client ID',     hint: 'From Zoho Developer Console' },
+    { key: 'ZOHO_CLIENT_SECRET', label: 'Client Secret', hint: 'From Zoho Developer Console' },
+    { key: 'ZOHO_REFRESH_TOKEN', label: 'Refresh Token', hint: 'Generated via OAuth flow' },
+    { key: 'ZOHO_API_DOMAIN',    label: 'API Domain',    hint: 'Optional — default: https://www.zohoapis.com' },
+  ]
+
+  const SCOPES = 'ZohoCRM.modules.calls.CREATE,ZohoCRM.modules.notes.CREATE,ZohoCRM.modules.contacts.READ,ZohoCRM.modules.contacts.WRITE'
+
+  return (
+    <div style={S.section}>
+      <SectionHeader title="ZOHO CRM" C={C} />
+      <Card C={C}>
+
+        {/* Status row */}
+        <div style={{ ...S.row, borderBottom: `1px solid ${C.border}` }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ ...S.rowLabel, color: C.text }}>CRM Integration</div>
+            <div style={{ ...S.rowDesc, color: C.textMuted }}>
+              Automatically log calls and AI summaries to Zoho CRM
             </div>
           </div>
-          <div style={{ ...P.previewCaption, color: C.textMuted }}>{isDark ? 'Dark mode' : 'Light mode'}</div>
+          <div style={{
+            ...S.badge,
+            background: configured ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.12)',
+            color:      configured ? '#22c55e' : '#ef4444',
+            border:     `1px solid ${configured ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.25)'}`,
+          }}>
+            <span style={{ fontSize: 8 }}>{configured ? '●' : '●'}</span>
+            {status === null ? 'Checking…' : configured ? 'Connected' : 'Not configured'}
+          </div>
         </div>
-      </Section>
+
+        {/* Test connection button + result */}
+        {configured && (
+          <div style={{ ...S.row, borderBottom: `1px solid ${C.border}`, flexDirection: 'column', alignItems: 'flex-start', gap: 8 }}>
+            <button
+              style={{ ...S.primaryBtn, opacity: testing ? 0.6 : 1 }}
+              onClick={runTest}
+              disabled={testing}
+            >
+              {testing ? 'Testing…' : '🔗 Test Connection'}
+            </button>
+            {testResult && (
+              <div style={{
+                fontSize: 12, padding: '8px 10px', borderRadius: 7, width: '100%',
+                background: testResult.ok ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
+                color:      testResult.ok ? '#22c55e' : '#ef4444',
+                border:     `1px solid ${testResult.ok ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.25)'}`,
+              }}>
+                {testResult.ok
+                  ? `✓ Connected — sample contact: "${testResult.sample_contact}"`
+                  : `✗ ${testResult.error}`
+                }
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Setup guide — shown when not configured */}
+        {!configured && status !== null && (
+          <div style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}` }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: C.text, marginBottom: 8 }}>
+              Set these in Railway → Variables:
+            </div>
+            {ENV_VARS.map(({ key, label, hint }) => {
+              const isSet = status?.present?.includes(key)
+              return (
+                <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <span style={{
+                    fontSize: 9, fontWeight: 700, width: 14, textAlign: 'center',
+                    color: isSet ? '#22c55e' : '#6b7280',
+                  }}>{isSet ? '✓' : '○'}</span>
+                  <code style={{
+                    flex: 1, fontSize: 11, padding: '3px 7px', borderRadius: 5,
+                    background: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)',
+                    color: C.text, fontFamily: 'monospace', userSelect: 'all',
+                  }}>{key}</code>
+                  <button
+                    style={{ fontSize: 10, background: 'transparent', border: 'none', cursor: 'pointer', color: C.textMuted, padding: '2px 4px' }}
+                    onClick={() => copy(key, key)}
+                  >{copied === key ? '✓' : '⎘'}</button>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* OAuth setup instructions */}
+        {!configured && status !== null && (
+          <div style={{ padding: '10px 14px' }}>
+            <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.6 }}>
+              <strong style={{ color: C.text }}>How to get credentials:</strong><br />
+              1. Go to <strong>api-console.zoho.com</strong> → Self Client<br />
+              2. Copy the <strong>Client ID</strong> and <strong>Client Secret</strong><br />
+              3. Click <em>Generate Code</em>, paste these scopes:
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '6px 0' }}>
+              <code style={{
+                flex: 1, fontSize: 10, padding: '5px 8px', borderRadius: 5,
+                background: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)',
+                color: C.text, fontFamily: 'monospace', wordBreak: 'break-all',
+                lineHeight: 1.5,
+              }}>{SCOPES}</code>
+              <button
+                style={{ fontSize: 10, background: 'transparent', border: 'none', cursor: 'pointer', color: C.textMuted, padding: '2px 4px', flexShrink: 0 }}
+                onClick={() => copy(SCOPES, 'scopes')}
+              >{copied === 'scopes' ? '✓' : '⎘'}</button>
+            </div>
+            <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.6 }}>
+              4. Use the one-time code to get a <strong>Refresh Token</strong><br />
+              5. Add all three values to Railway env vars and redeploy
+            </div>
+          </div>
+        )}
+
+      </Card>
     </div>
   )
 }
 
-/* ── About panel ────────────────────────────────────────────────── */
-function AboutPanel({ C }) {
+function AboutSection({ C }) {
   return (
-    <div style={P.page}>
-      <Section title="BTI VOICE" C={C}>
-        <div style={P.aboutHero}>
-          <div style={P.aboutLogo}>B</div>
-          <div style={{ ...P.aboutName, color: C.text }}>BTI Voice</div>
-          <div style={{ ...P.aboutVersion, color: C.textMuted }}>Version 1.0.0</div>
+    <div style={S.section}>
+      <SectionHeader title="ABOUT" C={C} />
+      <Card C={C}>
+        <div style={S.aboutHero}>
+          <div style={S.aboutLogo}>B</div>
+          <div style={{ ...S.rowLabel, color: C.text, fontSize: 15, fontWeight: 700 }}>BTI Voice</div>
+          <div style={{ ...S.rowDesc, color: C.textMuted }}>Version 1.0.0</div>
+          <div style={{ ...S.rowDesc, color: C.textMuted, marginTop: 4 }}>
+            Created by Danny Roche · Business Technology Insight, LLC
+          </div>
+          <a
+            href="https://businesstechnologyinsight.com/"
+            target="_blank"
+            rel="noreferrer"
+            style={{ color: '#4f9cf9', fontSize: 13, marginTop: 8, textDecoration: 'none', fontWeight: 600 }}
+          >
+            Need Help? →
+          </a>
         </div>
-        <Field label="Built by"   value="Business Technology Insight"     C={C} />
-        <Field label="Backend"    value="Railway (Node.js + PostgreSQL)"   C={C} />
-        <Field label="SMS / VOIP" value="Twilio API"                       C={C} />
-        <Field label="Desktop"    value="Electron"                         C={C} />
-        <div style={{ ...P.infoBox, background: C.surface, border: `1px solid ${C.borderSoft}`, color: C.textSec }}>
-          BTI Voice is a shared SMS &amp; VOIP inbox for your team.
-          All agents see every conversation. The double-text detection system
-          prevents two agents from accidentally messaging the same customer.
-        </div>
-      </Section>
+      </Card>
     </div>
   )
 }
 
-/* ── Field component ────────────────────────────────────────────── */
-function Field({ label, value, type = 'text', hint, editable, colorValue, C }) {
-  return (
-    <div style={{ ...P.field, borderBottom: `1px solid ${C.borderSoft}` }}>
-      <label style={{ ...P.label, color: C.textMuted }}>{label}</label>
-      {colorValue ? (
-        <div style={P.colorRow}>
-          <div style={{ ...P.colorSwatch, background: colorValue }} />
-          <span style={{ ...P.fieldValue, color: C.text }}>{value}</span>
-        </div>
-      ) : editable ? (
-        <input
-          style={{ ...P.input, background: C.inputBg, border: `1px solid ${C.inputBorder}`, color: C.text }}
-          type={type}
-          placeholder="••••••••"
-        />
-      ) : (
-        <div style={{ ...P.fieldValue, color: C.text }}>{value}</div>
-      )}
-      {hint && <div style={{ ...P.hint, color: C.textMuted }}>{hint}</div>}
-    </div>
-  )
-}
-
-/* ── Outer shell ────────────────────────────────────────────────── */
+/* ── Styles ─────────────────────────────────────────────────────────────────── */
 const S = {
-  wrap: { display: 'flex', flex: 1, height: '100%', overflow: 'hidden' },
-  nav: {
-    width: 160, display: 'flex', flexDirection: 'column',
-    padding: '10px 6px', flexShrink: 0,
-  },
-  navBtn: {
-    display: 'flex', alignItems: 'center', gap: 8,
-    textAlign: 'left', padding: '8px 10px',
-    border: 'none', borderRadius: 7,
-    fontSize: 12.5, cursor: 'pointer',
-    transition: 'background 0.12s, color 0.12s',
-    marginBottom: 2,
-  },
-  navIcon: { fontSize: 14, width: 18, textAlign: 'center' },
-  logoutBtn: {
-    margin: '6px 4px 4px', padding: '8px 10px',
-    borderRadius: 7, fontSize: 12, fontWeight: 600,
-    cursor: 'pointer', textAlign: 'left',
-  },
-  content: { flex: 1, overflowY: 'auto' },
-}
+  page:   { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' },
+  scroll: { flex: 1, overflowY: 'auto', padding: '8px 0' },
+  section: { padding: '0 12px 4px' },
+  sectionHeader: { fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.7, padding: '12px 4px 6px' },
+  card:   { borderRadius: 10, marginBottom: 10, overflow: 'hidden' },
+  cardTitle: { padding: '8px 14px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.6 },
 
-/* ── Panel styles ───────────────────────────────────────────────── */
-const P = {
-  page:    { padding: '16px 20px', maxWidth: 460 },
-  section: { borderRadius: 10, marginBottom: 16, overflow: 'hidden' },
-  sectionTitle: {
-    padding: '10px 16px',
-    fontSize: 10, fontWeight: 700,
-    textTransform: 'uppercase', letterSpacing: 0.6,
-  },
+  row:    { display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px' },
+  rowLabel: { fontSize: 13, fontWeight: 500 },
+  rowDesc:  { fontSize: 11, marginTop: 1 },
 
-  avatarRow: { display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px 10px' },
-  avatar: {
-    width: 44, height: 44, borderRadius: '50%',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    fontSize: 15, fontWeight: 800, color: 'white',
-  },
-  agentName: { fontSize: 14, fontWeight: 700 },
-  agentUser: { fontSize: 11, marginTop: 1 },
+  avatarRow: { display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px' },
+  avatar:    { width: 40, height: 40, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, color: 'white', flexShrink: 0 },
 
-  field:      { padding: '9px 16px' },
-  label:      { display: 'block', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 3 },
-  fieldValue: { fontSize: 13 },
-  hint:       { fontSize: 10, marginTop: 3 },
-  input: {
-    width: '100%', padding: '7px 10px', borderRadius: 6,
-    fontSize: 13, outline: 'none', boxSizing: 'border-box',
-  },
-  colorRow: { display: 'flex', alignItems: 'center', gap: 8 },
-  colorSwatch: { width: 16, height: 16, borderRadius: 4 },
-  saveBtn: {
-    padding: '7px 16px', background: '#4f9cf9', color: 'white',
-    border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-  },
+  badge: { display: 'flex', alignItems: 'center', gap: 4, borderRadius: 10, padding: '2px 7px', fontSize: 10, fontWeight: 600 },
 
-  memberRow:   { display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px' },
-  memberAvatar: {
-    width: 32, height: 32, borderRadius: '50%',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    fontSize: 11, fontWeight: 700, color: 'white', flexShrink: 0,
-  },
-  memberInfo:  { flex: 1 },
-  memberName:  { fontSize: 13, fontWeight: 600 },
-  memberPhone: { fontSize: 11, marginTop: 1 },
-  onlineBadge: { display: 'flex', alignItems: 'center', gap: 4, borderRadius: 10, padding: '2px 7px', fontSize: 10, fontWeight: 600 },
-  onlineDot:   { width: 5, height: 5, borderRadius: '50%' },
+  toggle:      { width: 38, height: 21, borderRadius: 11, border: 'none', cursor: 'pointer', position: 'relative', flexShrink: 0, transition: 'background 0.2s' },
+  toggleThumb: { position: 'absolute', top: 3, width: 15, height: 15, borderRadius: '50%', background: 'white', transition: 'left 0.18s', boxShadow: '0 1px 3px rgba(0,0,0,0.25)' },
 
-  toggleRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '11px 16px' },
-  toggleLabel: { fontSize: 13, fontWeight: 600 },
-  toggleDesc:  { fontSize: 11, marginTop: 1 },
-  toggle: {
-    width: 38, height: 21, borderRadius: 11,
-    border: 'none', cursor: 'pointer',
-    position: 'relative', flexShrink: 0,
-    transition: 'background 0.2s',
-  },
-  toggleThumb: {
-    position: 'absolute', top: 3,
-    width: 15, height: 15, borderRadius: '50%',
-    background: 'white', transition: 'left 0.18s',
-    boxShadow: '0 1px 3px rgba(0,0,0,0.25)',
-  },
+  input: { padding: '6px 10px', borderRadius: 6, fontSize: 13, outline: 'none', boxSizing: 'border-box' },
+  primaryBtn: { padding: '6px 14px', background: '#4f9cf9', color: 'white', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer' },
 
-  previewLabel:   { fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 },
-  previewShell:   { width: 110, borderRadius: 5, overflow: 'hidden', boxShadow: '0 2px 10px rgba(0,0,0,0.2)', marginBottom: 6 },
-  previewCaption: { fontSize: 11 },
+  aboutHero: { display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px 16px 18px', gap: 2 },
+  aboutLogo: { width: 48, height: 48, borderRadius: 12, background: 'linear-gradient(135deg,#1d4ed8,#4f9cf9)', color: 'white', fontWeight: 900, fontSize: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
 
-  aboutHero:    { display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '18px 0 10px', gap: 4 },
-  aboutLogo: {
-    width: 48, height: 48, borderRadius: 12,
-    background: 'linear-gradient(135deg,#1d4ed8,#4f9cf9)',
-    color: 'white', fontWeight: 900, fontSize: 20,
-    display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 2,
-  },
-  aboutName:    { fontSize: 15, fontWeight: 700 },
-  aboutVersion: { fontSize: 11 },
-  infoBox: { margin: '10px 16px 14px', padding: '9px 12px', borderRadius: 8, fontSize: 12, lineHeight: 1.6 },
+  logoutBtn: { width: '100%', padding: '10px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: 'center' },
 }

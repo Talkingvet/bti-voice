@@ -58,22 +58,34 @@ async function zohoAPI(method, path, data = null) {
 }
 
 // ── Contact lookup by phone ────────────────────────────────────────────────────
-// Zoho strips formatting during search, so "3038790040" matches "+13038790040".
+// Tries the full digit string first, then strips a leading country code (e.g.
+// Twilio sends "+12395959310" → 11 digits, but Zoho stores "(239) 595-9310"
+// → 10 digits).  We try both so US numbers always resolve.
 async function findContactByPhone(phone) {
   const digits = phone.replace(/\D/g, '');
   if (!digits) return null;
 
-  try {
-    const result = await zohoAPI('GET',
-      `/Contacts/search?phone=${encodeURIComponent(digits)}&fields=id,Full_Name,Phone,Mobile`
-    );
-    if (result && result.data && result.data.length > 0) {
-      return result.data[0];
+  // Build candidate list: full digits, then 10-digit version (drop leading 1)
+  const candidates = [digits];
+  if (digits.length === 11 && digits.startsWith('1')) {
+    candidates.push(digits.slice(1)); // e.g. "12395959310" → "2395959310"
+  } else if (digits.length === 10) {
+    candidates.push('1' + digits);   // e.g. "2395959310" → "12395959310"
+  }
+
+  for (const candidate of candidates) {
+    try {
+      const result = await zohoAPI('GET',
+        `/Contacts/search?phone=${encodeURIComponent(candidate)}&fields=id,Full_Name,Phone,Mobile`
+      );
+      if (result && result.data && result.data.length > 0) {
+        return result.data[0];
+      }
+    } catch (e) {
+      // 204 / no-results → try next candidate; other errors propagate
+      if (e.status === 204 || (e.message && e.message.includes('204'))) continue;
+      throw e;
     }
-  } catch (e) {
-    // 204 returns null from zohoAPI, other errors propagate
-    if (e.message && e.message.includes('204')) return null;
-    throw e;
   }
   return null;
 }

@@ -42,6 +42,9 @@ router.get('/', requireAuth, async (req, res) => {
       FROM conversations c
       JOIN contacts co ON co.id = c.contact_id
       LEFT JOIN agents a ON a.id = c.last_agent_id
+      WHERE EXISTS (
+        SELECT 1 FROM messages m WHERE m.conversation_id = c.id
+      )
       ORDER BY c.last_message_at DESC
     `);
     res.json(rows);
