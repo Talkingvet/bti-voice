@@ -107,6 +107,23 @@ router.post('/outbound', async (req, res) => {
 // ── Inbound: checks IVR, falls through to default agent or all agents ─────────
 router.post('/inbound', async (req, res) => {
   const twiml = new twilio.twiml.VoiceResponse();
+  const { CallSid } = req.body;
+
+  // Register statusCallback on this call via REST API so we log it regardless
+  // of what happens next (answered, missed, hung up during IVR, voicemail, etc.)
+  if (CallSid && process.env.SERVER_URL && process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) {
+    try {
+      const twilioClient = require('twilio')(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+      await twilioClient.calls(CallSid).update({
+        statusCallback:       `${process.env.SERVER_URL}/webhooks/voice/status`,
+        statusCallbackMethod: 'POST',
+        statusCallbackEvent:  ['completed'],
+      });
+      console.log(`[inbound] ✓ Registered statusCallback for ${CallSid}`);
+    } catch (e) {
+      console.error('[inbound] statusCallback registration failed:', e.message);
+    }
+  }
 
   try {
     const { rows: settingsRows } = await pool.query(
