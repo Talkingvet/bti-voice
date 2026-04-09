@@ -83,9 +83,10 @@ router.post('/log-call', async (req, res) => {
       data: [{
         Subject:         `${callType} call – ${call.contact_name || call.phone_number}`,
         Call_Type:       callType,
-        Call_Start_Time: call.started_at
-          ? new Date(call.started_at).toISOString()
-          : new Date().toISOString(),
+        Call_Start_Time: (call.started_at
+          ? new Date(call.started_at)
+          : new Date()
+        ).toISOString().replace(/\.\d{3}Z$/, '+00:00'),
         Call_Duration:   `${mm}:${ss}`,
         Call_Result:     call.status === 'missed' ? 'No answer' : 'Completed',
         Description:     `Logged by BTI Voice. Agent: ${call.agent_name || 'Unknown'}. Status: ${call.status || 'completed'}.`,
