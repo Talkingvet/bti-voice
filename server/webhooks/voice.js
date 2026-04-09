@@ -582,11 +582,11 @@ router.post('/recording-complete', async (req, res) => {
             content: `You are analyzing a business call for Talkingvet — an AI scribing and dictation solution for veterinary practices.
 The team (Raven, Shawn, Danny) handles sales, technical support, and billing for vet clinics and practices.
 Produce a concise call summary with these sections:
-• Summary (2-3 sentences)
-• Key Points (bullet list)
-• Action Items (bullet list, or "None" if none)
+• Reason for Calling (1-2 sentences — why did the caller reach out?)
+• Key Topics Discussed (bullet list of main subjects covered)
+• Outcome (1 sentence — what was resolved, decided, or left open?)
 • Sentiment (Positive / Neutral / Negative)
-Keep it tight — this is for a CRM note.`,
+Keep it tight — this is for a CRM note, not a report.`,
           },
           {
             role: 'user',
