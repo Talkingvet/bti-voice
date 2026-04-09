@@ -65,12 +65,17 @@ async function findContactByPhone(phone) {
   const digits = phone.replace(/\D/g, '');
   if (!digits) return null;
 
-  // Build candidate list: full digits, then 10-digit version (drop leading 1)
-  const candidates = [digits];
+  // Build candidate list: try 10-digit first (most US contacts stored without
+  // country code), then 11-digit with leading 1, then original digits.
+  const candidates = [];
   if (digits.length === 11 && digits.startsWith('1')) {
-    candidates.push(digits.slice(1)); // e.g. "12395959310" → "2395959310"
+    candidates.push(digits.slice(1)); // "12395959310" → "2395959310" (try first)
+    candidates.push(digits);          // "12395959310" (try second)
   } else if (digits.length === 10) {
-    candidates.push('1' + digits);   // e.g. "2395959310" → "12395959310"
+    candidates.push(digits);          // "2395959310" (try first)
+    candidates.push('1' + digits);    // "12395959310" (try second)
+  } else {
+    candidates.push(digits);
   }
 
   for (const candidate of candidates) {

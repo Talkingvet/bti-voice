@@ -62,7 +62,7 @@ function autoLogCall({ callSid, from, to, duration, direction, status }) {
       const { rows: [call] } = await pool.query(`
         INSERT INTO calls
           (conversation_id, direction, duration, status, twilio_call_sid, started_at, ended_at)
-        VALUES ($1, $2, $3, $4, $5, NOW() - ($3 || ' seconds')::interval, NOW())
+        VALUES ($1, $2, $3, $4, $5, NOW() - ($3::text || ' seconds')::interval, NOW())
         RETURNING *
       `, [conv.id, direction, duration, status, callSid]);
 
@@ -447,7 +447,7 @@ router.post('/status', async (req, res) => {
       const { rows: [call] } = await pool.query(`
         INSERT INTO calls
           (conversation_id, direction, duration, status, twilio_call_sid, started_at, ended_at)
-        VALUES ($1, $2, $3, $4, $5, NOW() - ($3 || ' seconds')::interval, NOW())
+        VALUES ($1, $2, $3, $4, $5, NOW() - ($3::text || ' seconds')::interval, NOW())
         RETURNING *
       `, [conv.id, callDir, duration, status, CallSid]);
 

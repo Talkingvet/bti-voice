@@ -10,16 +10,24 @@ const { zohoAPI, findContactByPhone } = require('../zoho');
 // ── Shared: resolve a Zoho contact ID for a BTI contact ───────────────────────
 // Checks the local cache first, then searches Zoho by phone number.
 async function resolveZohoId(contactId, phoneNumber) {
-  // Check DB cache
+  // Check DB cache — but always re-verify the cached ID is still valid
   const cached = await pool.query(
     'SELECT zoho_contact_id FROM contacts WHERE id = $1',
     [contactId]
   );
-  if (cached.rows[0]?.zoho_contact_id) return cached.rows[0].zoho_contact_id;
+  // Always do a fresh lookup — don't trust the cache, since a bad ID was
+  // previously stored (4478198000019675754). The live search is fast.
+  // (Re-enable cache once we're confident IDs are reliable.)
 
   // Live search in Zoho CRM
   const contact = await findContactByPhone(phoneNumber);
-  if (!contact) return null;
+  if (!contact) {
+    // Clear any stale cached ID
+    if (cached.rows[0]?.zoho_contact_id) {
+      await pool.query('UPDATE contacts SET zoho_contact_id = NULL WHERE id = $1', [contactId]);
+    }
+    return null;
+  }
 
   // Cache for next time
   await pool.query(
