@@ -69,28 +69,41 @@ router.post('/log-call', async (req, res) => {
       return res.json({ skipped: true, reason: 'Phone number not found in Zoho CRM' });
     }
 
-    const callType = call.direction === 'inbound' ? 'Inbound' : 'Outbound';
+    // Zoho Call_Type must be 'Inbound', 'Outbound', or 'Missed'
+    const callType = call.status === 'missed' ? 'Missed'
+                   : call.direction === 'inbound' ? 'Inbound'
+                   : 'Outbound';
+
+    // Zoho Call_Duration format is mm:ss (NOT hh:mm:ss)
     const durationSec = call.duration || 0;
-    const hh = String(Math.floor(durationSec / 3600)).padStart(2, '0');
-    const mm = String(Math.floor((durationSec % 3600) / 60)).padStart(2, '0');
+    const mm = String(Math.floor(durationSec / 60)).padStart(2, '0');
     const ss = String(durationSec % 60).padStart(2, '0');
 
-    await zohoAPI('POST', '/Calls', {
+    const payload = {
       data: [{
         Subject:         `${callType} call – ${call.contact_name || call.phone_number}`,
         Call_Type:       callType,
         Call_Start_Time: call.started_at
           ? new Date(call.started_at).toISOString()
           : new Date().toISOString(),
-        Call_Duration:   `${hh}:${mm}:${ss}`,
+        Call_Duration:   `${mm}:${ss}`,
         Call_Result:     call.status === 'missed' ? 'No answer' : 'Completed',
         Description:     `Logged by BTI Voice. Agent: ${call.agent_name || 'Unknown'}. Status: ${call.status || 'completed'}.`,
         Who_Id:          { id: zohoId },
         $se_module:      'Contacts',
       }]
-    });
+    };
 
-    console.log(`[Zoho] ✓ Call ${call_id} logged on contact ${zohoId}`);
+    const zohoRes = await zohoAPI('POST', '/Calls', payload);
+
+    // Zoho returns 200 even on validation errors — check the body
+    const record = zohoRes?.data?.[0];
+    if (record?.status === 'error') {
+      console.error(`[Zoho] Call create failed:`, JSON.stringify(record));
+      return res.status(500).json({ error: 'Zoho rejected the call record', details: record });
+    }
+
+    console.log(`[Zoho] ✓ Call ${call_id} logged on contact ${zohoId} (Zoho record: ${record?.details?.id})`);
     res.json({ success: true, zoho_contact_id: zohoId });
 
   } catch (e) {

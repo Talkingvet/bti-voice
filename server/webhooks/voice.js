@@ -59,12 +59,13 @@ function autoLogCall({ callSid, from, to, duration, direction, status }) {
         conv = rows[0];
       }
 
+      const startedAt = new Date(Date.now() - duration * 1000).toISOString();
       const { rows: [call] } = await pool.query(`
         INSERT INTO calls
           (conversation_id, direction, duration, status, twilio_call_sid, started_at, ended_at)
-        VALUES ($1, $2, $3, $4, $5, NOW() - ($3::text || ' seconds')::interval, NOW())
+        VALUES ($1, $2, $3, $4, $5, $6, NOW())
         RETURNING *
-      `, [conv.id, direction, duration, status, callSid]);
+      `, [conv.id, direction, duration, status, callSid, startedAt]);
 
       console.log(`[autoLog] ✓ Logged call ${callSid} (${status}) for ${phone}`);
 
@@ -444,12 +445,13 @@ router.post('/status', async (req, res) => {
       }
 
       // Log the call with the Twilio SID so we can deduplicate
+      const startedAt = new Date(Date.now() - duration * 1000).toISOString();
       const { rows: [call] } = await pool.query(`
         INSERT INTO calls
           (conversation_id, direction, duration, status, twilio_call_sid, started_at, ended_at)
-        VALUES ($1, $2, $3, $4, $5, NOW() - ($3::text || ' seconds')::interval, NOW())
+        VALUES ($1, $2, $3, $4, $5, $6, NOW())
         RETURNING *
-      `, [conv.id, callDir, duration, status, CallSid]);
+      `, [conv.id, callDir, duration, status, CallSid, startedAt]);
 
       console.log(`[status] ✓ Auto-logged call ${CallSid} for ${phone} (${status})`);
 
