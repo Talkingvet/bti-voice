@@ -197,6 +197,41 @@ router.get('/voicemails', requireAuth, async (req, res) => {
   }
 });
 
+// Proxy a Twilio recording so the browser can play it without needing Basic auth.
+// Twilio recording URLs require Account SID + Auth Token credentials; a browser
+// <audio> tag can't supply those, so we fetch server-side and stream to the client.
+router.get('/:id/recording', requireAuth, async (req, res) => {
+  try {
+    const { rows: [call] } = await pool.query(
+      'SELECT recording_url FROM calls WHERE id = $1', [req.params.id]
+    );
+    if (!call?.recording_url) return res.status(404).json({ error: 'No recording for this call' });
+
+    const sid   = process.env.TWILIO_ACCOUNT_SID;
+    const token = process.env.TWILIO_AUTH_TOKEN;
+    if (!sid || !token) return res.status(503).json({ error: 'Twilio credentials not configured' });
+
+    const twilioAuth = Buffer.from(`${sid}:${token}`).toString('base64');
+    const audioRes   = await fetch(call.recording_url, {
+      headers: { Authorization: `Basic ${twilioAuth}` },
+    });
+
+    if (!audioRes.ok) {
+      return res.status(audioRes.status).json({ error: `Twilio returned ${audioRes.status}` });
+    }
+
+    // Forward content-type and stream the body straight to the client
+    res.set('Content-Type', audioRes.headers.get('content-type') || 'audio/mpeg');
+    res.set('Cache-Control', 'private, max-age=3600');
+
+    const { Readable } = require('stream');
+    Readable.fromWeb(audioRes.body).pipe(res);
+  } catch (e) {
+    console.error('[recording proxy]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Mark voicemail as played
 router.patch('/voicemails/:id/played', requireAuth, async (req, res) => {
   try {

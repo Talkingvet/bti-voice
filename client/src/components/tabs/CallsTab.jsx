@@ -247,7 +247,7 @@ function CallRow({ call, expanded, onToggle, C }) {
           {call.recording_url && (
             <div>
               <div style={{ ...S.rowTime, color: C.textMuted, marginBottom: 4 }}>RECORDING</div>
-              <audio controls style={{ width: '100%', height: 36 }} src={call.recording_url} />
+              <audio controls style={{ width: '100%', height: 36 }} src={`/api/calls/${call.id}/recording`} />
             </div>
           )}
           {call.ai_summary && (
@@ -318,7 +318,7 @@ function VmRow({ vm, isPlaying, onToggle, C }) {
               controls
               autoPlay
               style={{ width: '100%', height: 36, outline: 'none' }}
-              src={vm.recording_url}
+              src={`/api/calls/${vm.id}/recording`}
             />
           ) : (
             <div style={{ ...S.playerNote, color: C.textMuted }}>No recording available.</div>
