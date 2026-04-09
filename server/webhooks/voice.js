@@ -341,26 +341,34 @@ router.post('/no-answer', async (req, res) => {
 
   console.log(`[no-answer] DialCallStatus=${DialCallStatus} CallSid=${CallSid} From=${From}`);
 
-  // Log the call to BTI Voice DB + Zoho regardless of outcome
-  autoLogCall({
-    callSid:   CallSid,
-    from:      From,
-    to:        To,
-    duration:  parseInt(DialCallDuration) || 0,
-    direction: 'inbound',
-    status:    (DialCallStatus === 'completed' || DialCallStatus === 'answered') ? 'completed' : 'missed',
-  });
-
-  // If the call was actually connected, return empty TwiML (call is done)
+  // If the call was actually connected and completed, log it and return
   if (DialCallStatus === 'completed' || DialCallStatus === 'answered') {
+    autoLogCall({
+      callSid:   CallSid,
+      from:      From,
+      to:        To,
+      duration:  parseInt(DialCallDuration) || 0,
+      direction: 'inbound',
+      status:    'completed',
+    });
     res.set('Content-Type', 'text/xml');
     return res.send(twiml.toString());
   }
 
-  // Try ringing all other available agents as a final fallback
+  // Agent didn't answer — try ringing all agents as final fallback
+  // (don't log yet — wait for the ringAllAgents <Dial> action to fire)
   try {
     await ringAllAgents(twiml);
   } catch (e) {
+    // ringAllAgents failed entirely — log as missed now
+    autoLogCall({
+      callSid:   CallSid,
+      from:      From,
+      to:        To,
+      duration:  0,
+      direction: 'inbound',
+      status:    'missed',
+    });
     twiml.say({ voice: 'Polly.Joanna-Neural' }, 'Sorry, no one is available right now. Please leave a voicemail or try again later.');
   }
 
@@ -546,11 +554,11 @@ router.post('/recording-complete', async (req, res) => {
 
       console.log(`[recording] Transcribing call ${callRecord.id} (${duration}s)…`);
 
-      const OpenAI = require('openai');
-      const fetch  = require('node-fetch');
-      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      const OpenAI  = require('openai');
+      const { toFile } = require('openai');
+      const openai  = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-      // Download audio from Twilio (requires auth)
+      // Download audio from Twilio (requires Basic auth)
       const twilioAuth = Buffer.from(
         `${process.env.TWILIO_ACCOUNT_SID}:${process.env.TWILIO_AUTH_TOKEN}`
       ).toString('base64');
@@ -560,13 +568,12 @@ router.post('/recording-complete', async (req, res) => {
       });
       if (!audioRes.ok) throw new Error(`Failed to fetch recording: ${audioRes.status}`);
 
-      const audioBuffer = await audioRes.buffer();
-      const { Readable } = require('stream');
-      const audioStream  = Readable.from(audioBuffer);
-      audioStream.path   = 'call.mp3'; // Whisper needs a filename hint
+      // Use arrayBuffer + toFile so OpenAI SDK receives a proper File object
+      const rawBuffer  = await audioRes.arrayBuffer();
+      const audioFile  = await toFile(Buffer.from(rawBuffer), 'call.mp3', { type: 'audio/mpeg' });
 
       const transcription = await openai.audio.transcriptions.create({
-        file:  audioStream,
+        file:  audioFile,
         model: 'whisper-1',
       });
 
