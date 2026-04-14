@@ -7,6 +7,7 @@
   "scripts": {
     "start":        "electron .",
     "build:win":    "electron-builder --win --x64",
+    "build:mac":    "electron-builder --mac --x64 --arm64",
     "create-icons": "node create-icons.js"
   },
   "devDependencies": {
@@ -31,6 +32,23 @@
       "createDesktopShortcut":              true,
       "createStartMenuShortcut":            true,
       "shortcutName":                       "BTI Voice"
+    },
+    "mac": {
+      "target": [
+        { "target": "dmg",  "arch": ["x64", "arm64"] },
+        { "target": "zip",  "arch": ["x64", "arm64"] }
+      ],
+      "icon":     "assets/icon.png",
+      "category": "public.app-category.business",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false
+    },
+    "dmg": {
+      "title": "BTI Voice ${version}",
+      "contents": [
+        { "x": 130, "y": 220 },
+        { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+      ]
     },
     "files": [
       "main.js",
