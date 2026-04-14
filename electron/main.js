@@ -177,6 +177,18 @@ ipcMain.on('call-widget-action', (_, data) => {
 
 // ── App lifecycle ─────────────────────────────────────────────────
 app.whenReady().then(() => {
+  // Grant microphone + camera permissions automatically so Twilio Voice
+  // (WebRTC) can register and receive/make calls without a browser prompt.
+  const { session } = require('electron')
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    const allowed = ['media', 'microphone', 'audioCapture', 'notifications']
+    callback(allowed.includes(permission))
+  })
+  session.defaultSession.setPermissionCheckHandler((webContents, permission) => {
+    const allowed = ['media', 'microphone', 'audioCapture', 'notifications']
+    return allowed.includes(permission)
+  })
+
   createWindow()
   createTray()
 })
