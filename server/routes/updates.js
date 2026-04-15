@@ -24,7 +24,9 @@ router.get('/latest', async (req, res) => {
     );
 
     if (!response.ok) {
-      return res.status(response.status).json({ error: 'Failed to fetch release info' });
+      const body = await response.text();
+      console.error('[updates] GitHub error:', response.status, body);
+      return res.status(response.status).json({ error: `GitHub ${response.status}: ${body}` });
     }
 
     const release = await response.json();
