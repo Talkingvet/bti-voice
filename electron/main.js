@@ -230,6 +230,11 @@ app.whenReady().then(() => {
 
   createWindow()
   createTray()
+
+  // Auto-check for updates 10 seconds after launch (gives the app time to load)
+  setTimeout(() => {
+    autoUpdater.checkForUpdates().catch(() => {}) // silent — errors shown only if user clicks Check
+  }, 10000)
 })
 
 app.on('window-all-closed', () => { /* stay in tray */ })
