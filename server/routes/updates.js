@@ -1,52 +1,23 @@
 // ── Auto-update endpoint ──────────────────────────────────────────────────────
-// Proxies GitHub release info so the Electron app can check for updates
-// without needing a GitHub token embedded in the installer.
+// Returns the latest version info from environment variables.
+// Set LATEST_VERSION and LATEST_DOWNLOAD_URL in Railway whenever you publish
+// a new release. No GitHub token required.
 const express = require('express');
 const router  = express.Router();
 
-const OWNER = 'Talkingvet';
-const REPO  = 'bti-voice';
+// GET /api/updates/latest — simple version check used by the Electron app
+router.get('/latest', (req, res) => {
+  const version     = process.env.LATEST_VERSION;
+  const downloadUrl = process.env.LATEST_DOWNLOAD_URL;
 
-// GET /api/updates/win32/x64/latest.yml  — electron-updater compatible
-// GET /api/updates/latest                — simple version check
-router.get('/latest', async (req, res) => {
-  try {
-    const token = process.env.GH_TOKEN;
-    const headers = {
-      Accept: 'application/vnd.github+json',
-      'User-Agent': 'bti-voice-updater',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    };
-
-    const response = await fetch(
-      `https://api.github.com/repos/${OWNER}/${REPO}/releases/latest`,
-      { headers }
-    );
-
-    if (!response.ok) {
-      const body = await response.text();
-      console.error('[updates] GitHub error:', response.status, body);
-      return res.status(response.status).json({ error: `GitHub ${response.status}: ${body}` });
-    }
-
-    const release = await response.json();
-    const version = release.tag_name?.replace(/^v/, '') || release.name;
-
-    // Find the Windows installer asset
-    const asset = release.assets?.find(a => a.name.endsWith('.exe') && !a.name.includes('uninstall'));
-
-    res.json({
-      version,
-      releaseDate: release.published_at,
-      releaseName: release.name,
-      releaseNotes: release.body || '',
-      // Proxy the download through this server so auth is handled server-side
-      downloadUrl: asset ? `${process.env.SERVER_URL}/api/updates/download/${asset.id}` : null,
-    });
-  } catch (e) {
-    console.error('[updates]', e.message);
-    res.status(500).json({ error: e.message });
+  if (!version) {
+    return res.status(500).json({ error: 'LATEST_VERSION not configured on server' });
   }
+
+  res.json({
+    version,
+    downloadUrl: downloadUrl || null,
+  });
 });
 
 // GET /api/updates/download/:assetId — proxies the actual file download
