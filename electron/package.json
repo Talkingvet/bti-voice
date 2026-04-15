@@ -1,90 +1,62 @@
 {
   "name": "bti-voice-desktop",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "BTI Voice – Shared SMS & VOIP Desktop App",
   "author": "Business Technology Insight",
   "main": "main.js",
   "scripts": {
-    "start": "electron .",
-    "build:win": "electron-builder --win --x64",
-    "build:mac": "electron-builder --mac --x64 --arm64",
-    "publish:win": "electron-builder --win --x64 --publish always",
-    "publish:mac": "electron-builder --mac --x64 --arm64 --publish always",
+    "start":        "electron .",
+    "build:win":    "electron-builder --win --x64",
+    "build:mac":    "electron-builder --mac --x64 --arm64",
+    "publish:win":  "electron-builder --win --x64 --publish always",
+    "publish:mac":  "electron-builder --mac --x64 --arm64 --publish always",
     "create-icons": "node create-icons.js"
   },
-  "dependencies": {
-    "electron-updater": "^6.1.8"
-  },
+  "dependencies": {},
   "devDependencies": {
-    "electron": "^41.2.0",
+    "electron":         "^41.2.0",
     "electron-builder": "^26.8.1",
-    "sharp": "^0.33.2"
+    "sharp":            "^0.33.2"
   },
   "build": {
-    "appId": "com.businesstechnologyinsight.bti-voice",
+    "appId":       "com.businesstechnologyinsight.bti-voice",
     "productName": "BTI Voice",
-    "copyright": "Business Technology Insight",
+    "copyright":   "Business Technology Insight",
     "publish": {
       "provider": "github",
-      "owner": "Talkingvet",
-      "repo": "bti-voice"
+      "owner":    "Talkingvet",
+      "repo":     "bti-voice",
+      "private":  true
     },
     "directories": {
       "output": "../../dist-electron"
     },
     "win": {
-      "target": [
-        {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        }
-      ],
-      "icon": "assets/icon.png"
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "icon":   "assets/icon.png"
     },
     "nsis": {
-      "oneClick": false,
+      "oneClick":                           false,
       "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "shortcutName": "BTI Voice"
+      "createDesktopShortcut":              true,
+      "createStartMenuShortcut":            true,
+      "shortcutName":                       "BTI Voice"
     },
     "mac": {
       "target": [
-        {
-          "target": "dmg",
-          "arch": [
-            "x64",
-            "arm64"
-          ]
-        },
-        {
-          "target": "zip",
-          "arch": [
-            "x64",
-            "arm64"
-          ]
-        }
+        { "target": "dmg", "arch": ["x64", "arm64"] },
+        { "target": "zip", "arch": ["x64", "arm64"] }
       ],
-      "icon": "assets/icon.png",
-      "category": "public.app-category.business",
-      "hardenedRuntime": true,
+      "icon":             "assets/icon.png",
+      "category":         "public.app-category.business",
+      "hardenedRuntime":  true,
       "gatekeeperAssess": false
     },
     "dmg": {
       "title": "BTI Voice ${version}",
       "contents": [
-        {
-          "x": 130,
-          "y": 220
-        },
-        {
-          "x": 410,
-          "y": 220,
-          "type": "link",
-          "path": "/Applications"
-        }
+        { "x": 130, "y": 220 },
+        { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
       ]
     },
     "files": [

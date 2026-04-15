@@ -1,14 +1,12 @@
 const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, Notification, screen } = require('electron')
 const path = require('path')
-const { autoUpdater } = require('electron-updater')
+const fs   = require('fs')
+const os   = require('os')
 
-// ── Auto-updater config ───────────────────────────────────────────
-autoUpdater.autoDownload    = false  // Ask before downloading
-autoUpdater.autoInstallOnAppQuit = true
-
-let mainWindow  = null
-let callWidget  = null
-let tray        = null
+let mainWindow      = null
+let callWidget      = null
+let tray            = null
+let pendingUpdateInfo = null   // Stores { version, downloadUrl } when an update is found
 
 // ── Single instance lock ──────────────────────────────────────────
 const gotLock = app.requestSingleInstanceLock()
@@ -136,39 +134,78 @@ ipcMain.handle('set-auto-launch', (_, enabled) => {
   return !!enabled
 })
 
-// ── IPC: updates ──────────────────────────────────────────────────
+// ── IPC: updates (Railway proxy — no GitHub token needed in installer) ────────
 ipcMain.handle('check-for-updates', async () => {
   try {
-    const result = await autoUpdater.checkForUpdates()
-    if (!result) return { status: 'up-to-date' }
-    return { status: 'available', version: result.updateInfo.version }
+    const res = await fetch(`${APP_URL}/api/updates/latest`)
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const data = await res.json()
+    if (data.error) throw new Error(data.error)
+
+    const current = app.getVersion()
+    const latest  = data.version
+    if (!latest) throw new Error('No version in response')
+
+    // Simple semver compare (major.minor.patch)
+    const toNum = v => v.split('.').map(Number)
+    const [ma, mi, pa] = toNum(latest)
+    const [ca, ci, cp] = toNum(current)
+    const isNewer = ma > ca || (ma === ca && mi > ci) || (ma === ca && mi === ci && pa > cp)
+    if (!isNewer) return { status: 'up-to-date' }
+
+    pendingUpdateInfo = data   // Save { version, downloadUrl }
+    return { status: 'available', version: latest }
   } catch (e) {
+    console.error('[updater] check error:', e.message)
     return { status: 'error', message: e.message }
   }
 })
 
-ipcMain.handle('download-update', () => {
-  autoUpdater.downloadUpdate()
-  return true
+ipcMain.handle('download-update', async () => {
+  if (!pendingUpdateInfo?.downloadUrl) return false
+  const tempPath = path.join(os.tmpdir(), 'BTI-Voice-Setup.exe')
+
+  try {
+    const res = await fetch(pendingUpdateInfo.downloadUrl)
+    if (!res.ok) throw new Error(`Download failed: ${res.status}`)
+
+    const total      = parseInt(res.headers.get('content-length') || '0', 10)
+    let   downloaded = 0
+    const chunks     = []
+    const reader     = res.body.getReader()
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      chunks.push(value)
+      downloaded += value.length
+      if (total > 0) {
+        mainWindow?.webContents.send('update-progress', {
+          percent: Math.round((downloaded / total) * 100),
+        })
+      }
+    }
+
+    fs.writeFileSync(tempPath, Buffer.concat(chunks.map(c => Buffer.from(c))))
+    mainWindow?.webContents.send('update-downloaded')
+    return true
+  } catch (e) {
+    console.error('[updater] download error:', e.message)
+    return false
+  }
 })
 
 ipcMain.handle('install-update', () => {
-  autoUpdater.quitAndInstall()
+  const tempPath = path.join(os.tmpdir(), 'BTI-Voice-Setup.exe')
+  if (!fs.existsSync(tempPath)) return false
+  const { exec } = require('child_process')
+  app.isQuitting = true
+  exec(`"${tempPath}"`)   // Launch installer, let it handle the upgrade
+  setTimeout(() => app.quit(), 1500)
+  return true
 })
 
 ipcMain.handle('get-app-version', () => app.getVersion())
-
-autoUpdater.on('update-available', (info) => {
-  mainWindow?.webContents.send('update-available', { version: info.version })
-})
-
-autoUpdater.on('download-progress', (progress) => {
-  mainWindow?.webContents.send('update-progress', { percent: Math.round(progress.percent) })
-})
-
-autoUpdater.on('update-downloaded', () => {
-  mainWindow?.webContents.send('update-downloaded')
-})
 
 // ── IPC: call widget control ──────────────────────────────────────
 
@@ -232,8 +269,21 @@ app.whenReady().then(() => {
   createTray()
 
   // Auto-check for updates 10 seconds after launch (gives the app time to load)
-  setTimeout(() => {
-    autoUpdater.checkForUpdates().catch(() => {}) // silent — errors shown only if user clicks Check
+  setTimeout(async () => {
+    try {
+      const res  = await fetch(`${APP_URL}/api/updates/latest`)
+      if (!res.ok) return
+      const data = await res.json()
+      if (!data.version) return
+      const toNum  = v => v.split('.').map(Number)
+      const [ma, mi, pa] = toNum(data.version)
+      const [ca, ci, cp] = toNum(app.getVersion())
+      const isNewer = ma > ca || (ma === ca && mi > ci) || (ma === ca && mi === ci && pa > cp)
+      if (isNewer) {
+        pendingUpdateInfo = data
+        mainWindow?.webContents.send('update-available', { version: data.version })
+      }
+    } catch (_) { /* silent on startup */ }
   }, 10000)
 })
 

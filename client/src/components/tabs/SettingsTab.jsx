@@ -813,7 +813,7 @@ function AboutSection({ C }) {
     setUpdateStatus('checking')
     const result = await window.electronAPI.checkForUpdates()
     if (result.status === 'up-to-date') setUpdateStatus('up-to-date')
-    else if (result.status === 'error')  setUpdateStatus('error')
+    else if (result.status === 'error')  { setUpdateStatus('error'); console.error('[update]', result.message) }
     // 'available' is handled by the onUpdateAvailable listener
   }
 
@@ -828,7 +828,7 @@ function AboutSection({ C }) {
 
   const updateLabel = {
     checking:    'Checking…',
-    'up-to-date':'Up to date ✓',
+    'up-to-date':'You\'re on the latest version ✓',
     available:   `Update to v${updateVersion}`,
     downloading: `Downloading… ${progress}%`,
     ready:       'Restart & Install',
