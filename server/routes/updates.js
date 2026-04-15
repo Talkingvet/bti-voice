@@ -20,26 +20,31 @@ router.get('/latest', (req, res) => {
   });
 });
 
-// GET /api/updates/download/:assetId — proxies the actual file download
-router.get('/download/:assetId', async (req, res) => {
+// GET /api/updates/download — proxies the installer download
+// Streams directly from LATEST_DOWNLOAD_URL (set this in Railway env vars).
+// If LATEST_DOWNLOAD_URL points to a private GitHub release asset,
+// also set GH_TOKEN so the Authorization header is forwarded.
+router.get('/download', async (req, res) => {
   try {
+    const downloadUrl = process.env.LATEST_DOWNLOAD_URL;
+    if (!downloadUrl) {
+      return res.status(500).send('LATEST_DOWNLOAD_URL not configured on server');
+    }
+
     const token = process.env.GH_TOKEN;
-    const response = await fetch(
-      `https://api.github.com/repos/${OWNER}/${REPO}/releases/assets/${req.params.assetId}`,
-      {
-        headers: {
-          Accept: 'application/octet-stream',
-          'User-Agent': 'bti-voice-updater',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        redirect: 'follow',
-      }
-    );
+    const response = await fetch(downloadUrl, {
+      headers: {
+        Accept: 'application/octet-stream',
+        'User-Agent': 'bti-voice-updater',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      redirect: 'follow',
+    });
 
     if (!response.ok) return res.status(response.status).send('Download failed');
 
     res.set('Content-Type', 'application/octet-stream');
-    res.set('Content-Disposition', `attachment; filename="BTI-Voice-Setup.exe"`);
+    res.set('Content-Disposition', 'attachment; filename="BTI-Voice-Setup.exe"');
 
     const { Readable } = require('stream');
     Readable.fromWeb(response.body).pipe(res);

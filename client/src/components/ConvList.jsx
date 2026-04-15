@@ -174,34 +174,50 @@ const DD = {
 }
 
 function ConvItem({ conv, active, onClick, currentAgent, C }) {
-  const name    = conv.contact_name || conv.contact_number || 'Unknown'
-  const preview = conv.last_message ? truncate(conv.last_message, 42) : '—'
-  const agents  = conv.agents_involved || []
+  const name       = conv.contact_name || conv.contact_number || 'Unknown'
+  const preview    = conv.last_message ? truncate(conv.last_message, 42) : '—'
+  const agents     = conv.agents_involved || []
   const hasDoubleText = parseInt(conv.recent_outbound_count) >= 2
+  const isUnread   = conv.unread === true
+  const isAssigned = !!conv.assigned_agent_id
 
   return (
     <div
       onClick={onClick}
       style={{
         ...S.item,
-        background: active ? C.active : 'transparent',
+        background: active
+          ? C.active
+          : isUnread
+            ? 'rgba(79,156,249,0.07)'
+            : 'transparent',
         borderBottom: `1px solid ${C.borderItem}`,
+        borderLeft: active
+          ? '3px solid #4f9cf9'
+          : isUnread
+            ? '3px solid rgba(79,156,249,0.5)'
+            : '3px solid transparent',
       }}
     >
-      {active && <div style={S.activePip} />}
+      {/* activePip hidden — we use border-left inline now */}
 
-      {/* Avatar */}
-      <div style={{ ...S.avatar, background: avatarColor(name) }}>
-        {initials(name)}
+      {/* Avatar with unread indicator */}
+      <div style={{ position: 'relative', flexShrink: 0 }}>
+        <div style={{ ...S.avatar, background: avatarColor(name) }}>
+          {initials(name)}
+        </div>
+        {isUnread && !active && (
+          <div style={S.unreadDot} title="Unread message" />
+        )}
       </div>
 
       {/* Text */}
       <div style={S.itemBody}>
         <div style={S.nameRow}>
-          <span style={{ ...S.name, color: C.text }}>{name}</span>
-          <span style={{ ...S.time, color: C.textMuted }}>{fmtDate(conv.last_message_at)}</span>
+          <span style={{ ...S.name, color: C.text, fontWeight: isUnread ? 700 : 600 }}>{name}</span>
+          <span style={{ ...S.time, color: isUnread ? '#4f9cf9' : C.textMuted }}>{fmtDate(conv.last_message_at)}</span>
         </div>
-        <div style={{ ...S.preview, color: C.textSec }}>
+        <div style={{ ...S.preview, color: isUnread ? C.text : C.textSec, fontWeight: isUnread ? 600 : 400 }}>
           {conv.last_agent_name && (
             <span style={{ color: conv.last_agent_color || C.textSec, fontWeight: 600, marginRight: 3 }}>
               {conv.last_agent_name.split(' ')[0]}:
@@ -209,8 +225,8 @@ function ConvItem({ conv, active, onClick, currentAgent, C }) {
           )}
           <span>{preview}</span>
         </div>
-        {/* Agent dots */}
-        {agents.length > 0 && (
+        {/* Agent dots + assigned badge */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={S.agentDots}>
             {agents.slice(0, 5).map(a => (
               <span
@@ -223,7 +239,15 @@ function ConvItem({ conv, active, onClick, currentAgent, C }) {
               <span style={S.warnDot} title="Multiple outbound messages recently">!</span>
             )}
           </div>
-        )}
+          {isAssigned && (
+            <span style={{ ...S.assignedBadge, borderColor: conv.assigned_agent_color || '#4f9cf9' }} title={`Assigned to ${conv.assigned_agent_name}`}>
+              <span style={{ ...S.assignedDot, background: conv.assigned_agent_color || '#4f9cf9' }} />
+              <span style={{ color: conv.assigned_agent_color || '#4f9cf9', fontSize: 9, fontWeight: 700 }}>
+                {conv.assigned_agent_name?.split(' ')[0]}
+              </span>
+            </span>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -269,10 +293,11 @@ const S = {
 
   item: {
     position: 'relative',
-    padding: '10px 12px 10px 15px',
+    padding: '10px 12px 10px 12px',
     cursor: 'pointer',
     display: 'flex', alignItems: 'flex-start', gap: 10,
-    transition: 'background 0.1s',
+    transition: 'background 0.1s, border-left 0.1s',
+    borderLeft: '3px solid transparent', // default — overridden inline for unread/active
   },
   activePip: {
     position: 'absolute', left: 0, top: 0, bottom: 0,
@@ -306,11 +331,25 @@ const S = {
   agentDot: {
     width: 8, height: 8, borderRadius: '50%',
   },
+  unreadDot: {
+    position: 'absolute', top: 0, right: 0,
+    width: 10, height: 10, borderRadius: '50%',
+    background: '#4f9cf9',
+    border: '2px solid #1d2330',
+  },
   warnDot: {
     width: 14, height: 14, borderRadius: '50%',
     background: '#fef3c7', color: '#92400e',
     fontSize: 9, fontWeight: 900,
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
     border: '1px solid #fde68a',
+  },
+  assignedBadge: {
+    display: 'inline-flex', alignItems: 'center', gap: 3,
+    border: '1px solid', borderRadius: 8,
+    padding: '1px 5px', opacity: 0.85,
+  },
+  assignedDot: {
+    width: 5, height: 5, borderRadius: '50%', flexShrink: 0,
   },
 }

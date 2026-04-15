@@ -17,7 +17,15 @@ import CallsTab                    from './components/tabs/CallsTab'
 import SettingsTab                 from './components/tabs/SettingsTab'
 import { api } from './api'
 
-const SEEN_KEY = 'bti_notif_seen_at'
+const BASE_AT_KEY   = 'bti_notif_base_at'
+const READ_KEYS_KEY = 'bti_notif_read_keys'
+
+function loadReadKeys() {
+  try { return new Set(JSON.parse(localStorage.getItem(READ_KEYS_KEY) || '[]')) } catch { return new Set() }
+}
+function saveReadKeys(set) {
+  localStorage.setItem(READ_KEYS_KEY, JSON.stringify([...set]))
+}
 
 function AppInner() {
   const { theme } = useTheme()
@@ -27,12 +35,18 @@ function AppInner() {
   const [agent,      setAgent]      = useState(null)
   const [loading,    setLoading]    = useState(true)
   const [activeTab,  setActiveTab]  = useState('dialpad')
+  const [navConvId,  setNavConvId]  = useState(null)   // deep-link into a specific SMS conversation
+  const [smsOpenChat, setSmsOpenChat] = useState(false) // true when a conversation thread is open
+  const [agentStatus, setAgentStatus] = useState('online')
   const [compose,    setCompose]    = useState(false)
   const [notifOpen,  setNotifOpen]  = useState(false)
   const [activity,   setActivity]   = useState([])
-  const [seenAt,     setSeenAt]     = useState(
-    () => localStorage.getItem(SEEN_KEY) ? new Date(localStorage.getItem(SEEN_KEY)) : null
+
+  // Per-item read tracking (individual) + base timestamp (everything before this is auto-old)
+  const [baseAt,    setBaseAt]    = useState(
+    () => localStorage.getItem(BASE_AT_KEY) ? new Date(localStorage.getItem(BASE_AT_KEY)) : new Date(0)
   )
+  const [readKeys,  setReadKeys]  = useState(() => loadReadKeys())
 
   // ── Twilio Device (app-level — stays registered on any tab) ──────────────────
   const [twilioDevice,  setTwilioDevice]  = useState(null)
@@ -119,7 +133,7 @@ function AppInner() {
     const token = localStorage.getItem('bti_token')
     if (token) {
       api.me()
-        .then(setAgent)
+        .then(data => { setAgent(data); setAgentStatus(data.status || 'online') })
         .catch(() => localStorage.removeItem('bti_token'))
         .finally(() => setLoading(false))
     } else {
@@ -145,22 +159,53 @@ function AppInner() {
   }, [agent, loadActivity])
 
   const unreadCount = activity.filter(a =>
-    seenAt ? new Date(a.occurred_at) > seenAt : true
+    new Date(a.occurred_at) > baseAt && !readKeys.has(`${a.type}-${a.id}`)
   ).length
 
   function handleBellClick() {
-    const isOpening = !notifOpen
-    setNotifOpen(isOpening)
-    if (isOpening) {
-      const now = new Date()
-      localStorage.setItem(SEEN_KEY, now.toISOString())
-      setSeenAt(now)
+    // Just toggle open — don't auto-mark anything as read
+    setNotifOpen(o => !o)
+  }
+
+  function handleMarkRead(key) {
+    setReadKeys(prev => {
+      const next = new Set(prev)
+      next.add(key)
+      saveReadKeys(next)
+      return next
+    })
+  }
+
+  function handleMarkAllRead() {
+    const now = new Date()
+    localStorage.setItem(BASE_AT_KEY, now.toISOString())
+    setBaseAt(now)
+    // Clear individual read keys (they're all now covered by baseAt)
+    saveReadKeys(new Set())
+    setReadKeys(new Set())
+  }
+
+  function handleNotifNavigate({ tab, convId }) {
+    setActiveTab(tab)
+    if (tab === 'sms' && convId) {
+      setNavConvId(convId)
+    }
+    setNotifOpen(false)
+  }
+
+  async function handleStatusChange(newStatus) {
+    setAgentStatus(newStatus) // optimistic
+    try {
+      await api.updateStatus(newStatus)
+    } catch (e) {
+      console.error('[status change]', e)
     }
   }
 
   function handleLogin(agentData, token) {
     localStorage.setItem('bti_token', token)
     setAgent(agentData)
+    setAgentStatus(agentData.status || 'online')
     setActiveTab('dialpad')
   }
 
@@ -269,10 +314,18 @@ function AppInner() {
       background: isDark ? '#161b24' : '#f4f6f9',
       border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.1)'}`,
     }}>
-      <TitleBar agent={agent} unreadCount={unreadCount} onBellClick={handleBellClick} />
+      <TitleBar agent={agent} unreadCount={unreadCount} onBellClick={handleBellClick} agentStatus={agentStatus} onStatusChange={handleStatusChange} />
 
       {notifOpen && (
-        <NotificationsPanel activity={activity} seenAt={seenAt} onClose={() => setNotifOpen(false)} />
+        <NotificationsPanel
+          activity={activity}
+          readKeys={readKeys}
+          baseAt={baseAt}
+          onMarkRead={handleMarkRead}
+          onMarkAllRead={handleMarkAllRead}
+          onNavigate={handleNotifNavigate}
+          onClose={() => setNotifOpen(false)}
+        />
       )}
 
       {/* ── Incoming call overlay ────────────────────────────────────── */}
@@ -290,7 +343,30 @@ function AppInner() {
 
       {/* Main content */}
       <div style={S.content}>
-        {activeTab === 'sms'      && <SMSTab      agent={agent} />}
+        {activeTab === 'sms'      && <SMSTab
+          agent={agent}
+          navConvId={navConvId}
+          onNavConvConsumed={() => setNavConvId(null)}
+          onChatOpenChange={setSmsOpenChat}
+          device={twilioDevice}
+          onCallStart={(call, phone) => {
+            const info = { phone, name: null }
+            setActiveCall(call)
+            activeCallRef.current = call
+            setCallerInfo(info)
+            callStartRef.current = Date.now()
+            playConnected()
+            window.electronAPI?.callStart?.(info)
+            call.on('disconnect', () => handleCallEnded(phone, 'outbound', 'completed'))
+            call.on('cancel',     () => handleCallEnded(phone, 'outbound', 'missed'))
+          }}
+          onCallEnd={() => {
+            setActiveCall(null)
+            activeCallRef.current = null
+            setCallerInfo(null)
+            callStartRef.current = null
+          }}
+        />}
         {activeTab === 'contacts' && <ContactsTab agent={agent} />}
         {activeTab === 'calls'    && <CallsTab    agent={agent} />}
         {activeTab === 'dialpad'  && (
@@ -334,9 +410,9 @@ function AppInner() {
         )}
       </div>
 
-      <button style={S.composeBtn} onClick={() => setCompose(true)} title="New message">
+      {!smsOpenChat && <button style={S.composeBtn} onClick={() => setCompose(true)} title="New message">
         <ComposePenIcon />
-      </button>
+      </button>}
 
       <BottomNav activeTab={activeTab} onChange={setActiveTab} />
 

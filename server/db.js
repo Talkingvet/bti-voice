@@ -111,6 +111,54 @@ async function migrate() {
     ALTER TABLE calls ADD COLUMN IF NOT EXISTS recording_sid   VARCHAR(50);
   `);
 
+  // Unread badge tracking
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS conversation_reads (
+      conversation_id INTEGER REFERENCES conversations(id) ON DELETE CASCADE,
+      agent_id        INTEGER REFERENCES agents(id) ON DELETE CASCADE,
+      read_at         TIMESTAMPTZ DEFAULT NOW(),
+      PRIMARY KEY (conversation_id, agent_id)
+    );
+  `);
+
+  // Missed call auto-text columns on ivr_settings
+  await pool.query(`
+    ALTER TABLE ivr_settings ADD COLUMN IF NOT EXISTS auto_text_enabled BOOLEAN DEFAULT false;
+    ALTER TABLE ivr_settings ADD COLUMN IF NOT EXISTS auto_text_message  TEXT    DEFAULT 'Hi! We missed your call. We''ll get back to you as soon as possible.';
+  `);
+
+  // Phase 2: Internal notes, canned responses, quick dial
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS conversation_notes (
+      id              SERIAL PRIMARY KEY,
+      conversation_id INTEGER REFERENCES conversations(id) ON DELETE CASCADE,
+      agent_id        INTEGER REFERENCES agents(id),
+      body            TEXT NOT NULL,
+      created_at      TIMESTAMPTZ DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS canned_responses (
+      id         SERIAL PRIMARY KEY,
+      name       VARCHAR(100) NOT NULL,
+      body       TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS quick_dial (
+      id           SERIAL PRIMARY KEY,
+      name         VARCHAR(100) NOT NULL,
+      phone_number VARCHAR(20)  NOT NULL,
+      created_at   TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
+
+  // Phase 3: Agent status + conversation assignment
+  await pool.query(`
+    ALTER TABLE agents ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'online';
+    ALTER TABLE conversations ADD COLUMN IF NOT EXISTS assigned_agent_id INTEGER REFERENCES agents(id);
+  `);
+
   console.log('[db] Migrations complete.');
 }
 

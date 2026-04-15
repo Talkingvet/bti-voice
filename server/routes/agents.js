@@ -8,7 +8,7 @@ const router = express.Router();
 // Get all active agents
 router.get('/', requireAuth, async (req, res) => {
   const { rows } = await pool.query(
-    'SELECT id, name, username, phone_number, color, initials FROM agents WHERE is_active = true ORDER BY id'
+    'SELECT id, name, username, phone_number, color, initials, status FROM agents WHERE is_active = true ORDER BY id'
   );
   res.json(rows);
 });
@@ -21,6 +21,26 @@ router.patch('/me/number', requireAuth, async (req, res) => {
     [phone_number, req.agent.id]
   );
   res.json(rows[0]);
+});
+
+// Update own status (online / away / offline)
+router.patch('/me/status', requireAuth, async (req, res) => {
+  const { status } = req.body;
+  const allowed = ['online', 'away', 'offline'];
+  if (!allowed.includes(status)) return res.status(400).json({ error: 'Invalid status' });
+  try {
+    const { rows } = await pool.query(
+      'UPDATE agents SET status = $1 WHERE id = $2 RETURNING id, name, color, status',
+      [status, req.agent.id]
+    );
+    const { getIO } = require('../socket');
+    const io = getIO();
+    if (io) io.emit('agent_status_changed', { agent_id: req.agent.id, status });
+    res.json(rows[0]);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // Change own password

@@ -3,7 +3,11 @@ import { useTheme } from '../ThemeContext'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 
-export default function TitleBar({ agent, unreadCount = 0, onBellClick }) {
+const STATUS_CYCLE = ['online', 'away', 'offline']
+const STATUS_COLOR = { online: '#22c55e', away: '#f59e0b', offline: '#6b7280' }
+const STATUS_LABEL = { online: 'Online', away: 'Away', offline: 'Offline' }
+
+export default function TitleBar({ agent, unreadCount = 0, onBellClick, agentStatus = 'online', onStatusChange }) {
   const { theme } = useTheme()
   const isDark = theme === 'dark'
   const [maximized, setMaximized] = useState(false)
@@ -33,7 +37,15 @@ export default function TitleBar({ agent, unreadCount = 0, onBellClick }) {
           {agent.phone_number && agent.phone_number !== 'TBD' && (
             <span style={S.agentNum}>{agent.phone_number}</span>
           )}
-          <div style={S.onlinePip} title="Online" />
+          <button
+            style={{ ...S.onlinePip, background: STATUS_COLOR[agentStatus] || '#22c55e' }}
+            title={`Status: ${STATUS_LABEL[agentStatus] || 'Online'} — click to change`}
+            onClick={() => {
+              const idx  = STATUS_CYCLE.indexOf(agentStatus)
+              const next = STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length]
+              onStatusChange?.(next)
+            }}
+          />
         </div>
       )}
 
@@ -124,7 +136,7 @@ const S = {
   dot:       { width: 7, height: 7, borderRadius: '50%', flexShrink: 0 },
   agentName: { fontSize: 11, color: 'rgba(255,255,255,0.85)', fontWeight: 600 },
   agentNum:  { fontSize: 10, color: 'rgba(255,255,255,0.40)', marginLeft: 2 },
-  onlinePip: { width: 6, height: 6, borderRadius: '50%', background: '#22c55e', flexShrink: 0 },
+  onlinePip: { width: 8, height: 8, borderRadius: '50%', flexShrink: 0, border: 'none', padding: 0, cursor: 'pointer', transition: 'background 0.2s, transform 0.1s' },
 
   right: { display: 'flex', alignItems: 'center', gap: 2, WebkitAppRegion: 'no-drag' },
 

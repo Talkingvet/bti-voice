@@ -19,6 +19,7 @@ app.use(express.urlencoded({ extended: false })); // needed for Twilio webhooks
 // ── API Routes ────────────────────────────────────────────────
 app.use('/api/auth',          require('./routes/auth'));
 app.use('/api/agents',        require('./routes/agents'));
+app.use('/api/contacts',      require('./routes/contacts'));
 app.use('/api/conversations', require('./routes/conversations'));
 app.use('/api/messages',      require('./routes/messages'));
 app.use('/api/calls',         require('./routes/calls'));
@@ -26,6 +27,9 @@ app.use('/api/activity',      require('./routes/activity'));
 app.use('/api/zoho',          require('./routes/zohoSync'));
 app.use('/api/ivr',           require('./routes/ivr'));
 app.use('/api/updates',       require('./routes/updates'));
+app.use('/api/conversations', require('./routes/notes'));
+app.use('/api/canned-responses', require('./routes/cannedResponses'));
+app.use('/api/quick-dial',    require('./routes/quickDial'));
 
 // ── Twilio Webhooks ───────────────────────────────────────────
 app.use('/webhooks/sms',       require('./webhooks/sms'));

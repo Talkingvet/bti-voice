@@ -16,6 +16,8 @@ export default function SettingsTab({ agent, onLogout }) {
         <AudioSection    C={C} />
         <AppearanceSection C={C} />
         <IVRSection      C={C} />
+        <MissedCallAutoTextSection C={C} />
+        <CannedResponsesSection C={C} />
         <ZohoCRMSection  C={C} />
         <AboutSection    C={C} />
 
@@ -783,6 +785,219 @@ function ZohoCRMSection({ C }) {
           </div>
         )}
 
+      </Card>
+    </div>
+  )
+}
+
+/* ── Missed Call Auto-Text section ─────────────────────────────────────────── */
+function MissedCallAutoTextSection({ C }) {
+  const [settings, setSettings] = useState({ auto_text_enabled: false, auto_text_message: '' })
+  const [loading,  setLoading]  = useState(true)
+  const [saving,   setSaving]   = useState(false)
+  const [msg,      setMsg]      = useState('')
+
+  useEffect(() => {
+    api.ivrSettings()
+      .then(s => setSettings(s))
+      .catch(console.error)
+      .finally(() => setLoading(false))
+  }, [])
+
+  async function save() {
+    setSaving(true)
+    try {
+      const updated = await api.ivrSaveSettings(settings)
+      setSettings(updated)
+      setMsg({ text: 'Saved ✓', err: false })
+    } catch {
+      setMsg({ text: 'Save failed', err: true })
+    }
+    setSaving(false)
+    setTimeout(() => setMsg(''), 3000)
+  }
+
+  if (loading) return null
+
+  return (
+    <div style={S.section}>
+      <SectionHeader title="MISSED CALL AUTO-TEXT" C={C} />
+      <Card C={C}>
+        <ToggleRow
+          label="Send auto-text on missed call"
+          desc="Automatically texts the caller if no one answered"
+          value={!!settings.auto_text_enabled}
+          onChange={v => setSettings(s => ({ ...s, auto_text_enabled: v }))}
+          C={C}
+        />
+        {settings.auto_text_enabled && (
+          <div style={{ padding: '10px 14px', borderTop: `1px solid ${C.borderSoft}` }}>
+            <div style={{ ...S.rowDesc, color: C.textMuted, marginBottom: 6 }}>
+              Message sent to the caller (keep it short and friendly)
+            </div>
+            <textarea
+              value={settings.auto_text_message || ''}
+              onChange={e => setSettings(s => ({ ...s, auto_text_message: e.target.value }))}
+              rows={3}
+              placeholder="Hi! We missed your call. We'll get back to you as soon as possible."
+              style={{
+                width: '100%', boxSizing: 'border-box',
+                background: C.inputBg, border: `1px solid ${C.inputBorder}`,
+                color: C.text, borderRadius: 6, padding: '7px 10px',
+                fontSize: 12, resize: 'vertical', fontFamily: 'inherit',
+              }}
+            />
+            <div style={{ ...S.rowDesc, color: C.textMuted, marginTop: 4 }}>
+              Sent from your Twilio number. Standard SMS rates apply.
+            </div>
+          </div>
+        )}
+        <div style={{ padding: '8px 14px 12px', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button style={S.primaryBtn} onClick={save} disabled={saving}>
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+          {msg && <span style={{ fontSize: 12, color: msg.err ? '#ef4444' : '#22c55e' }}>{msg.text}</span>}
+        </div>
+      </Card>
+    </div>
+  )
+}
+
+/* ── Canned Responses section ───────────────────────────────────────────────── */
+function CannedResponsesSection({ C }) {
+  const [list,    setList]    = useState([])
+  const [loading, setLoading] = useState(true)
+  const [showAdd, setShowAdd] = useState(false)
+  const [editing, setEditing] = useState(null) // { id, name, body }
+  const [form,    setForm]    = useState({ name: '', body: '' })
+  const [saving,  setSaving]  = useState(false)
+  const [msg,     setMsg]     = useState('')
+
+  useEffect(() => {
+    api.cannedResponses().then(setList).catch(console.error).finally(() => setLoading(false))
+  }, [])
+
+  function flash(text, err = false) {
+    setMsg({ text, err })
+    setTimeout(() => setMsg(''), 3000)
+  }
+
+  async function handleSave() {
+    if (!form.name.trim() || !form.body.trim() || saving) return
+    setSaving(true)
+    try {
+      if (editing) {
+        const updated = await api.updateCannedResponse(editing.id, form)
+        setList(prev => prev.map(r => r.id === updated.id ? updated : r).sort((a,b) => a.name.localeCompare(b.name)))
+        setEditing(null)
+        flash('Updated ✓')
+      } else {
+        const created = await api.addCannedResponse(form)
+        setList(prev => [...prev, created].sort((a,b) => a.name.localeCompare(b.name)))
+        flash('Saved ✓')
+      }
+      setForm({ name: '', body: '' })
+      setShowAdd(false)
+    } catch (e) {
+      flash('Failed: ' + e.message, true)
+    }
+    setSaving(false)
+  }
+
+  async function handleDelete(id) {
+    if (!window.confirm('Delete this canned response?')) return
+    try {
+      await api.deleteCannedResponse(id)
+      setList(prev => prev.filter(r => r.id !== id))
+    } catch (e) {
+      flash('Delete failed', true)
+    }
+  }
+
+  function startEdit(r) {
+    setEditing(r)
+    setForm({ name: r.name, body: r.body })
+    setShowAdd(true)
+  }
+
+  function cancelForm() {
+    setEditing(null)
+    setForm({ name: '', body: '' })
+    setShowAdd(false)
+  }
+
+  if (loading) return null
+
+  return (
+    <div style={S.section}>
+      <SectionHeader title="CANNED RESPONSES" C={C} />
+      <Card C={C}>
+        <div style={{ ...S.cardTitle, color: C.textMuted, borderBottom: `1px solid ${C.borderSoft}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingRight: 14 }}>
+          <span>QUICK REPLIES · type / in any message box</span>
+          {!showAdd && (
+            <button style={{ ...S.primaryBtn, padding: '3px 10px', fontSize: 11 }} onClick={() => setShowAdd(true)}>
+              + Add
+            </button>
+          )}
+        </div>
+
+        {/* Add / Edit form */}
+        {showAdd && (
+          <div style={{ padding: '12px 14px', borderBottom: `1px solid ${C.borderSoft}`, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {editing && <div style={{ fontSize: 11, color: '#f59e0b', fontWeight: 600 }}>Editing: {editing.name}</div>}
+            <div>
+              <div style={{ ...S.rowDesc, color: C.textMuted, marginBottom: 4 }}>Name (shown in / dropdown)</div>
+              <input
+                style={{ ...S.input, background: C.inputBg, border: `1px solid ${C.inputBorder}`, color: C.text, width: '100%' }}
+                placeholder="e.g. Follow-up, Intro, Pricing…"
+                value={form.name}
+                onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+              />
+            </div>
+            <div>
+              <div style={{ ...S.rowDesc, color: C.textMuted, marginBottom: 4 }}>Message body</div>
+              <textarea
+                rows={3}
+                style={{ width: '100%', boxSizing: 'border-box', background: C.inputBg, border: `1px solid ${C.inputBorder}`, color: C.text, borderRadius: 6, padding: '7px 10px', fontSize: 12, resize: 'vertical', fontFamily: 'inherit' }}
+                placeholder="Hi, this is [Name] from Talkingvet…"
+                value={form.body}
+                onChange={e => setForm(f => ({ ...f, body: e.target.value }))}
+              />
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <button style={{ ...S.primaryBtn, opacity: saving || !form.name.trim() || !form.body.trim() ? 0.5 : 1 }} onClick={handleSave} disabled={saving || !form.name.trim() || !form.body.trim()}>
+                {saving ? 'Saving…' : editing ? 'Update' : 'Save'}
+              </button>
+              <button style={{ ...S.primaryBtn, background: 'transparent', color: C.textMuted, border: `1px solid ${C.border}` }} onClick={cancelForm}>
+                Cancel
+              </button>
+              {msg && <span style={{ fontSize: 12, color: msg.err ? '#ef4444' : '#22c55e' }}>{msg.text}</span>}
+            </div>
+          </div>
+        )}
+
+        {/* List */}
+        {list.length === 0 && !showAdd && (
+          <div style={{ ...S.row, color: C.textMuted, fontSize: 12 }}>
+            No canned responses yet. Add one above and type / in any message to use it.
+          </div>
+        )}
+        {list.map((r, i) => (
+          <div key={r.id} style={{ ...S.row, borderBottom: i < list.length - 1 ? `1px solid ${C.borderSoft}` : 'none', alignItems: 'flex-start', gap: 8 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ ...S.rowLabel, color: '#4f9cf9', fontSize: 12 }}>{r.name}</div>
+              <div style={{ ...S.rowDesc, color: C.textMuted, marginTop: 2, lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>{r.body}</div>
+            </div>
+            <div style={{ display: 'flex', gap: 4, flexShrink: 0, paddingTop: 2 }}>
+              <button style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: C.textMuted }} onClick={() => startEdit(r)} title="Edit">✏️</button>
+              <button style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#ef4444' }} onClick={() => handleDelete(r.id)} title="Delete">🗑</button>
+            </div>
+          </div>
+        ))}
+
+        {!showAdd && msg && (
+          <div style={{ padding: '6px 14px', fontSize: 12, color: msg.err ? '#ef4444' : '#22c55e' }}>{msg.text}</div>
+        )}
       </Card>
     </div>
   )

@@ -61,4 +61,36 @@ export const api = {
   ivrAddItem:        (data)       => request('/ivr/menu', { method: 'POST', body: data }),
   ivrUpdateItem:     (id, data)   => request(`/ivr/menu/${id}`, { method: 'PUT', body: data }),
   ivrDeleteItem:     (id)         => request(`/ivr/menu/${id}`, { method: 'DELETE' }),
+
+  // Contacts CRUD + Zoho sync
+  contacts:          ()           => request('/contacts'),
+  createContact:     (data)       => request('/contacts', { method: 'POST', body: data }),
+  updateContact:     (id, data)   => request(`/contacts/${id}`, { method: 'PATCH', body: data }),
+  syncContactZoho:   (id)         => request(`/contacts/${id}/sync-zoho`, { method: 'POST' }),
+
+  // Unread badges
+  markConvRead:      (id)         => request(`/conversations/${id}/read`, { method: 'POST' }),
+
+  // Conversation notes
+  notes:             (convId)     => request(`/conversations/${convId}/notes`),
+  addNote:           (convId, body) => request(`/conversations/${convId}/notes`, { method: 'POST', body: { body } }),
+  updateNote:        (convId, noteId, body) => request(`/conversations/${convId}/notes/${noteId}`, { method: 'PATCH', body: { body } }),
+  deleteNote:        (convId, noteId) => request(`/conversations/${convId}/notes/${noteId}`, { method: 'DELETE' }),
+
+  // Canned responses
+  cannedResponses:   ()           => request('/canned-responses'),
+  addCannedResponse: (data)       => request('/canned-responses', { method: 'POST', body: data }),
+  updateCannedResponse: (id, data) => request(`/canned-responses/${id}`, { method: 'PATCH', body: data }),
+  deleteCannedResponse: (id)      => request(`/canned-responses/${id}`, { method: 'DELETE' }),
+
+  // Quick dial
+  quickDial:         ()           => request('/quick-dial'),
+  addQuickDial:      (data)       => request('/quick-dial', { method: 'POST', body: data }),
+  deleteQuickDial:   (id)         => request(`/quick-dial/${id}`, { method: 'DELETE' }),
+
+  // Agent status
+  updateStatus:      (status)     => request('/agents/me/status', { method: 'PATCH', body: { status } }),
+
+  // Conversation assignment
+  assignConversation: (convId, agent_id) => request(`/conversations/${convId}/assign`, { method: 'PATCH', body: { agent_id } }),
 }

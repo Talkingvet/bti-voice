@@ -28,7 +28,7 @@ router.post('/login', async (req, res) => {
 
 router.get('/me', requireAuth, async (req, res) => {
   const { rows } = await pool.query(
-    'SELECT id, name, username, phone_number, color, initials FROM agents WHERE id = $1',
+    'SELECT id, name, username, phone_number, color, initials, status FROM agents WHERE id = $1',
     [req.agent.id]
   );
   res.json(rows[0] || null);

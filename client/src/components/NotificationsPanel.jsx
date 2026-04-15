@@ -2,8 +2,6 @@
 import { useEffect, useRef } from 'react'
 import { useColors } from '../useColors'
 
-const SEEN_KEY = 'bti_notif_seen_at'
-
 function fmtTime(dateStr) {
   if (!dateStr) return ''
   const d = new Date(dateStr)
@@ -23,7 +21,12 @@ function fmtDuration(secs) {
   return m > 0 ? `${m}m ${s}s` : `${s}s`
 }
 
-export default function NotificationsPanel({ activity, seenAt, onClose }) {
+// Key used to track individual read status
+function itemKey(item) {
+  return `${item.type}-${item.id}`
+}
+
+export default function NotificationsPanel({ activity, readKeys, baseAt, onMarkRead, onMarkAllRead, onNavigate, onClose }) {
   const C   = useColors()
   const ref = useRef(null)
 
@@ -36,6 +39,25 @@ export default function NotificationsPanel({ activity, seenAt, onClose }) {
     return () => document.removeEventListener('mousedown', handle)
   }, [onClose])
 
+  const unreadCount = activity.filter(a =>
+    new Date(a.occurred_at) > baseAt && !readKeys.has(itemKey(a))
+  ).length
+
+  function handleItemClick(item) {
+    // Mark this item as individually read
+    onMarkRead(itemKey(item))
+
+    // Navigate based on type
+    if (item.type === 'message' && item.conversation_id) {
+      onNavigate({ tab: 'sms', convId: item.conversation_id })
+    } else if (item.type === 'missed_call' && item.conversation_id) {
+      onNavigate({ tab: 'sms', convId: item.conversation_id })
+    } else {
+      onNavigate({ tab: 'calls' })
+    }
+    onClose()
+  }
+
   return (
     <div
       ref={ref}
@@ -43,8 +65,23 @@ export default function NotificationsPanel({ activity, seenAt, onClose }) {
     >
       {/* Header */}
       <div style={{ ...S.header, borderBottom: `1px solid ${C.border}` }}>
-        <span style={{ ...S.title, color: C.text }}>Activity</span>
-        <button style={{ ...S.closeBtn, color: C.textMuted }} onClick={onClose}>×</button>
+        <span style={{ ...S.title, color: C.text }}>
+          Activity
+          {unreadCount > 0 && (
+            <span style={S.badge}>{unreadCount}</span>
+          )}
+        </span>
+        <div style={S.headerRight}>
+          {unreadCount > 0 && (
+            <button
+              style={{ ...S.markAllBtn, color: '#4f9cf9' }}
+              onClick={onMarkAllRead}
+            >
+              Mark all read
+            </button>
+          )}
+          <button style={{ ...S.closeBtn, color: C.textMuted }} onClick={onClose}>×</button>
+        </div>
       </div>
 
       {/* List */}
@@ -56,13 +93,14 @@ export default function NotificationsPanel({ activity, seenAt, onClose }) {
           </div>
         ) : (
           activity.map((item, i) => {
-            const isNew = seenAt ? new Date(item.occurred_at) > seenAt : true
+            const isNew = new Date(item.occurred_at) > baseAt && !readKeys.has(itemKey(item))
             return (
               <ActivityItem
                 key={`${item.type}-${item.id}-${i}`}
                 item={item}
                 isNew={isNew}
                 C={C}
+                onClick={() => handleItemClick(item)}
               />
             )
           })
@@ -72,7 +110,7 @@ export default function NotificationsPanel({ activity, seenAt, onClose }) {
   )
 }
 
-function ActivityItem({ item, isNew, C }) {
+function ActivityItem({ item, isNew, C, onClick }) {
   const name    = item.contact_name || item.contact_number || 'Unknown'
   const timeStr = fmtTime(item.occurred_at)
 
@@ -98,13 +136,21 @@ function ActivityItem({ item, isNew, C }) {
       : `Outgoing call${dur ? ` · ${dur}` : ''}`
   }
 
+  // Calls without a conversation still navigate to the calls tab
+  const isClickable = true
+
   return (
     <div
+      onClick={onClick}
       style={{
         ...S.item,
         borderBottom: `1px solid ${C.borderItem}`,
-        opacity: isNew ? 1 : 0.5,
-        background: isNew ? C.hover || 'rgba(79,156,249,0.04)' : 'transparent',
+        background: isNew
+          ? (C.hover || 'rgba(79,156,249,0.05)')
+          : 'transparent',
+        opacity: isNew ? 1 : 0.55,
+        cursor: isClickable ? 'pointer' : 'default',
+        borderLeft: isNew ? '3px solid rgba(79,156,249,0.5)' : '3px solid transparent',
       }}
     >
       {/* Icon circle */}
@@ -164,7 +210,7 @@ function CallIcon({ dir }) {
 const S = {
   panel: {
     position: 'absolute',
-    top: 38,          // sits right below the 38px TitleBar
+    top: 38,
     right: 0,
     width: 320,
     maxHeight: 460,
@@ -177,7 +223,10 @@ const S = {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
     padding: '10px 14px', flexShrink: 0,
   },
-  title:    { fontSize: 13, fontWeight: 700 },
+  headerRight: { display: 'flex', alignItems: 'center', gap: 6 },
+  title:    { fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 7 },
+  badge:    { background: '#4f9cf9', color: 'white', borderRadius: 8, padding: '1px 7px', fontSize: 10, fontWeight: 800 },
+  markAllBtn: { border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 11, fontWeight: 600, padding: '3px 6px' },
   closeBtn: { border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 20, lineHeight: 1, padding: '0 2px' },
   list:     { flex: 1, overflowY: 'auto' },
   empty:    { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '36px 0', fontSize: 13, gap: 8 },
@@ -185,9 +234,8 @@ const S = {
 
   item: {
     display: 'flex', alignItems: 'flex-start',
-    padding: '10px 14px', gap: 10,
-    cursor: 'default',
-    transition: 'opacity 0.2s',
+    padding: '10px 14px 10px 11px', gap: 10,
+    transition: 'opacity 0.2s, background 0.15s',
   },
   iconCircle: {
     width: 32, height: 32, borderRadius: '50%',

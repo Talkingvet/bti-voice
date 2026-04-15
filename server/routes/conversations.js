@@ -4,9 +4,10 @@ const { requireAuth } = require('../auth');
 
 const router = express.Router();
 
-// Get all open conversations with latest message + agents involved
+// Get all open conversations with latest message + agents involved + unread status
 router.get('/', requireAuth, async (req, res) => {
   try {
+    const agentId = req.agent.id;
     const { rows } = await pool.query(`
       SELECT
         c.id,
@@ -38,15 +39,30 @@ router.get('/', requireAuth, async (req, res) => {
           WHERE m2.conversation_id = c.id
             AND m2.direction = 'outbound'
             AND m2.sent_at > NOW() - INTERVAL '2 hours'
-        ) AS recent_outbound_count
+        ) AS recent_outbound_count,
+        c.assigned_agent_id,
+        assign_a.name  AS assigned_agent_name,
+        assign_a.color AS assigned_agent_color,
+        -- Unread: last inbound message is newer than agent's last read timestamp
+        CASE WHEN EXISTS (
+          SELECT 1 FROM messages mi
+          WHERE mi.conversation_id = c.id
+            AND mi.direction = 'inbound'
+            AND mi.sent_at > COALESCE(
+              (SELECT cr.read_at FROM conversation_reads cr
+               WHERE cr.conversation_id = c.id AND cr.agent_id = $1),
+              '1970-01-01'::timestamptz
+            )
+        ) THEN true ELSE false END AS unread
       FROM conversations c
       JOIN contacts co ON co.id = c.contact_id
       LEFT JOIN agents a ON a.id = c.last_agent_id
+      LEFT JOIN agents assign_a ON assign_a.id = c.assigned_agent_id
       WHERE EXISTS (
         SELECT 1 FROM messages m WHERE m.conversation_id = c.id
       )
       ORDER BY c.last_message_at DESC
-    `);
+    `, [agentId]);
     res.json(rows);
   } catch (e) {
     console.error('[conversations/]', e);
@@ -122,6 +138,41 @@ router.post('/new-message', requireAuth, async (req, res) => {
     res.status(500).json({ error: e.message })
   }
 })
+
+// Mark conversation as read by the current agent
+router.post('/:id/read', requireAuth, async (req, res) => {
+  try {
+    await pool.query(`
+      INSERT INTO conversation_reads (conversation_id, agent_id, read_at)
+      VALUES ($1, $2, NOW())
+      ON CONFLICT (conversation_id, agent_id)
+      DO UPDATE SET read_at = NOW()
+    `, [req.params.id, req.agent.id]);
+    res.json({ success: true });
+  } catch (e) {
+    console.error('[conversations/:id/read]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Assign conversation to an agent (null to unassign)
+router.patch('/:id/assign', requireAuth, async (req, res) => {
+  const { agent_id } = req.body; // null = unassign
+  const { getIO } = require('../socket');
+  try {
+    const { rows } = await pool.query(
+      'UPDATE conversations SET assigned_agent_id = $1 WHERE id = $2 RETURNING *',
+      [agent_id || null, req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    const io = getIO();
+    if (io) io.emit('conversation_updated', { conversation_id: rows[0].id });
+    res.json(rows[0]);
+  } catch (e) {
+    console.error('[conversations/:id/assign]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
 
 // Mark conversation as resolved
 router.patch('/:id/resolve', requireAuth, async (req, res) => {

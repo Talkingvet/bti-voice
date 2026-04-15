@@ -94,10 +94,18 @@ router.post('/outbound', async (req, res) => {
   const callerId = process.env.TWILIO_PHONE_NUMBER;
   const twiml = new twilio.twiml.VoiceResponse();
 
+  console.log(`[outbound] To=${To} callerId=${callerId}`);
+
+  if (!callerId) {
+    console.error('[outbound] ⚠️  TWILIO_PHONE_NUMBER is not set — outbound calls will fail');
+  }
+
   if (To) {
     const dial = twiml.dial({ callerId, ...recordingOpts() });
     dial.number(To);
+    console.log(`[outbound] TwiML: dial ${To} from ${callerId}`);
   } else {
+    console.error('[outbound] ⚠️  No To parameter received — check TwiML App Voice Request URL');
     twiml.say('No destination number provided.');
   }
 
@@ -369,6 +377,8 @@ router.post('/no-answer', async (req, res) => {
       direction: 'inbound',
       status:    'missed',
     });
+    // Fire auto-text on total miss
+    setImmediate(() => sendMissedCallAutoText(From));
     twiml.say({ voice: 'Polly.Joanna-Neural' }, 'Sorry, no one is available right now. Please leave a voicemail or try again later.');
   }
 
@@ -462,6 +472,11 @@ router.post('/status', async (req, res) => {
       `, [conv.id, callDir, duration, status, CallSid, startedAt]);
 
       console.log(`[status] ✓ Auto-logged call ${CallSid} for ${phone} (${status})`);
+
+      // Send missed-call auto-text if enabled
+      if (status === 'missed' && callDir === 'inbound') {
+        sendMissedCallAutoText(phone);
+      }
 
       // Sync to Zoho CRM
       if (process.env.ZOHO_REFRESH_TOKEN) {
@@ -641,6 +656,37 @@ Keep it tight — this is for a CRM note, not a report.`,
     }
   });
 });
+
+// ── Missed-call auto-text ─────────────────────────────────────────────────────
+// Sends an SMS to the caller if auto_text_enabled is set in ivr_settings.
+// Fire-and-forget — never blocks Twilio response.
+async function sendMissedCallAutoText(fromPhone) {
+  if (!fromPhone) return;
+  try {
+    const { rows } = await pool.query(
+      'SELECT auto_text_enabled, auto_text_message FROM ivr_settings WHERE id = 1 LIMIT 1'
+    );
+    const settings = rows[0];
+    if (!settings?.auto_text_enabled) return;
+
+    const message = settings.auto_text_message || "Hi! We missed your call. We'll get back to you as soon as possible.";
+
+    if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN || !process.env.TWILIO_PHONE_NUMBER) {
+      console.log('[autoText] Twilio not configured — skipping auto-text');
+      return;
+    }
+
+    const twilioClient = require('twilio')(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+    await twilioClient.messages.create({
+      body: message,
+      from: process.env.TWILIO_PHONE_NUMBER,
+      to:   fromPhone,
+    });
+    console.log(`[autoText] ✓ Sent auto-text to ${fromPhone}`);
+  } catch (e) {
+    console.error('[autoText] Failed:', e.message);
+  }
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

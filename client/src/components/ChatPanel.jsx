@@ -1,6 +1,6 @@
-/* Chat thread panel — compact Zoho-style, no resolve */
-import { useState, useRef, useEffect } from 'react'
-import CallModal from './CallModal'
+/* Chat thread panel — compact Zoho-style, with Notes tab + Canned Responses */
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { api } from '../api'
 import { useColors } from '../useColors'
 
 function formatTime(dateStr) {
@@ -30,16 +30,102 @@ function doubleTextWarning(messages, currentAgent) {
   return recent.length > 0 ? recent[recent.length - 1] : null
 }
 
-export default function ChatPanel({ conv, messages, loading, currentAgent, agents, onSend, onCallLogged, onBack }) {
+export default function ChatPanel({ conv, messages, loading, currentAgent, agents, onSend, onBack, device, onCallStart, onCallEnd, onAssign }) {
   const C = useColors()
-  const [body,     setBody]     = useState('')
-  const [sending,  setSending]  = useState(false)
-  const [showCall, setShowCall] = useState(false)
-  const messagesEndRef           = useRef(null)
-  const textareaRef              = useRef(null)
+  const [activeTab,    setActiveTab]   = useState('messages') // 'messages' | 'notes'
+  const [body,         setBody]        = useState('')
+  const [sending,      setSending]     = useState(false)
+  const [callStatus,   setCallStatus]  = useState(null)
+  const [cannedList,   setCannedList]  = useState([])
+  const [showCanned,   setShowCanned]  = useState(false)
+  const [cannedQuery,  setCannedQuery] = useState('')
+  const [showAssign,   setShowAssign]  = useState(false)
+
+  // Notes state
+  const [notes,       setNotes]       = useState([])
+  const [noteBody,    setNoteBody]    = useState('')
+  const [savingNote,  setSavingNote]  = useState(false)
+  const [editingNote, setEditingNote] = useState(null) // { id, body }
+
+  const messagesEndRef = useRef(null)
+  const textareaRef    = useRef(null)
+  const noteRef        = useRef(null)
+  const assignRef      = useRef(null)
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
 
+  // Close assign dropdown on outside click
+  useEffect(() => {
+    if (!showAssign) return
+    function handle(e) {
+      if (assignRef.current && !assignRef.current.contains(e.target)) setShowAssign(false)
+    }
+    document.addEventListener('mousedown', handle)
+    return () => document.removeEventListener('mousedown', handle)
+  }, [showAssign])
+
+  // Load canned responses once
+  useEffect(() => {
+    api.cannedResponses().then(setCannedList).catch(console.error)
+  }, [])
+
+  // Load notes when conversation changes
+  useEffect(() => {
+    if (!conv) return
+    setNotes([])
+    api.notes(conv.id).then(setNotes).catch(console.error)
+  }, [conv?.id])
+
+  // ── Canned responses: show dropdown when user types /
+  function handleBodyChange(e) {
+    const val = e.target.value
+    setBody(val)
+    const lastSlash = val.lastIndexOf('/')
+    if (lastSlash !== -1 && lastSlash === val.length - 1) {
+      setShowCanned(true)
+      setCannedQuery('')
+    } else if (showCanned && lastSlash !== -1) {
+      setCannedQuery(val.slice(lastSlash + 1))
+    } else {
+      setShowCanned(false)
+      setCannedQuery('')
+    }
+  }
+
+  function insertCanned(cr) {
+    const lastSlash = body.lastIndexOf('/')
+    const newBody = lastSlash !== -1 ? body.slice(0, lastSlash) + cr.body : cr.body
+    setBody(newBody)
+    setShowCanned(false)
+    setCannedQuery('')
+    setTimeout(() => textareaRef.current?.focus(), 0)
+  }
+
+  const filteredCanned = cannedList.filter(cr =>
+    !cannedQuery || cr.name.toLowerCase().includes(cannedQuery.toLowerCase())
+  )
+
+  // ── Outbound call from chat
+  async function handleCallClick() {
+    if (!device || !conv) return
+    const raw    = conv.contact_number || ''
+    const digits = raw.replace(/\D/g, '')
+    const to     = digits.length === 10 ? `+1${digits}` : `+${digits}`
+    if (!to || to === '+') return
+    setCallStatus('connecting')
+    try {
+      const call = await device.connect({ params: { To: to } })
+      call.on('accept',     () => { onCallStart?.(call, to); setCallStatus(null) })
+      call.on('disconnect', () => { onCallEnd?.();            setCallStatus(null) })
+      call.on('cancel',     () => { onCallEnd?.();            setCallStatus(null) })
+      call.on('error',  err => { console.error('[ChatPanel call error]', err); onCallEnd?.(); setCallStatus(null) })
+    } catch (e) {
+      console.error('[ChatPanel] device.connect failed', e)
+      setCallStatus(null)
+    }
+  }
+
+  // ── SMS send
   async function handleSend(e) {
     e?.preventDefault()
     if (!body.trim() || sending) return
@@ -47,10 +133,57 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
     await onSend(body.trim())
     setBody('')
     setSending(false)
+    setShowCanned(false)
     textareaRef.current?.focus()
   }
   function handleKeyDown(e) {
+    if (showCanned) {
+      if (e.key === 'Escape') { setShowCanned(false); return }
+      return // let dropdown handle arrow keys naturally
+    }
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
+  }
+
+  // ── Notes
+  async function handleSaveNote() {
+    if (!noteBody.trim() || savingNote) return
+    setSavingNote(true)
+    try {
+      if (editingNote) {
+        const updated = await api.updateNote(conv.id, editingNote.id, noteBody.trim())
+        setNotes(prev => prev.map(n => n.id === updated.id ? updated : n))
+        setEditingNote(null)
+      } else {
+        const created = await api.addNote(conv.id, noteBody.trim())
+        setNotes(prev => [...prev, created])
+      }
+      setNoteBody('')
+    } catch (e) {
+      alert('Failed to save note: ' + e.message)
+    } finally {
+      setSavingNote(false)
+    }
+  }
+
+  async function handleDeleteNote(noteId) {
+    if (!window.confirm('Delete this note?')) return
+    try {
+      await api.deleteNote(conv.id, noteId)
+      setNotes(prev => prev.filter(n => n.id !== noteId))
+    } catch (e) {
+      alert('Failed to delete note: ' + e.message)
+    }
+  }
+
+  function startEditNote(note) {
+    setEditingNote(note)
+    setNoteBody(note.body)
+    setTimeout(() => noteRef.current?.focus(), 0)
+  }
+
+  function cancelEdit() {
+    setEditingNote(null)
+    setNoteBody('')
   }
 
   if (!conv) {
@@ -62,8 +195,8 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
     )
   }
 
-  const warning      = doubleTextWarning(messages, currentAgent)
-  const items        = groupByDate(messages)
+  const warning        = doubleTextWarning(messages, currentAgent)
+  const items          = groupByDate(messages)
   const agentsInvolved = conv.agents_involved || []
 
   return (
@@ -86,91 +219,224 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
               {agentsInvolved.length > 0 && (
                 <span style={{ marginLeft: 6 }}>
                   {agentsInvolved.map(a => (
-                    <span
-                      key={a.id}
-                      title={a.name}
-                      style={{ ...styles.agentDot, background: a.color }}
-                    />
+                    <span key={a.id} title={a.name} style={{ ...styles.agentDot, background: a.color }} />
                   ))}
                 </span>
               )}
             </div>
           </div>
         </div>
-        <button
-          style={{ ...styles.iconBtn, color: '#22c55e' }}
-          onClick={() => setShowCall(true)}
-          title="Call"
-        >
-          <PhoneIcon />
-        </button>
-      </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          {/* Messages / Notes toggle */}
+          <div style={{ ...styles.tabToggle, background: C.surface, border: `1px solid ${C.border}` }}>
+            <button
+              style={{ ...styles.tabBtn, ...(activeTab === 'messages' ? { ...styles.tabBtnActive, background: C.panel } : { color: C.textMuted }) }}
+              onClick={() => setActiveTab('messages')}
+            >Messages</button>
+            <button
+              style={{ ...styles.tabBtn, ...(activeTab === 'notes' ? { ...styles.tabBtnActive, background: C.panel } : { color: C.textMuted }), position: 'relative' }}
+              onClick={() => setActiveTab('notes')}
+            >
+              Notes
+              {notes.length > 0 && (
+                <span style={styles.noteBadge}>{notes.length}</span>
+              )}
+            </button>
+          </div>
 
-      {/* ── Double-text warning ── */}
-      {warning && (
-        <div style={styles.warning}>
-          ⚠ <strong>{warning.agent_name}</strong> already texted this contact at {formatTime(warning.sent_at)}
-        </div>
-      )}
-
-      {/* ── Messages ── */}
-      <div style={{ ...styles.messages, background: C.msgBg }}>
-        {loading && <div style={{ ...styles.loadingMsg, color: C.textMuted }}>Loading…</div>}
-        {items.map((item, i) => {
-          if (item.type === 'divider') {
-            return (
-              <div key={i} style={{ ...styles.datePill, color: C.textMuted, background: C.surface }}>
-                {item.date}
+          {/* Assign button */}
+          <div ref={assignRef} style={{ position: 'relative' }}>
+            <button
+              style={{
+                ...styles.iconBtn,
+                color: conv?.assigned_agent_id ? (agents.find(a => a.id === conv.assigned_agent_id)?.color || '#4f9cf9') : C.textMuted,
+                background: conv?.assigned_agent_id ? 'rgba(79,156,249,0.10)' : 'transparent',
+              }}
+              onClick={() => setShowAssign(v => !v)}
+              title={conv?.assigned_agent_name ? `Assigned to ${conv.assigned_agent_name}` : 'Assign conversation'}
+            >
+              <PersonIcon />
+            </button>
+            {showAssign && (
+              <div style={{ ...styles.assignDropdown, background: C.panel, border: `1px solid ${C.border}`, boxShadow: '0 6px 20px rgba(0,0,0,0.25)' }}>
+                <div style={{ ...styles.assignHeader, color: C.textMuted }}>Assign to</div>
+                {conv?.assigned_agent_id && (
+                  <button
+                    style={{ ...styles.assignItem, color: '#ef4444' }}
+                    onClick={() => { onAssign?.(conv.id, null); setShowAssign(false) }}
+                  >
+                    <span style={{ ...styles.assignDot, background: '#ef4444' }} />
+                    Unassign
+                  </button>
+                )}
+                {agents.map(a => (
+                  <button
+                    key={a.id}
+                    style={{
+                      ...styles.assignItem,
+                      color: C.text,
+                      background: conv?.assigned_agent_id === a.id ? 'rgba(79,156,249,0.12)' : 'transparent',
+                    }}
+                    onClick={() => { onAssign?.(conv.id, a.id); setShowAssign(false) }}
+                  >
+                    <span style={{ ...styles.assignDot, background: a.color || '#8b96ab' }} />
+                    {a.name}
+                    {a.id === currentAgent.id && <span style={{ opacity: 0.5, fontSize: 10, marginLeft: 3 }}>(you)</span>}
+                  </button>
+                ))}
               </div>
-            )
-          }
-          const { msg } = item
-          return msg.direction === 'inbound'
-            ? <InboundMsg  key={msg.id} msg={msg} conv={conv} C={C} />
-            : <OutboundMsg key={msg.id} msg={msg} currentAgentId={currentAgent.id} C={C} />
-        })}
-        <div ref={messagesEndRef} />
-      </div>
+            )}
+          </div>
 
-      {/* ── Compose ── */}
-      <div style={{ ...styles.compose, background: C.panel, borderTop: `1px solid ${C.border}` }}>
-        <div style={{ ...styles.fromHint, color: C.textMuted }}>
-          <span style={{ ...styles.fromDot, background: currentAgent.color }} />
-          {currentAgent.name}
-          {currentAgent.phone_number !== 'TBD' && (
-            <span style={{ marginLeft: 4, opacity: 0.7 }}>{currentAgent.phone_number}</span>
-          )}
-        </div>
-        <div style={styles.composeRow}>
-          <textarea
-            ref={textareaRef}
-            style={{ ...styles.textarea, background: C.inputBg, border: `1px solid ${C.inputBorder}`, color: C.text }}
-            placeholder="Enter a message…"
-            value={body}
-            onChange={e => setBody(e.target.value)}
-            onKeyDown={handleKeyDown}
-            rows={1}
-          />
           <button
-            style={{ ...styles.sendBtn, opacity: sending || !body.trim() ? 0.4 : 1 }}
-            onClick={handleSend}
-            disabled={sending || !body.trim()}
-            title="Send"
+            style={{ ...styles.iconBtn, color: callStatus ? '#f59e0b' : '#22c55e', opacity: callStatus ? 0.7 : 1 }}
+            onClick={handleCallClick}
+            disabled={!!callStatus || !device}
+            title={callStatus ? 'Connecting…' : 'Call'}
           >
-            <SendIcon />
+            <PhoneIcon />
           </button>
         </div>
       </div>
 
-      {showCall && (
-        <CallModal conv={conv} agent={currentAgent} onClose={() => setShowCall(false)} onCallLogged={onCallLogged} />
+      {/* ── Messages tab ── */}
+      {activeTab === 'messages' && (
+        <>
+          {warning && (
+            <div style={styles.warning}>
+              ⚠ <strong>{warning.agent_name}</strong> already texted this contact at {formatTime(warning.sent_at)}
+            </div>
+          )}
+          <div style={{ ...styles.messages, background: C.msgBg }}>
+            {loading && <div style={{ ...styles.loadingMsg, color: C.textMuted }}>Loading…</div>}
+            {items.map((item, i) => {
+              if (item.type === 'divider') {
+                return (
+                  <div key={i} style={{ ...styles.datePill, color: C.textMuted, background: C.surface }}>
+                    {item.date}
+                  </div>
+                )
+              }
+              const { msg } = item
+              return msg.direction === 'inbound'
+                ? <InboundMsg  key={msg.id} msg={msg} conv={conv} C={C} />
+                : <OutboundMsg key={msg.id} msg={msg} currentAgentId={currentAgent.id} C={C} />
+            })}
+            <div ref={messagesEndRef} />
+          </div>
+          {/* Compose */}
+          <div style={{ ...styles.compose, background: C.panel, borderTop: `1px solid ${C.border}`, position: 'relative' }}>
+            <div style={{ ...styles.fromHint, color: C.textMuted }}>
+              <span style={{ ...styles.fromDot, background: currentAgent.color }} />
+              {currentAgent.name}
+              {currentAgent.phone_number !== 'TBD' && (
+                <span style={{ marginLeft: 4, opacity: 0.7 }}>{currentAgent.phone_number}</span>
+              )}
+              <span style={{ ...styles.cannedHint, color: C.textMuted }}>· type / for quick replies</span>
+            </div>
+            {/* Canned responses dropdown */}
+            {showCanned && filteredCanned.length > 0 && (
+              <div style={{ ...styles.cannedDropdown, background: C.panel, border: `1px solid ${C.border}`, boxShadow: '0 4px 16px rgba(0,0,0,0.15)' }}>
+                {filteredCanned.map(cr => (
+                  <button
+                    key={cr.id}
+                    style={{ ...styles.cannedItem, color: C.text }}
+                    onMouseDown={() => insertCanned(cr)}
+                  >
+                    <span style={{ ...styles.cannedName, color: '#4f9cf9' }}>{cr.name}</span>
+                    <span style={{ ...styles.cannedPreview, color: C.textMuted }}>{cr.body}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            <div style={styles.composeRow}>
+              <textarea
+                ref={textareaRef}
+                style={{ ...styles.textarea, background: C.inputBg, border: `1px solid ${C.inputBorder}`, color: C.text }}
+                placeholder="Enter a message…"
+                value={body}
+                onChange={handleBodyChange}
+                onKeyDown={handleKeyDown}
+                rows={1}
+              />
+              <button
+                style={{ ...styles.sendBtn, opacity: sending || !body.trim() ? 0.4 : 1 }}
+                onClick={handleSend}
+                disabled={sending || !body.trim()}
+                title="Send"
+              >
+                <SendIcon />
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── Notes tab ── */}
+      {activeTab === 'notes' && (
+        <div style={{ ...styles.notesPanel, background: C.msgBg }}>
+          {/* Notes list */}
+          <div style={styles.notesList}>
+            {notes.length === 0 && (
+              <div style={{ ...styles.notesEmpty, color: C.textMuted }}>
+                <NoteIcon />
+                <div style={{ marginTop: 8 }}>No notes yet</div>
+                <div style={{ fontSize: 11, marginTop: 4, opacity: 0.6 }}>Internal notes are only visible to your team</div>
+              </div>
+            )}
+            {notes.map(note => (
+              <div key={note.id} style={{ ...styles.noteCard, background: C.panel, border: `1px solid ${C.border}` }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ ...styles.noteDot, background: note.agent_color || '#4f9cf9' }} />
+                    <span style={{ ...styles.noteAgent, color: C.textSec }}>{note.agent_name}</span>
+                    <span style={{ ...styles.noteTime, color: C.textMuted }}>{formatTime(note.created_at)}</span>
+                  </div>
+                  {note.agent_id === currentAgent.id && (
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <button style={{ ...styles.noteAction, color: C.textMuted }} onClick={() => startEditNote(note)} title="Edit">✏️</button>
+                      <button style={{ ...styles.noteAction, color: '#ef4444' }} onClick={() => handleDeleteNote(note.id)} title="Delete">🗑</button>
+                    </div>
+                  )}
+                </div>
+                <div style={{ ...styles.noteBody, color: C.text }}>{note.body}</div>
+              </div>
+            ))}
+          </div>
+          {/* Note compose */}
+          <div style={{ ...styles.noteCompose, background: C.panel, borderTop: `1px solid ${C.border}` }}>
+            {editingNote && (
+              <div style={{ fontSize: 11, color: '#f59e0b', marginBottom: 4 }}>
+                Editing note · <button style={styles.cancelEdit} onClick={cancelEdit}>Cancel</button>
+              </div>
+            )}
+            <div style={styles.composeRow}>
+              <textarea
+                ref={noteRef}
+                style={{ ...styles.textarea, background: C.inputBg, border: `1px solid ${C.inputBorder}`, color: C.text }}
+                placeholder="Add an internal note…"
+                value={noteBody}
+                onChange={e => setNoteBody(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSaveNote() } }}
+                rows={1}
+              />
+              <button
+                style={{ ...styles.sendBtn, background: '#f59e0b', opacity: savingNote || !noteBody.trim() ? 0.4 : 1 }}
+                onClick={handleSaveNote}
+                disabled={savingNote || !noteBody.trim()}
+                title="Save note"
+              >
+                <SaveIcon />
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
 }
 
 /* ── Sub-components ─────────────────────────────────────────────── */
-
 function InboundMsg({ msg, conv, C }) {
   return (
     <div style={styles.msgGroup}>
@@ -183,7 +449,6 @@ function InboundMsg({ msg, conv, C }) {
     </div>
   )
 }
-
 function OutboundMsg({ msg, currentAgentId, C }) {
   const isMe = msg.agent_id === currentAgentId
   return (
@@ -221,77 +486,91 @@ function SendIcon() {
     </svg>
   )
 }
+function SaveIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+      <polyline points="17 21 17 13 7 13 7 21" />
+      <polyline points="7 3 7 8 15 8" />
+    </svg>
+  )
+}
+function PersonIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+      <circle cx="12" cy="7" r="4" />
+    </svg>
+  )
+}
+function NoteIcon() {
+  return (
+    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.3 }}>
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+      <line x1="16" y1="13" x2="8" y2="13" />
+      <line x1="16" y1="17" x2="8" y2="17" />
+      <polyline points="10 9 9 9 8 9" />
+    </svg>
+  )
+}
 
 /* ── Styles ─────────────────────────────────────────────────────── */
 const styles = {
   panel:   { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 },
   empty:   { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' },
 
-  header:  {
-    padding: '10px 12px', display: 'flex', alignItems: 'center',
-    justifyContent: 'space-between', flexShrink: 0,
-  },
+  header:  { padding: '10px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 },
   headerLeft: { display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 },
   headerMid:  { flex: 1, minWidth: 0 },
   headerName: { fontSize: 14, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   headerSub:  { fontSize: 11, marginTop: 1, display: 'flex', alignItems: 'center' },
   agentDot:   { display: 'inline-block', width: 7, height: 7, borderRadius: '50%', marginLeft: 3 },
-  iconBtn: {
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    width: 32, height: 32, border: 'none', background: 'transparent',
-    cursor: 'pointer', borderRadius: 8, flexShrink: 0,
-  },
+  iconBtn: { display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, border: 'none', background: 'transparent', cursor: 'pointer', borderRadius: 8, flexShrink: 0 },
 
-  warning: {
-    background: '#fffbeb', borderBottom: '1px solid #fcd34d',
-    padding: '7px 12px', fontSize: 12, color: '#92400e', flexShrink: 0,
-  },
+  tabToggle: { display: 'flex', borderRadius: 8, padding: 2, gap: 2 },
+  tabBtn: { fontSize: 11, fontWeight: 600, border: 'none', background: 'transparent', cursor: 'pointer', padding: '4px 10px', borderRadius: 6, transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 4 },
+  tabBtnActive: { color: '#4f9cf9' },
+  noteBadge: { background: '#f59e0b', color: 'white', fontSize: 9, fontWeight: 700, borderRadius: 8, padding: '1px 5px', marginLeft: 2 },
 
-  messages: {
-    flex: 1, overflowY: 'auto', padding: '12px 12px',
-    display: 'flex', flexDirection: 'column', gap: 10,
-    minHeight: 0,
-  },
+  warning: { background: '#fffbeb', borderBottom: '1px solid #fcd34d', padding: '7px 12px', fontSize: 12, color: '#92400e', flexShrink: 0 },
+
+  messages: { flex: 1, overflowY: 'auto', padding: '12px 12px', display: 'flex', flexDirection: 'column', gap: 10, minHeight: 0 },
   loadingMsg: { textAlign: 'center', fontSize: 12 },
-
-  datePill: {
-    alignSelf: 'center',
-    padding: '3px 12px', borderRadius: 12,
-    fontSize: 11, fontWeight: 600,
-    margin: '4px 0',
-  },
-
+  datePill: { alignSelf: 'center', padding: '3px 12px', borderRadius: 12, fontSize: 11, fontWeight: 600, margin: '4px 0' },
   msgGroup:  { display: 'flex', flexDirection: 'column' },
-  bubbleIn: {
-    alignSelf: 'flex-start', maxWidth: '85%',
-    padding: '9px 12px', borderRadius: '4px 14px 14px 14px',
-    fontSize: 13, lineHeight: 1.45,
-  },
-  bubbleOut: {
-    alignSelf: 'flex-end', maxWidth: '85%',
-    padding: '9px 12px', borderRadius: '14px 4px 14px 14px',
-    color: 'white', fontSize: 13, lineHeight: 1.45,
-  },
+  bubbleIn: { alignSelf: 'flex-start', maxWidth: '85%', padding: '9px 12px', borderRadius: '4px 14px 14px 14px', fontSize: 13, lineHeight: 1.45 },
+  bubbleOut: { alignSelf: 'flex-end', maxWidth: '85%', padding: '9px 12px', borderRadius: '14px 4px 14px 14px', color: 'white', fontSize: 13, lineHeight: 1.45 },
   bubbleMeta:    { fontSize: 10, marginTop: 4 },
   bubbleMetaOut: { fontSize: 10, color: 'rgba(255,255,255,0.75)', marginTop: 4 },
 
   compose: { padding: '8px 10px', flexShrink: 0 },
-  fromHint: {
-    fontSize: 10, display: 'flex', alignItems: 'center', gap: 5,
-    marginBottom: 6, fontWeight: 500,
-  },
+  fromHint: { fontSize: 10, display: 'flex', alignItems: 'center', gap: 5, marginBottom: 6, fontWeight: 500 },
   fromDot: { width: 8, height: 8, borderRadius: '50%', flexShrink: 0 },
+  cannedHint: { fontSize: 10, opacity: 0.5, marginLeft: 2 },
   composeRow: { display: 'flex', gap: 8, alignItems: 'flex-end' },
-  textarea: {
-    flex: 1, borderRadius: 10, padding: '8px 12px',
-    fontSize: 13, outline: 'none', resize: 'none',
-    fontFamily: 'inherit', lineHeight: 1.4,
-    minHeight: 38, maxHeight: 100,
-  },
-  sendBtn: {
-    width: 38, height: 38, borderRadius: 10,
-    background: '#4f9cf9', border: 'none', cursor: 'pointer',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    flexShrink: 0, transition: 'opacity 0.15s',
-  },
+  textarea: { flex: 1, borderRadius: 10, padding: '8px 12px', fontSize: 13, outline: 'none', resize: 'none', fontFamily: 'inherit', lineHeight: 1.4, minHeight: 38, maxHeight: 100 },
+  sendBtn: { width: 38, height: 38, borderRadius: 10, background: '#4f9cf9', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'opacity 0.15s' },
+
+  assignDropdown: { position: 'absolute', top: 'calc(100% + 4px)', right: 0, minWidth: 170, borderRadius: 10, zIndex: 200, overflow: 'hidden' },
+  assignHeader:   { padding: '7px 12px 4px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' },
+  assignItem:     { display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 500, textAlign: 'left', transition: 'background 0.08s' },
+  assignDot:      { width: 8, height: 8, borderRadius: '50%', flexShrink: 0 },
+
+  cannedDropdown: { position: 'absolute', bottom: '100%', left: 10, right: 10, borderRadius: 10, overflow: 'hidden', zIndex: 100, maxHeight: 200, overflowY: 'auto' },
+  cannedItem: { width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 2 },
+  cannedName: { fontSize: 11, fontWeight: 700 },
+  cannedPreview: { fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+
+  notesPanel: { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 },
+  notesList: { flex: 1, overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 8 },
+  notesEmpty: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32, textAlign: 'center', fontSize: 13 },
+  noteCard: { borderRadius: 10, padding: '10px 12px' },
+  noteDot: { width: 8, height: 8, borderRadius: '50%', flexShrink: 0, display: 'inline-block' },
+  noteAgent: { fontSize: 11, fontWeight: 600 },
+  noteTime: { fontSize: 10 },
+  noteBody: { fontSize: 13, lineHeight: 1.5, whiteSpace: 'pre-wrap' },
+  noteAction: { background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, padding: '0 2px', lineHeight: 1 },
+  noteCompose: { padding: '8px 10px', flexShrink: 0 },
+  cancelEdit: { background: 'none', border: 'none', cursor: 'pointer', color: '#f59e0b', fontWeight: 600, fontSize: 11, padding: 0 },
 }
