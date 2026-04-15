@@ -8,7 +8,12 @@
     "start":        "electron .",
     "build:win":    "electron-builder --win --x64",
     "build:mac":    "electron-builder --mac --x64 --arm64",
+    "publish:win":  "electron-builder --win --x64 --publish always",
+    "publish:mac":  "electron-builder --mac --x64 --arm64 --publish always",
     "create-icons": "node create-icons.js"
+  },
+  "dependencies": {
+    "electron-updater": "^6.1.8"
   },
   "devDependencies": {
     "electron":         "^29.1.0",
@@ -19,6 +24,11 @@
     "appId":       "com.businesstechnologyinsight.bti-voice",
     "productName": "BTI Voice",
     "copyright":   "Business Technology Insight",
+    "publish": {
+      "provider": "github",
+      "owner":    "Talkingvet",
+      "repo":     "bti-voice"
+    },
     "directories": {
       "output": "../../dist-electron"
     },

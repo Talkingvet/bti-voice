@@ -13,15 +13,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setAutoLaunch: (enabled) => ipcRenderer.invoke('set-auto-launch', enabled),
 
   // ── Mini call widget IPC ─────────────────────────────────────────
-  // Call these from the React app when call state changes
   callStart: (info) => ipcRenderer.send('call-start', info),
   callEnd:   ()     => ipcRenderer.send('call-end'),
-
-  // Listen for actions triggered from the mini widget (mute, hold, hangup, open)
   onCallAction: (cb) => {
     const handler = (_, data) => cb(data)
     ipcRenderer.on('call-action', handler)
-    // Return cleanup function
     return () => ipcRenderer.removeListener('call-action', handler)
   },
+
+  // ── Updates ──────────────────────────────────────────────────────
+  getAppVersion:    ()  => ipcRenderer.invoke('get-app-version'),
+  checkForUpdates:  ()  => ipcRenderer.invoke('check-for-updates'),
+  downloadUpdate:   ()  => ipcRenderer.invoke('download-update'),
+  installUpdate:    ()  => ipcRenderer.invoke('install-update'),
+  onUpdateAvailable: (cb) => ipcRenderer.on('update-available', (_, info) => cb(info)),
+  onUpdateProgress:  (cb) => ipcRenderer.on('update-progress',  (_, info) => cb(info)),
+  onUpdateDownloaded:(cb) => ipcRenderer.on('update-downloaded', () => cb()),
 })

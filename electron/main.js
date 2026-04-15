@@ -1,5 +1,10 @@
 const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, Notification, screen } = require('electron')
 const path = require('path')
+const { autoUpdater } = require('electron-updater')
+
+// ── Auto-updater config ───────────────────────────────────────────
+autoUpdater.autoDownload    = false  // Ask before downloading
+autoUpdater.autoInstallOnAppQuit = true
 
 let mainWindow  = null
 let callWidget  = null
@@ -129,6 +134,40 @@ ipcMain.handle('get-auto-launch', () => app.getLoginItemSettings().openAtLogin)
 ipcMain.handle('set-auto-launch', (_, enabled) => {
   app.setLoginItemSettings({ openAtLogin: !!enabled })
   return !!enabled
+})
+
+// ── IPC: updates ──────────────────────────────────────────────────
+ipcMain.handle('check-for-updates', async () => {
+  try {
+    const result = await autoUpdater.checkForUpdates()
+    if (!result) return { status: 'up-to-date' }
+    return { status: 'available', version: result.updateInfo.version }
+  } catch (e) {
+    return { status: 'error', message: e.message }
+  }
+})
+
+ipcMain.handle('download-update', () => {
+  autoUpdater.downloadUpdate()
+  return true
+})
+
+ipcMain.handle('install-update', () => {
+  autoUpdater.quitAndInstall()
+})
+
+ipcMain.handle('get-app-version', () => app.getVersion())
+
+autoUpdater.on('update-available', (info) => {
+  mainWindow?.webContents.send('update-available', { version: info.version })
+})
+
+autoUpdater.on('download-progress', (progress) => {
+  mainWindow?.webContents.send('update-progress', { percent: Math.round(progress.percent) })
+})
+
+autoUpdater.on('update-downloaded', () => {
+  mainWindow?.webContents.send('update-downloaded')
 })
 
 // ── IPC: call widget control ──────────────────────────────────────

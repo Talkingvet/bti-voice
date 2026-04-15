@@ -789,6 +789,58 @@ function ZohoCRMSection({ C }) {
 }
 
 function AboutSection({ C }) {
+  const isElectron = !!window.electronAPI
+  const [version,    setVersion]    = useState('1.0.0')
+  const [updateStatus, setUpdateStatus] = useState(null) // null | 'checking' | 'up-to-date' | 'available' | 'downloading' | 'ready' | 'error'
+  const [updateVersion, setUpdateVersion] = useState(null)
+  const [progress,   setProgress]   = useState(0)
+
+  useEffect(() => {
+    if (!isElectron) return
+    window.electronAPI.getAppVersion().then(setVersion).catch(() => {})
+    window.electronAPI.onUpdateAvailable(({ version }) => {
+      setUpdateVersion(version)
+      setUpdateStatus('available')
+    })
+    window.electronAPI.onUpdateProgress(({ percent }) => {
+      setProgress(percent)
+      setUpdateStatus('downloading')
+    })
+    window.electronAPI.onUpdateDownloaded(() => setUpdateStatus('ready'))
+  }, [isElectron])
+
+  async function checkForUpdates() {
+    setUpdateStatus('checking')
+    const result = await window.electronAPI.checkForUpdates()
+    if (result.status === 'up-to-date') setUpdateStatus('up-to-date')
+    else if (result.status === 'error')  setUpdateStatus('error')
+    // 'available' is handled by the onUpdateAvailable listener
+  }
+
+  function downloadUpdate() {
+    setUpdateStatus('downloading')
+    window.electronAPI.downloadUpdate()
+  }
+
+  function installUpdate() {
+    window.electronAPI.installUpdate()
+  }
+
+  const updateLabel = {
+    checking:    'Checking…',
+    'up-to-date':'Up to date ✓',
+    available:   `Update to v${updateVersion}`,
+    downloading: `Downloading… ${progress}%`,
+    ready:       'Restart & Install',
+    error:       'Check failed — try again',
+  }[updateStatus]
+
+  const updateAction = {
+    available:   downloadUpdate,
+    ready:       installUpdate,
+    error:       checkForUpdates,
+  }[updateStatus] || checkForUpdates
+
   return (
     <div style={S.section}>
       <SectionHeader title="ABOUT" C={C} />
@@ -796,7 +848,7 @@ function AboutSection({ C }) {
         <div style={S.aboutHero}>
           <div style={S.aboutLogo}>B</div>
           <div style={{ ...S.rowLabel, color: C.text, fontSize: 15, fontWeight: 700 }}>BTI Voice</div>
-          <div style={{ ...S.rowDesc, color: C.textMuted }}>Version 1.0.0</div>
+          <div style={{ ...S.rowDesc, color: C.textMuted }}>Version {version}</div>
           <div style={{ ...S.rowDesc, color: C.textMuted, marginTop: 4 }}>
             Created by Danny Roche · Business Technology Insight, LLC
           </div>
@@ -808,6 +860,30 @@ function AboutSection({ C }) {
           >
             Need Help? →
           </a>
+
+          {isElectron && (
+            <button
+              onClick={updateStatus === 'checking' || updateStatus === 'downloading' ? undefined : updateAction}
+              style={{
+                marginTop: 14,
+                padding: '7px 18px',
+                borderRadius: 8,
+                border: 'none',
+                cursor: updateStatus === 'checking' || updateStatus === 'downloading' ? 'default' : 'pointer',
+                fontSize: 12,
+                fontWeight: 600,
+                background: updateStatus === 'ready' ? '#22c55e'
+                          : updateStatus === 'error'  ? 'rgba(239,68,68,0.15)'
+                          : updateStatus === 'up-to-date' ? 'rgba(79,156,249,0.1)'
+                          : '#4f9cf9',
+                color: updateStatus === 'error' ? '#ef4444'
+                     : updateStatus === 'up-to-date' ? '#4f9cf9'
+                     : 'white',
+              }}
+            >
+              {updateLabel || 'Check for Updates'}
+            </button>
+          )}
         </div>
       </Card>
     </div>
