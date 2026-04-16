@@ -1,6 +1,7 @@
 const express = require('express');
 const { pool } = require('../db');
 const { requireAuth } = require('../auth');
+const { createNotification } = require('../notifications');
 
 const router = express.Router();
 
@@ -176,10 +177,23 @@ router.patch('/:id/assign', requireAuth, async (req, res) => {
 
 // Mark conversation as resolved
 router.patch('/:id/resolve', requireAuth, async (req, res) => {
-  await pool.query(
-    'UPDATE conversations SET is_resolved = true WHERE id = $1',
-    [req.params.id]
+  const convId = req.params.id;
+  await pool.query('UPDATE conversations SET is_resolved = true WHERE id = $1', [convId]);
+
+  // Look up contact name for the notification
+  const { rows: [conv] } = await pool.query(
+    `SELECT c.name, c.phone_number
+     FROM conversations v JOIN contacts c ON c.id = v.contact_id
+     WHERE v.id = $1`, [convId]
   );
+  const label = conv?.name || conv?.phone_number || 'a contact';
+  createNotification({
+    type:  'resolved',
+    title: 'Conversation resolved',
+    body:  `${req.agent.name} resolved the thread with ${label}.`,
+    meta:  { conversation_id: parseInt(convId) },
+  });
+
   res.json({ success: true });
 });
 

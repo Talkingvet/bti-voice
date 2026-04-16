@@ -15,6 +15,7 @@ import DialpadTab                  from './components/tabs/DialpadTab'
 import ContactsTab                 from './components/tabs/ContactsTab'
 import CallsTab                    from './components/tabs/CallsTab'
 import SettingsTab                 from './components/tabs/SettingsTab'
+import NotificationsTab            from './components/tabs/NotificationsTab'
 import { api } from './api'
 
 const BASE_AT_KEY   = 'bti_notif_base_at'
@@ -38,9 +39,10 @@ function AppInner() {
   const [navConvId,  setNavConvId]  = useState(null)   // deep-link into a specific SMS conversation
   const [smsOpenChat, setSmsOpenChat] = useState(false) // true when a conversation thread is open
   const [agentStatus, setAgentStatus] = useState('online')
-  const [compose,    setCompose]    = useState(false)
-  const [notifOpen,  setNotifOpen]  = useState(false)
-  const [activity,   setActivity]   = useState([])
+  const [compose,      setCompose]      = useState(false)
+  const [notifOpen,    setNotifOpen]    = useState(false)
+  const [activity,     setActivity]     = useState([])
+  const [unreadNotifs, setUnreadNotifs] = useState(0)  // badge on Notifications tab
 
   // Per-item read tracking (individual) + base timestamp (everything before this is auto-old)
   const [baseAt,    setBaseAt]    = useState(
@@ -166,6 +168,29 @@ function AppInner() {
       socket.off('call_logged', loadActivity)
     }
   }, [agent, loadActivity])
+
+  // Load initial unread notification count + listen for new ones
+  useEffect(() => {
+    if (!agent) return
+    api.notifications().then(data => {
+      setUnreadNotifs(data.filter(n => !n.read).length)
+    }).catch(() => {})
+    const socket = getSocket()
+    function handleNewNotif() {
+      // Only bump badge if not already on the notifications tab
+      setActiveTab(prev => {
+        if (prev !== 'notifications') setUnreadNotifs(c => c + 1)
+        return prev
+      })
+    }
+    socket.on('notification', handleNewNotif)
+    return () => socket.off('notification', handleNewNotif)
+  }, [agent])
+
+  // Clear badge when user opens the notifications tab
+  useEffect(() => {
+    if (activeTab === 'notifications') setUnreadNotifs(0)
+  }, [activeTab])
 
   // Sync own status in real-time when another session changes it
   useEffect(() => {
@@ -413,7 +438,8 @@ function AppInner() {
             }}
           />
         )}
-        {activeTab === 'settings' && <SettingsTab agent={agent} onLogout={handleLogout} />}
+        {activeTab === 'settings'       && <SettingsTab       agent={agent} onLogout={handleLogout} />}
+        {activeTab === 'notifications'  && <NotificationsTab  agent={agent} />}
 
         {/* Active call panel — overlays the content area during any call */}
         {activeCall && (
@@ -434,7 +460,7 @@ function AppInner() {
         <ComposePenIcon />
       </button>}
 
-      <BottomNav activeTab={activeTab} onChange={setActiveTab} />
+      <BottomNav activeTab={activeTab} onChange={setActiveTab} notifCount={unreadNotifs} />
 
       {compose && (
         <NewMessageModal

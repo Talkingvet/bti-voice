@@ -159,6 +159,20 @@ async function migrate() {
     ALTER TABLE conversations ADD COLUMN IF NOT EXISTS assigned_agent_id INTEGER REFERENCES agents(id);
   `);
 
+  // Phase 4: Notifications
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS notifications (
+      id         SERIAL PRIMARY KEY,
+      type       VARCHAR(30) NOT NULL,
+      title      TEXT        NOT NULL,
+      body       TEXT,
+      color      VARCHAR(20) DEFAULT '#3b82f6',
+      read       BOOLEAN     DEFAULT false,
+      meta       JSONB       DEFAULT '{}',
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
+
   console.log('[db] Migrations complete.');
 }
 

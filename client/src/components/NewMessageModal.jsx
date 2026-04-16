@@ -181,14 +181,6 @@ export default function NewMessageModal({ currentAgent, onClose, onSent }) {
             Cancel
           </button>
           <div style={S.sendGroup}>
-            {/* Schedule send placeholder */}
-            <button
-              style={{ ...S.scheduleBtn, background: C.surface, border: `1px solid ${C.border}`, color: C.textSec }}
-              title="Schedule send (coming soon)"
-              disabled
-            >
-              <ScheduleIcon />
-            </button>
             <button
               style={{ ...S.sendBtn, opacity: sending ? 0.6 : 1 }}
               onClick={handleSend}

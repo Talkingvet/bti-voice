@@ -1,21 +1,23 @@
-/* Bottom navigation bar — Contacts | Messages | Calls | Dialpad | Settings */
+/* Bottom navigation bar — Contacts | Messages | Calls | Dialpad | Notifications | Settings */
 import { useColors } from '../useColors'
 
 const TABS = [
-  { id: 'contacts', label: 'Contacts', Icon: ContactsIcon },
-  { id: 'sms',      label: 'Messages', Icon: ChatIcon     },
-  { id: 'calls',    label: 'Calls',    Icon: CallHistIcon },
-  { id: 'dialpad',  label: 'Dialpad',  Icon: DialpadIcon  },
-  { id: 'settings', label: 'Settings', Icon: SettingsIcon },
+  { id: 'contacts',      label: 'Contacts', Icon: ContactsIcon },
+  { id: 'sms',           label: 'Messages', Icon: ChatIcon     },
+  { id: 'calls',         label: 'Calls',    Icon: CallHistIcon },
+  { id: 'dialpad',       label: 'Dialpad',  Icon: DialpadIcon  },
+  { id: 'notifications', label: 'Alerts',   Icon: BellIcon     },
+  { id: 'settings',      label: 'Settings', Icon: SettingsIcon },
 ]
 
-export default function BottomNav({ activeTab, onChange }) {
+export default function BottomNav({ activeTab, onChange, notifCount = 0 }) {
   const C = useColors()
 
   return (
     <div style={{ ...S.bar, background: C.navBg, borderTop: `1px solid ${C.navBorder}` }}>
       {TABS.map(({ id, label, Icon }) => {
         const active = activeTab === id
+        const badge  = id === 'notifications' && notifCount > 0 ? notifCount : 0
         return (
           <button
             key={id}
@@ -24,8 +26,11 @@ export default function BottomNav({ activeTab, onChange }) {
             title={label}
           >
             {active && <div style={S.pip} />}
-            <div style={{ ...S.icon, color: active ? '#4f9cf9' : C.navIcon }}>
-              <Icon size={21} />
+            <div style={{ ...S.icon, color: active ? '#4f9cf9' : C.navIcon, position: 'relative' }}>
+              <Icon size={20} />
+              {badge > 0 && (
+                <span style={S.badge}>{badge > 9 ? '9+' : badge}</span>
+              )}
             </div>
             <span style={{ ...S.label, color: active ? '#4f9cf9' : C.navLabel }}>
               {label}
@@ -38,7 +43,7 @@ export default function BottomNav({ activeTab, onChange }) {
 }
 
 /* ── Icons ───────────────────────────────────────────────────────── */
-function ContactsIcon({ size = 21 }) {
+function ContactsIcon({ size = 20 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
@@ -48,21 +53,21 @@ function ContactsIcon({ size = 21 }) {
     </svg>
   )
 }
-function ChatIcon({ size = 21 }) {
+function ChatIcon({ size = 20 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
     </svg>
   )
 }
-function CallHistIcon({ size = 21 }) {
+function CallHistIcon({ size = 20 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.42 2 2 0 0 1 3.58 1.25h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 9.91a16 16 0 0 0 6.16 6.16l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
     </svg>
   )
 }
-function DialpadIcon({ size = 21 }) {
+function DialpadIcon({ size = 20 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <circle cx="5"  cy="5"  r="1.5" fill="currentColor" />
@@ -77,7 +82,15 @@ function DialpadIcon({ size = 21 }) {
     </svg>
   )
 }
-function SettingsIcon({ size = 21 }) {
+function BellIcon({ size = 20 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+    </svg>
+  )
+}
+function SettingsIcon({ size = 20 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="3" />
@@ -96,7 +109,7 @@ const S = {
   btn: {
     flex: 1, position: 'relative',
     display: 'flex', flexDirection: 'column',
-    alignItems: 'center', justifyContent: 'center', gap: 3,
+    alignItems: 'center', justifyContent: 'center', gap: 2,
     border: 'none', cursor: 'pointer',
     padding: '6px 0 4px',
     transition: 'background 0.12s',
@@ -107,9 +120,16 @@ const S = {
     width: 22, height: 3,
     background: '#4f9cf9', borderRadius: '0 0 3px 3px',
   },
+  badge: {
+    position: 'absolute', top: -4, right: -6,
+    background: '#ef4444', color: 'white',
+    borderRadius: 8, fontSize: 8, fontWeight: 800,
+    padding: '1px 4px', lineHeight: 1.4,
+    pointerEvents: 'none',
+  },
   icon:  { display: 'flex', transition: 'color 0.12s' },
   label: {
-    fontSize: 9, fontWeight: 700,
+    fontSize: 8, fontWeight: 700,
     textTransform: 'uppercase', letterSpacing: '0.4px',
     lineHeight: 1, transition: 'color 0.12s',
   },

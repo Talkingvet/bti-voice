@@ -1,6 +1,7 @@
 const express = require('express');
 const { pool } = require('../db');
 const { getIO } = require('../socket');
+const { createNotification } = require('../notifications');
 
 // Fire-and-forget Zoho sync — never blocks the Twilio webhook response
 function syncSMSToZoho(messageId) {
@@ -70,6 +71,15 @@ router.post('/', async (req, res) => {
 
     // Sync inbound SMS to Zoho CRM (fire-and-forget)
     syncSMSToZoho(message.id);
+
+    // Create notification for inbound message
+    const contactLabel = contact.name || From;
+    createNotification({
+      type:  'sms',
+      title: `New message from ${contactLabel}`,
+      body:  Body.length > 100 ? Body.slice(0, 100) + '…' : Body,
+      meta:  { conversation_id: conv.id, from_number: From },
+    });
 
     // Broadcast to all connected clients
     const io = getIO();

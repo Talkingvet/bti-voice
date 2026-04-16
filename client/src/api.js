@@ -94,4 +94,11 @@ export const api = {
 
   // Conversation assignment
   assignConversation: (convId, agent_id) => request(`/conversations/${convId}/assign`, { method: 'PATCH', body: { agent_id } }),
+
+  // Notifications
+  notifications:        ()    => request('/notifications'),
+  markNotifRead:        (id)  => request(`/notifications/${id}/read`, { method: 'PATCH' }),
+  markAllNotifsRead:    ()    => request('/notifications/read-all', { method: 'POST' }),
+  dismissNotif:         (id)  => request(`/notifications/${id}`, { method: 'DELETE' }),
+  clearReadNotifs:      ()    => request('/notifications', { method: 'DELETE' }),
 }

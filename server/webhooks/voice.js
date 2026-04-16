@@ -2,6 +2,7 @@ const express = require('express');
 const twilio  = require('twilio');
 const { pool } = require('../db');
 const { getIO } = require('../socket');
+const { createNotification } = require('../notifications');
 
 const router = express.Router();
 
@@ -476,6 +477,14 @@ router.post('/status', async (req, res) => {
       // Send missed-call auto-text if enabled
       if (status === 'missed' && callDir === 'inbound') {
         sendMissedCallAutoText(phone);
+        // Create missed call notification
+        const contactLabel = contact?.name || phone;
+        createNotification({
+          type:  'missed_call',
+          title: `Missed call – ${contactLabel}`,
+          body:  `${phone} called and no one answered.`,
+          meta:  { call_id: call.id, phone },
+        });
       }
 
       // Sync to Zoho CRM
