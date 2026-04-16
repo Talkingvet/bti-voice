@@ -73,6 +73,16 @@ export default function CallsTab({ agent }) {
   const [expandedCall, setExpandedCall] = useState(null)
   const [search,       setSearch]       = useState('')
 
+  // When user opens the voicemail sub-tab, mark all unplayed voicemails as played in DB
+  useEffect(() => {
+    if (subTab !== 'voicemails') return
+    const unplayed = voicemails.filter(v => !v.played)
+    if (unplayed.length === 0) return
+    unplayed.forEach(v => api.markVoicemailPlayed(v.id).catch(() => {}))
+    setVoicemails(prev => prev.map(v => ({ ...v, played: true })))
+    setUnreadVm(0)
+  }, [subTab]) // eslint-disable-line
+
   const loadCalls = useCallback(() => {
     api.calls().then(setCalls).catch(console.error)
   }, [])
