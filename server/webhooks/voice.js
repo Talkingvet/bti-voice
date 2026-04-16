@@ -11,6 +11,8 @@ const router = express.Router();
 // console statusCallback config. Fire-and-forget, never throws.
 function autoLogCall({ callSid, from, to, duration, direction, status }) {
   if (!callSid || !from) return;
+  // Skip internal Twilio browser-client identifiers (e.g. "client:agent_2")
+  if (from.toLowerCase().startsWith('client:') || (to || '').toLowerCase().startsWith('client:')) return;
   setImmediate(async () => {
     try {
       const port = process.env.PORT || 3000;
@@ -402,6 +404,9 @@ router.post('/status', async (req, res) => {
   const terminal = ['completed', 'no-answer', 'busy', 'failed', 'canceled'];
   if (!terminal.includes(CallStatus)) return;
   if (req.body.ParentCallSid) return; // child leg — skip
+  // Skip browser-client legs (To = "client:agent_X") — not real PSTN calls
+  if ((req.body.To || '').toLowerCase().startsWith('client:')) return;
+  if ((req.body.From || '').toLowerCase().startsWith('client:')) return;
 
   const phone    = Direction === 'inbound' ? From : To;
   const duration = parseInt(CallDuration) || 0;
@@ -415,12 +420,32 @@ router.post('/status', async (req, res) => {
   // Fire-and-forget — don't let errors bubble
   setImmediate(async () => {
     try {
-      // Check if this call SID was already logged by the frontend
+      // Check if this call SID was already logged (by frontend or a previous webhook)
       const existing = await pool.query(
         'SELECT id FROM calls WHERE twilio_call_sid = $1', [CallSid]
       );
       if (existing.rows.length > 0) {
         console.log(`[status] CallSid ${CallSid} already logged — skipping`);
+        return;
+      }
+
+      // Secondary dedup: if the frontend logged without a SID (null), check for a
+      // matching call by phone + direction within the last 2 minutes to avoid doubles
+      const twoMinsAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+      const dupeCheck = await pool.query(`
+        SELECT ca.id FROM calls ca
+        JOIN conversations cv ON cv.id = ca.conversation_id
+        JOIN contacts co ON co.id = cv.contact_id
+        WHERE ca.twilio_call_sid IS NULL
+          AND ca.direction = $1
+          AND co.phone_number = ANY($2::text[])
+          AND ca.started_at > $3
+        LIMIT 1
+      `, [callDir, [normalized, phone], twoMinsAgo]);
+      if (dupeCheck.rows.length > 0) {
+        // Update the existing record with the SID so future dedup works
+        await pool.query('UPDATE calls SET twilio_call_sid = $1 WHERE id = $2', [CallSid, dupeCheck.rows[0].id]);
+        console.log(`[status] Matched SID-less call for ${phone} — updated SID, skipping duplicate`);
         return;
       }
 

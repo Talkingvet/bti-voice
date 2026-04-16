@@ -101,13 +101,10 @@ function AppInner() {
         device.on('incoming', call => {
           if (!mounted) return
           // Auto-dismiss if caller hangs up before agent answers
+          // Note: do NOT log here — the Twilio status webhook handles missed/cancelled inbound calls
           call.on('cancel', () => {
             stopRingtone()
             setIncomingCall(null)
-            // Log as missed call
-            const from = call.parameters?.From
-            if (from) api.logCallByPhone(from, 0, 'inbound', new Date().toISOString())
-              .catch(console.error)
           })
           startRingtone()
           setIncomingCall(call)
@@ -367,14 +364,10 @@ function AppInner() {
 
   function rejectIncoming() {
     if (incomingCall) {
-      const from    = incomingCall.parameters?.From
-      const callSid = incomingCall.parameters?.CallSid
       incomingCall.reject()
       stopRingtone()
       setIncomingCall(null)
-      // Log as missed (webhook will also log, but send SID so frontend wins if faster)
-      if (from) api.logCallByPhone(from, 0, 'inbound', new Date().toISOString(), callSid)
-        .catch(console.error)
+      // Twilio status webhook handles logging the missed call — no frontend log needed
     }
   }
 

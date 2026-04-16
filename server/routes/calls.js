@@ -200,7 +200,15 @@ router.get('/voicemails', requireAuth, async (req, res) => {
 // Proxy a Twilio recording so the browser can play it without needing Basic auth.
 // Twilio recording URLs require Account SID + Auth Token credentials; a browser
 // <audio> tag can't supply those, so we fetch server-side and stream to the client.
-router.get('/:id/recording', requireAuth, async (req, res) => {
+// Auth: accepts Bearer header OR ?token= query param (needed for <audio src> and download links).
+router.get('/:id/recording', async (req, res) => {
+  // Accept token from Authorization header OR query param (audio elements can't send headers)
+  const jwt    = require('jsonwebtoken');
+  const SECRET = process.env.JWT_SECRET || 'bti-voice-dev-secret';
+  const raw    = req.headers.authorization?.replace('Bearer ', '') || req.query.token;
+  if (!raw) return res.status(401).json({ error: 'Unauthorized' });
+  try { jwt.verify(raw, SECRET); } catch { return res.status(401).json({ error: 'Invalid token' }); }
+
   try {
     const { rows: [call] } = await pool.query(
       'SELECT recording_url FROM calls WHERE id = $1', [req.params.id]
@@ -220,9 +228,11 @@ router.get('/:id/recording', requireAuth, async (req, res) => {
       return res.status(audioRes.status).json({ error: `Twilio returned ${audioRes.status}` });
     }
 
-    // Forward content-type and stream the body straight to the client
+    // Forward content-type, content-length (needed for seek/duration), and stream
     res.set('Content-Type', audioRes.headers.get('content-type') || 'audio/mpeg');
     res.set('Cache-Control', 'private, max-age=3600');
+    const cl = audioRes.headers.get('content-length');
+    if (cl) res.set('Content-Length', cl);
 
     const { Readable } = require('stream');
     Readable.fromWeb(audioRes.body).pipe(res);

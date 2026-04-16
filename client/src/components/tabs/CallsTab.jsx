@@ -4,6 +4,13 @@ import { api } from '../../api'
 import { useColors } from '../../useColors'
 import { getSocket } from '../../socket'
 
+// Build an authenticated recording URL using a query-param token
+// (audio elements and download links can't send Authorization headers)
+function recordingUrl(callId) {
+  const token = localStorage.getItem('bti_token') || ''
+  return `/api/calls/${callId}/recording?token=${encodeURIComponent(token)}`
+}
+
 /* ── Helpers ─────────────────────────────────────────────────────── */
 function fmtTime(d) {
   return new Date(d).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
@@ -232,9 +239,9 @@ function CallRow({ call, expanded, onToggle, C }) {
         </div>
         <div style={S.rowRight}>
           <div style={{ ...S.rowTime, color: C.textMuted }}>{fmtTime(call.started_at)}</div>
-          {duration
-            ? <div style={{ ...S.rowDur, color: C.textSec }}>⏱ {duration}</div>
-            : <div style={{ ...S.rowDur, color: '#ef4444' }}>Missed</div>
+          {isMissed
+            ? <div style={{ ...S.rowDur, color: '#ef4444' }}>Missed</div>
+            : <div style={{ ...S.rowDur, color: C.textSec }}>⏱ {duration || '0:00'}</div>
           }
         </div>
         {hasDetail && (
@@ -246,8 +253,17 @@ function CallRow({ call, expanded, onToggle, C }) {
         <div style={{ background: C.surface, borderBottom: `1px solid ${C.borderItem}`, padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
           {call.recording_url && (
             <div>
-              <div style={{ ...S.rowTime, color: C.textMuted, marginBottom: 4 }}>RECORDING</div>
-              <audio controls style={{ width: '100%', height: 36 }} src={`/api/calls/${call.id}/recording`} />
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                <div style={{ ...S.rowTime, color: C.textMuted }}>RECORDING</div>
+                <a
+                  href={recordingUrl(call.id)}
+                  download={`call-${call.id}.mp3`}
+                  style={{ fontSize: 10, color: '#4f9cf9', textDecoration: 'none', fontWeight: 600 }}
+                >
+                  ⬇ Download
+                </a>
+              </div>
+              <audio controls style={{ width: '100%', height: 36 }} src={recordingUrl(call.id)} />
             </div>
           )}
           {call.ai_summary && (
@@ -314,12 +330,21 @@ function VmRow({ vm, isPlaying, onToggle, C }) {
       {isPlaying && (
         <div style={{ ...S.miniPlayer, background: C.surface, borderBottom: `1px solid ${C.border}` }}>
           {vm.recording_url ? (
-            <audio
-              controls
-              autoPlay
-              style={{ width: '100%', height: 36, outline: 'none' }}
-              src={`/api/calls/${vm.id}/recording`}
-            />
+            <>
+              <audio
+                controls
+                autoPlay
+                style={{ width: '100%', height: 36, outline: 'none' }}
+                src={recordingUrl(vm.id)}
+              />
+              <a
+                href={recordingUrl(vm.id)}
+                download={`voicemail-${vm.id}.mp3`}
+                style={{ display: 'block', marginTop: 6, fontSize: 10, color: '#4f9cf9', textDecoration: 'none', fontWeight: 600 }}
+              >
+                ⬇ Download voicemail
+              </a>
+            </>
           ) : (
             <div style={{ ...S.playerNote, color: C.textMuted }}>No recording available.</div>
           )}
