@@ -539,16 +539,26 @@ function ZohoPanel({ profile, loading, open, onToggle, C }) {
       {open && !loading && profile?.type && (
         <div style={{ padding: '4px 12px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
 
-          {/* Row 1: account + status */}
+          {/* Row 1: ID + status/stage */}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {profile.zoho_id && (
+              <ZField label="Zoho ID" value={profile.zoho_id} mono />
+            )}
+            {profile.lead_status && (
+              <ZField label="Status" value={profile.lead_status} />
+            )}
+            {profile.contact_stage && (
+              <ZField label="Stage" value={profile.contact_stage} />
+            )}
+          </div>
+
+          {/* Row 2: account + type + source */}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {profile.account_name && (
               <ZField label="Account" value={profile.account_name} />
             )}
             {profile.account_type && (
               <ZField label="Type" value={profile.account_type} />
-            )}
-            {profile.lead_status && (
-              <ZField label="Status" value={profile.lead_status} />
             )}
             {profile.lead_source && (
               <ZField label="Source" value={profile.lead_source} />
@@ -618,12 +628,12 @@ function ZohoPanel({ profile, loading, open, onToggle, C }) {
   )
 }
 
-function ZField({ label, value }) {
+function ZField({ label, value, mono }) {
   if (!value) return null
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 80 }}>
       <span style={{ fontSize: 9, fontWeight: 700, color: '#8b96ab', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</span>
-      <span style={{ fontSize: 11, color: '#d1d9e6', fontWeight: 500 }}>{value}</span>
+      <span style={{ fontSize: 11, color: '#d1d9e6', fontWeight: 500, fontFamily: mono ? 'monospace' : 'inherit' }}>{value}</span>
     </div>
   )
 }

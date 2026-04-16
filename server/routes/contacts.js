@@ -183,8 +183,9 @@ router.get('/:id/zoho-profile', async (req, res) => {
       email:        null,
       account_name: null,
       account_type: null,
-      lead_status:  null,
-      lead_source:  null,
+      lead_status:   null,
+      lead_source:   null,
+      contact_stage: null,
       description:  null,
       last_activity:null,
       created_at:   null,
@@ -212,7 +213,7 @@ router.get('/:id/zoho-profile', async (req, res) => {
       // Fetch Contact fields
       try {
         const contactData = await zohoAPI('GET',
-          `/Contacts/${zohoId}?fields=Full_Name,Email,Phone,Mobile,Account_Name,Lead_Source,Description,Modified_Time,Created_Time`
+          `/Contacts/${zohoId}?fields=Full_Name,Email,Phone,Mobile,Account_Name,Lead_Source,Contact_Stage,Description,Modified_Time,Created_Time`
         );
         const c = contactData?.data?.[0];
         if (c) {
@@ -221,8 +222,9 @@ router.get('/:id/zoho-profile', async (req, res) => {
           profile.name         = c.Full_Name || null;
           profile.email        = c.Email || null;
           profile.account_name = c.Account_Name?.name || c.Account_Name || null;
-          profile.lead_source  = c.Lead_Source || null;
-          profile.description  = c.Description || null;
+          profile.lead_source    = c.Lead_Source || null;
+          profile.contact_stage  = c.Contact_Stage || null;
+          profile.description    = c.Description || null;
           profile.last_activity= c.Modified_Time || null;
           profile.created_at   = c.Created_Time || null;
           profile.zoho_url     = `https://crm.zoho.com/crm/tab/Contacts/${zohoId}`;
