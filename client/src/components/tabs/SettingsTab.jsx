@@ -315,7 +315,7 @@ const DENSITIES = [
 function AppearanceSection({ C }) {
   const { theme, toggleTheme } = useTheme()
   const isDark = theme === 'dark'
-  const isElectron = typeof window !== 'undefined' && !!window.electronAPI?.setZoom
+  const isElectron = typeof window !== 'undefined' && !!window.electronAPI
   const [density, setDensity] = useState(() => localStorage.getItem('bti_density') || 'normal')
 
   function applyDensity(key) {
@@ -323,7 +323,7 @@ function AppearanceSection({ C }) {
     if (!d) return
     setDensity(key)
     localStorage.setItem('bti_density', key)
-    if (isElectron) window.electronAPI.setZoom(d.factor, d.w, d.h)
+    if (window.electronAPI?.setZoom) window.electronAPI.setZoom(d.factor, d.w, d.h)
   }
 
   return (
