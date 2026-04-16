@@ -2,11 +2,13 @@ const bcrypt = require('bcryptjs');
 const { pool } = require('./db');
 
 async function seed() {
-  // Create the three agents
+  // Create agents
   const agents = [
-    { name: 'Shawn',  username: 'shawn',  password: 'shawn123',  color: '#3b82f6', initials: 'SH' },
-    { name: 'Danny',  username: 'danny',  password: 'danny123',  color: '#10b981', initials: 'DN' },
-    { name: 'Raven',  username: 'raven',  password: 'raven123',  color: '#8b5cf6', initials: 'RV' },
+    { name: 'Danny Roche',     username: 'danny',  password: 'danny123',  color: '#10b981', initials: 'DR' },
+    { name: 'Shawn Stright',   username: 'shawn',  password: 'shawn123',  color: '#3b82f6', initials: 'SS' },
+    { name: 'Rick Almendras',  username: 'rick',   password: 'rick123',   color: '#8b5cf6', initials: 'RA' },
+    { name: 'Paul Messino',    username: 'paul',   password: 'paul123',   color: '#f59e0b', initials: 'PM' },
+    { name: 'Warren Anderson', username: 'warren', password: 'warren123', color: '#06b6d4', initials: 'WA' },
   ];
 
   for (const a of agents) {
