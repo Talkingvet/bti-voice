@@ -127,6 +127,14 @@ ipcMain.on('win-maximize', () => {
 ipcMain.on('win-close', () => mainWindow?.hide())
 ipcMain.on('win-quit',  () => { app.isQuitting = true; app.quit() })
 
+// ── IPC: UI density / zoom ────────────────────────────────────────
+ipcMain.on('set-zoom', (_, { factor, width, height }) => {
+  if (!mainWindow) return
+  mainWindow.webContents.setZoomFactor(factor)
+  mainWindow.setSize(width, height)
+  mainWindow.setMinimumSize(Math.round(width * 0.85), Math.round(height * 0.85))
+})
+
 // ── IPC: auto-launch ──────────────────────────────────────────────
 ipcMain.handle('get-auto-launch', () => app.getLoginItemSettings().openAtLogin)
 ipcMain.handle('set-auto-launch', (_, enabled) => {

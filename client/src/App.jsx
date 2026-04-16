@@ -128,6 +128,15 @@ function AppInner() {
     }
   }, [agent])
 
+  // ── Apply saved UI density on startup ────────────────────────────────────────
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.electronAPI?.setZoom) return
+    const saved = localStorage.getItem('bti_density') || 'normal'
+    const DENSITY = { compact: { factor: 0.82, w: 345, h: 595 }, normal: { factor: 1.0, w: 420, h: 720 }, comfortable: { factor: 1.12, w: 470, h: 806 } }
+    const d = DENSITY[saved] || DENSITY.normal
+    window.electronAPI.setZoom(d.factor, d.w, d.h)
+  }, [])
+
   // ── Auth check on mount ───────────────────────────────────────────────────────
   useEffect(() => {
     const token = localStorage.getItem('bti_token')

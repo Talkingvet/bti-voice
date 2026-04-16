@@ -12,6 +12,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getAutoLaunch: ()        => ipcRenderer.invoke('get-auto-launch'),
   setAutoLaunch: (enabled) => ipcRenderer.invoke('set-auto-launch', enabled),
 
+  // ── UI density / zoom ────────────────────────────────────────────
+  setZoom: (factor, width, height) => ipcRenderer.send('set-zoom', { factor, width, height }),
+
   // ── Mini call widget IPC ─────────────────────────────────────────
   callStart: (info) => ipcRenderer.send('call-start', info),
   callEnd:   ()     => ipcRenderer.send('call-end'),

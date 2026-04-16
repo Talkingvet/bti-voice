@@ -306,16 +306,60 @@ function StartupCard({ C }) {
 }
 
 /* ── Appearance section ─────────────────────────────────────────────────────── */
+const DENSITIES = [
+  { key: 'compact',     label: 'Compact',     desc: 'Smaller, tighter — similar to Zoho Voice',   factor: 0.82, w: 345, h: 595 },
+  { key: 'normal',      label: 'Normal',       desc: 'Default size',                                factor: 1.0,  w: 420, h: 720 },
+  { key: 'comfortable', label: 'Comfortable',  desc: 'Larger text and buttons',                     factor: 1.12, w: 470, h: 806 },
+]
+
 function AppearanceSection({ C }) {
   const { theme, toggleTheme } = useTheme()
   const isDark = theme === 'dark'
+  const isElectron = typeof window !== 'undefined' && !!window.electronAPI?.setZoom
+  const [density, setDensity] = useState(() => localStorage.getItem('bti_density') || 'normal')
+
+  function applyDensity(key) {
+    const d = DENSITIES.find(x => x.key === key)
+    if (!d) return
+    setDensity(key)
+    localStorage.setItem('bti_density', key)
+    if (isElectron) window.electronAPI.setZoom(d.factor, d.w, d.h)
+  }
 
   return (
     <div style={S.section}>
       <SectionHeader title="APPEARANCE" C={C} />
       <Card C={C}>
-        <ToggleRow label="Dark Mode" desc={isDark ? 'Using dark charcoal theme' : 'Using light theme'} value={isDark} onChange={toggleTheme} C={C} last />
+        <ToggleRow label="Dark Mode" desc={isDark ? 'Using dark charcoal theme' : 'Using light theme'} value={isDark} onChange={toggleTheme} C={C} />
       </Card>
+
+      {isElectron && (
+        <Card C={C}>
+          <div style={{ padding: '12px 16px' }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 4 }}>App Size</div>
+            <div style={{ fontSize: 11, color: C.textSec, marginBottom: 12 }}>Controls the overall scale of the app window</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {DENSITIES.map(d => (
+                <button
+                  key={d.key}
+                  onClick={() => applyDensity(d.key)}
+                  style={{
+                    flex: 1, padding: '10px 6px', borderRadius: 10, cursor: 'pointer',
+                    border: density === d.key ? '2px solid #4f9cf9' : `2px solid ${C.border}`,
+                    background: density === d.key ? 'rgba(79,156,249,0.1)' : C.surface,
+                    color: density === d.key ? '#4f9cf9' : C.textSec,
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  <span style={{ fontSize: 12, fontWeight: density === d.key ? 700 : 500 }}>{d.label}</span>
+                  <span style={{ fontSize: 9, opacity: 0.7, textAlign: 'center', lineHeight: 1.3 }}>{d.desc}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </Card>
+      )}
     </div>
   )
 }
