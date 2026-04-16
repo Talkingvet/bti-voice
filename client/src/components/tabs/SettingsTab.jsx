@@ -4,7 +4,7 @@ import { useTheme }    from '../../ThemeContext'
 import { useColors }   from '../../useColors'
 import { api }         from '../../api'
 import { getSoundPrefs, setSoundPref, startRingtone, stopRingtone, playDTMF } from '../../dtmf'
-import { applyFont }   from '../../App'
+import { applyFont }   from '../../utils/font'
 
 const FONTS = [
   { key: 'system',            label: 'System',        sample: 'Aa' },

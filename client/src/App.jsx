@@ -18,20 +18,10 @@ import CallsTab                    from './components/tabs/CallsTab'
 import SettingsTab                 from './components/tabs/SettingsTab'
 import NotificationsTab            from './components/tabs/NotificationsTab'
 import { api } from './api'
+import { applyFont } from './utils/font'
 
 const BASE_AT_KEY   = 'bti_notif_base_at'
 const READ_KEYS_KEY = 'bti_notif_read_keys'
-
-const FONT_STACKS = {
-  system:            `-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`,
-  'Plus Jakarta Sans': `'Plus Jakarta Sans', sans-serif`,
-  'DM Sans':           `'DM Sans', sans-serif`,
-  'Figtree':           `'Figtree', sans-serif`,
-  'Outfit':            `'Outfit', sans-serif`,
-}
-export function applyFont(key) {
-  document.body.style.fontFamily = FONT_STACKS[key] || FONT_STACKS.system
-}
 
 function loadReadKeys() {
   try { return new Set(JSON.parse(localStorage.getItem(READ_KEYS_KEY) || '[]')) } catch { return new Set() }
@@ -67,6 +57,7 @@ function AppInner() {
   const [incomingCall,  setIncomingCall]  = useState(null)
   const [activeCall,    setActiveCall]    = useState(null)
   const [callerInfo,    setCallerInfo]    = useState(null)  // { phone, name }
+  const [deviceStatus,  setDeviceStatus]  = useState('idle') // 'idle' | 'registering' | 'registered' | 'unregistered' | 'error'
   const deviceRef    = useRef(null)
   const callStartRef = useRef(null)   // timestamp when call was answered
   const activeCallRef = useRef(null)  // mirrors activeCall state — accessible in IPC closures
@@ -77,12 +68,34 @@ function AppInner() {
 
     async function initDevice() {
       try {
+        setDeviceStatus('registering')
         const { token } = await api.voiceToken()
         if (!mounted) return
 
         const device = new Device(token, {
           logLevel: 'warn',
           codecPreferences: ['opus', 'pcmu'],
+        })
+
+        device.on('registered', () => {
+          console.log('[Twilio] Device registered — ready for incoming calls')
+          if (mounted) setDeviceStatus('registered')
+        })
+
+        device.on('unregistered', async () => {
+          console.warn('[Twilio] Device unregistered — attempting re-register…')
+          if (!mounted) return
+          setDeviceStatus('unregistered')
+          // Auto re-register: refresh token first, then register
+          try {
+            const { token: t } = await api.voiceToken()
+            if (!mounted) return
+            device.updateToken(t)
+            await device.register()
+          } catch (e) {
+            console.error('[Twilio] re-register failed', e)
+            if (mounted) setDeviceStatus('error')
+          }
         })
 
         device.on('incoming', call => {
@@ -107,7 +120,10 @@ function AppInner() {
           } catch (e) { console.error('[Twilio] token refresh failed', e) }
         })
 
-        device.on('error', err => console.error('[Twilio Device]', err))
+        device.on('error', err => {
+          console.error('[Twilio Device]', err)
+          if (mounted) setDeviceStatus('error')
+        })
 
         // Apply noise suppression / echo cancellation from user prefs
         const applyAudioConstraints = (dev) => {
@@ -128,8 +144,11 @@ function AppInner() {
         deviceRef.current = device
         deviceRef._cleanupNoise = () => window.removeEventListener('bti_noise_pref_change', onPrefChange)
         if (mounted) setTwilioDevice(device)
+        // 'registered' event fires after register() resolves, but set it here as a fallback
+        if (mounted) setDeviceStatus('registered')
       } catch (e) {
         console.error('[Twilio init]', e)
+        if (mounted) setDeviceStatus('error')
       }
     }
 
@@ -139,6 +158,7 @@ function AppInner() {
       stopRingtone()
       if (deviceRef._cleanupNoise) { deviceRef._cleanupNoise(); deviceRef._cleanupNoise = null }
       if (deviceRef.current) { deviceRef.current.destroy(); deviceRef.current = null }
+      setDeviceStatus('idle')
     }
   }, [agent])
 
@@ -377,7 +397,7 @@ function AppInner() {
       background: isDark ? '#161b24' : '#f4f6f9',
       border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.1)'}`,
     }}>
-      <TitleBar agent={agent} unreadCount={unreadCount} onBellClick={handleBellClick} agentStatus={agentStatus} onStatusChange={handleStatusChange} />
+      <TitleBar agent={agent} unreadCount={unreadCount} onBellClick={handleBellClick} agentStatus={agentStatus} onStatusChange={handleStatusChange} deviceStatus={deviceStatus} />
 
       {notifOpen && (
         <NotificationsPanel

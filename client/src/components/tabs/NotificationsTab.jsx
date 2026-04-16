@@ -29,6 +29,11 @@ export default function NotificationsTab({ agent }) {
     return () => socket.off('notification')
   }, [load])
 
+  // Auto-mark all as read when the tab is opened
+  useEffect(() => {
+    api.markAllNotifsRead().catch(() => {})
+  }, [])
+
   const unread = notifications.filter(n => !n.read).length
 
   async function markRead(id) {

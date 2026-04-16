@@ -20,7 +20,16 @@ function normalizeStatus(s) {
   return STATUSES.find(x => x.value === s) ? s : 'available'
 }
 
-export default function TitleBar({ agent, unreadCount = 0, onBellClick, agentStatus = 'available', onStatusChange }) {
+// Maps deviceStatus → { color, tooltip }
+const DEVICE_STATUS_UI = {
+  idle:         { color: '#6b7280', label: 'Voice: initializing' },
+  registering:  { color: '#f59e0b', label: 'Voice: connecting…' },
+  registered:   { color: '#22c55e', label: 'Voice: ready' },
+  unregistered: { color: '#f59e0b', label: 'Voice: reconnecting…' },
+  error:        { color: '#ef4444', label: 'Voice: connection error' },
+}
+
+export default function TitleBar({ agent, unreadCount = 0, onBellClick, agentStatus = 'available', onStatusChange, deviceStatus = 'idle' }) {
   const { theme } = useTheme()
   const isDark = theme === 'dark'
   const [maximized,    setMaximized]    = useState(false)
@@ -99,8 +108,27 @@ export default function TitleBar({ agent, unreadCount = 0, onBellClick, agentSta
         </div>
       )}
 
-      {/* Right: bell + window controls */}
+      {/* Right: voice status dot + bell + window controls */}
       <div style={S.right}>
+        {/* Voice device status indicator */}
+        {agent && (() => {
+          const ds = DEVICE_STATUS_UI[deviceStatus] || DEVICE_STATUS_UI.idle
+          return (
+            <div
+              title={ds.label}
+              style={{
+                width: 7, height: 7, borderRadius: '50%',
+                background: ds.color,
+                flexShrink: 0,
+                // Pulse animation when connecting/reconnecting
+                animation: (deviceStatus === 'registering' || deviceStatus === 'unregistered')
+                  ? 'btiPulse 1.2s ease-in-out infinite' : 'none',
+                marginRight: 2,
+              }}
+            />
+          )
+        })()}
+
         <button style={S.bellBtn} onClick={onBellClick} title="Activity">
           <BellIcon />
           {unreadCount > 0 && (
