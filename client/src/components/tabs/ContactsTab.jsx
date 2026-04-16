@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { api } from '../../api'
 import { useColors } from '../../useColors'
+import { useToast } from '../Toast'
 
 function initials(str) {
   if (!str) return '?'
@@ -33,6 +34,7 @@ function fmtPhone(p) {
 
 export default function ContactsTab({ agent }) {
   const C = useColors()
+  const { toast } = useToast()
   const [contacts,   setContacts]   = useState([])
   const [search,     setSearch]     = useState('')
   const [selected,   setSelected]   = useState(null)
@@ -63,8 +65,9 @@ export default function ContactsTab({ agent }) {
             setContacts(prev => [...prev, created])
             setSelected(created)
             setShowCreate(false)
+            toast.success('Contact created')
           } catch (e) {
-            alert(e.message)
+            toast.error(e.message)
           }
         }}
         onCancel={() => setShowCreate(false)}
@@ -163,8 +166,9 @@ function ContactDetail({ contact, onBack, onUpdate, C }) {
             const updated = await api.updateContact(contact.id, data)
             onUpdate(updated)
             setEditing(false)
+            toast.success('Contact updated')
           } catch (e) {
-            alert(e.message)
+            toast.error(e.message)
           }
         }}
         onCancel={() => setEditing(false)}
@@ -265,16 +269,18 @@ function ContactDetail({ contact, onBack, onUpdate, C }) {
 /* ── Create / Edit form ──────────────────────────────────────────── */
 function ContactForm({ C, initial, onSave, onCancel }) {
   const isEdit = !!initial
-  const [name,  setName]  = useState(initial?.name  || '')
-  const [phone, setPhone] = useState(initial?.phone_number || '')
-  const [notes, setNotes] = useState(initial?.notes || '')
-  const [saving, setSaving] = useState(false)
+  const [name,      setName]      = useState(initial?.name  || '')
+  const [phone,     setPhone]     = useState(initial?.phone_number || '')
+  const [notes,     setNotes]     = useState(initial?.notes || '')
+  const [saving,    setSaving]    = useState(false)
+  const [phoneErr,  setPhoneErr]  = useState('')
 
   async function handleSave() {
     if (!isEdit && !phone.trim()) {
-      alert('Phone number is required')
+      setPhoneErr('Phone number is required')
       return
     }
+    setPhoneErr('')
     setSaving(true)
     try {
       await onSave({ name: name.trim() || null, phone_number: phone.trim(), notes: notes.trim() || null })
@@ -320,13 +326,14 @@ function ContactForm({ C, initial, onSave, onCancel }) {
           <div style={{ ...F.fieldRow }}>
             <label style={{ ...F.label, color: C.textSec }}>Phone</label>
             <input
-              style={{ ...F.input, color: C.text, background: 'transparent' }}
+              style={{ ...F.input, color: C.text, background: 'transparent', borderColor: phoneErr ? '#ef4444' : undefined }}
               placeholder="+1 (555) 000-0000"
               value={phone}
-              onChange={e => setPhone(e.target.value)}
+              onChange={e => { setPhone(e.target.value); setPhoneErr('') }}
               type="tel"
               disabled={isEdit} // phone is immutable once created
             />
+            {phoneErr && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 3 }}>{phoneErr}</div>}
           </div>
         </div>
 

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useColors } from '../../useColors'
 import { playDTMF } from '../../dtmf'
 import { api } from '../../api'
+import { useToast } from '../Toast'
 
 const KEYS = [
   ['1',''],  ['2','ABC'],  ['3','DEF'],
@@ -13,6 +14,7 @@ const KEYS = [
 // device, activeCall, onCallStart, onCallEnd provided by App.jsx
 export default function DialpadTab({ agent, device, activeCall, onCallStart, onCallEnd }) {
   const C = useColors()
+  const { toast } = useToast()
   const [number,       setNumber]       = useState('')
   const [status,       setStatus]       = useState('')
   const [callState,    setCallState]    = useState('idle') // idle | connecting | active
@@ -33,20 +35,21 @@ export default function DialpadTab({ agent, device, activeCall, onCallStart, onC
       const entry = await api.addQuickDial({ name: qdName.trim(), phone_number: qdPhone.trim() })
       setQuickDials(prev => [...prev, entry].sort((a, b) => a.name.localeCompare(b.name)))
       setQdName(''); setQdPhone(''); setAddingQD(false)
+      toast.success('Quick dial saved')
     } catch (e) {
-      alert('Failed to save: ' + e.message)
+      toast.error('Failed to save: ' + e.message)
     } finally {
       setSavingQD(false)
     }
   }
 
   async function handleDeleteQD(id) {
-    if (!window.confirm('Remove this quick dial?')) return
     try {
       await api.deleteQuickDial(id)
       setQuickDials(prev => prev.filter(q => q.id !== id))
+      toast.success('Quick dial removed')
     } catch (e) {
-      alert('Failed to delete: ' + e.message)
+      toast.error('Failed to delete: ' + e.message)
     }
   }
 

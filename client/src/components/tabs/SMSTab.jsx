@@ -4,8 +4,10 @@ import { api }       from '../../api'
 import { getSocket } from '../../socket'
 import ConvList      from '../ConvList'
 import ChatPanel     from '../ChatPanel'
+import { useToast }  from '../Toast'
 
 export default function SMSTab({ agent, navConvId, onNavConvConsumed, device, onCallStart, onCallEnd, onChatOpenChange }) {
+  const { toast } = useToast()
   const [conversations, setConversations] = useState([])
   const [agents,        setAgents]        = useState([])
   const [selectedId,    setSelectedId]    = useState(null)
@@ -75,18 +77,19 @@ export default function SMSTab({ agent, navConvId, onNavConvConsumed, device, on
     try {
       await api.sendMessage(selectedId, body)
     } catch (e) {
-      alert('Send failed: ' + e.message)
+      toast.error('Send failed: ' + e.message)
     }
-  }, [selectedId])
+  }, [selectedId, toast])
 
   const handleAssign = useCallback(async (convId, agentId) => {
     try {
       await api.assignConversation(convId, agentId)
       loadConversations()
+      toast.success('Conversation assigned')
     } catch (e) {
-      alert('Assign failed: ' + e.message)
+      toast.error('Assign failed: ' + e.message)
     }
-  }, [])
+  }, [toast])
 
   const handleBack = useCallback(() => {
     setSelectedId(null)

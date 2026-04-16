@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { api } from '../api'
 import { useColors } from '../useColors'
+import { useToast } from './Toast'
 
 function formatTime(dateStr) {
   return new Date(dateStr).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
@@ -32,6 +33,7 @@ function doubleTextWarning(messages, currentAgent) {
 
 export default function ChatPanel({ conv, messages, loading, currentAgent, agents, onSend, onBack, device, onCallStart, onCallEnd, onAssign }) {
   const C = useColors()
+  const { toast } = useToast()
   const [activeTab,    setActiveTab]   = useState('messages') // 'messages' | 'notes'
   const [body,         setBody]        = useState('')
   const [sending,      setSending]     = useState(false)
@@ -169,25 +171,27 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
         const updated = await api.updateNote(conv.id, editingNote.id, noteBody.trim())
         setNotes(prev => prev.map(n => n.id === updated.id ? updated : n))
         setEditingNote(null)
+        toast.success('Note updated')
       } else {
         const created = await api.addNote(conv.id, noteBody.trim())
         setNotes(prev => [...prev, created])
+        toast.success('Note saved')
       }
       setNoteBody('')
     } catch (e) {
-      alert('Failed to save note: ' + e.message)
+      toast.error('Failed to save note: ' + e.message)
     } finally {
       setSavingNote(false)
     }
   }
 
   async function handleDeleteNote(noteId) {
-    if (!window.confirm('Delete this note?')) return
     try {
       await api.deleteNote(conv.id, noteId)
       setNotes(prev => prev.filter(n => n.id !== noteId))
+      toast.success('Note deleted')
     } catch (e) {
-      alert('Failed to delete note: ' + e.message)
+      toast.error('Failed to delete note: ' + e.message)
     }
   }
 

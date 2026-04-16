@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Device } from '@twilio/voice-sdk'
 import { ThemeProvider, useTheme } from './ThemeContext'
+import { ToastProvider } from './components/Toast'
 import { useColors }               from './useColors'
 import { getSocket }               from './socket'
 import { startRingtone, stopRingtone, playConnected, playDisconnected, getSoundPrefs } from './dtmf'
@@ -474,7 +475,7 @@ function AppInner() {
 }
 
 export default function App() {
-  return <ThemeProvider><AppInner /></ThemeProvider>
+  return <ThemeProvider><ToastProvider><AppInner /></ToastProvider></ThemeProvider>
 }
 
 function ComposePenIcon() {

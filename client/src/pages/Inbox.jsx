@@ -3,8 +3,10 @@ import { api } from '../api'
 import { getSocket } from '../socket'
 import Sidebar from '../components/Sidebar'
 import ChatPanel from '../components/ChatPanel'
+import { useToast } from '../components/Toast'
 
 export default function Inbox({ agent, onLogout }) {
+  const { toast } = useToast()
   const [conversations, setConversations]       = useState([])
   const [agents, setAgents]                     = useState([])
   const [selectedId, setSelectedId]             = useState(null)
@@ -60,9 +62,9 @@ export default function Inbox({ agent, onLogout }) {
       await api.sendMessage(selectedId, body)
       // Message will arrive via socket broadcast
     } catch (e) {
-      alert('Failed to send: ' + e.message)
+      toast.error('Failed to send: ' + e.message)
     }
-  }, [selectedId])
+  }, [selectedId, toast])
 
   const handleResolve = useCallback(async () => {
     if (!selectedId) return

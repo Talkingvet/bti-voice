@@ -909,13 +909,14 @@ function MissedCallAutoTextSection({ C }) {
 
 /* ── Canned Responses section ───────────────────────────────────────────────── */
 function CannedResponsesSection({ C }) {
-  const [list,    setList]    = useState([])
-  const [loading, setLoading] = useState(true)
-  const [showAdd, setShowAdd] = useState(false)
-  const [editing, setEditing] = useState(null) // { id, name, body }
-  const [form,    setForm]    = useState({ name: '', body: '' })
-  const [saving,  setSaving]  = useState(false)
-  const [msg,     setMsg]     = useState('')
+  const [list,       setList]       = useState([])
+  const [loading,    setLoading]    = useState(true)
+  const [showAdd,    setShowAdd]    = useState(false)
+  const [editing,    setEditing]    = useState(null) // { id, name, body }
+  const [form,       setForm]       = useState({ name: '', body: '' })
+  const [saving,     setSaving]     = useState(false)
+  const [msg,        setMsg]        = useState('')
+  const [confirmDel, setConfirmDel] = useState(null) // id pending delete
 
   useEffect(() => {
     api.cannedResponses().then(setList).catch(console.error).finally(() => setLoading(false))
@@ -949,10 +950,12 @@ function CannedResponsesSection({ C }) {
   }
 
   async function handleDelete(id) {
-    if (!window.confirm('Delete this canned response?')) return
+    if (confirmDel !== id) { setConfirmDel(id); return }
+    setConfirmDel(null)
     try {
       await api.deleteCannedResponse(id)
       setList(prev => prev.filter(r => r.id !== id))
+      flash('Deleted ✓')
     } catch (e) {
       flash('Delete failed', true)
     }
@@ -1032,9 +1035,18 @@ function CannedResponsesSection({ C }) {
               <div style={{ ...S.rowLabel, color: '#4f9cf9', fontSize: 12 }}>{r.name}</div>
               <div style={{ ...S.rowDesc, color: C.textMuted, marginTop: 2, lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>{r.body}</div>
             </div>
-            <div style={{ display: 'flex', gap: 4, flexShrink: 0, paddingTop: 2 }}>
-              <button style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: C.textMuted }} onClick={() => startEdit(r)} title="Edit">✏️</button>
-              <button style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#ef4444' }} onClick={() => handleDelete(r.id)} title="Delete">🗑</button>
+            <div style={{ display: 'flex', gap: 4, flexShrink: 0, paddingTop: 2, alignItems: 'center' }}>
+              {confirmDel === r.id ? (
+                <>
+                  <button style={{ fontSize: 11, padding: '2px 7px', borderRadius: 5, border: 'none', background: '#ef4444', color: 'white', cursor: 'pointer', fontWeight: 700 }} onClick={() => handleDelete(r.id)}>Delete</button>
+                  <button style={{ fontSize: 11, padding: '2px 7px', borderRadius: 5, border: 'none', background: 'transparent', color: C.textMuted, cursor: 'pointer' }} onClick={() => setConfirmDel(null)}>Cancel</button>
+                </>
+              ) : (
+                <>
+                  <button style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: C.textMuted }} onClick={() => startEdit(r)} title="Edit">✏️</button>
+                  <button style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#ef4444' }} onClick={() => handleDelete(r.id)} title="Delete">🗑</button>
+                </>
+              )}
             </div>
           </div>
         ))}

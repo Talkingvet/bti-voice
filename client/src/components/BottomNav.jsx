@@ -27,14 +27,11 @@ export default function BottomNav({ activeTab, onChange, notifCount = 0 }) {
           >
             {active && <div style={S.pip} />}
             <div style={{ ...S.icon, color: active ? '#4f9cf9' : C.navIcon, position: 'relative' }}>
-              <Icon size={20} />
+              <Icon size={active ? 22 : 20} />
               {badge > 0 && (
                 <span style={S.badge}>{badge > 9 ? '9+' : badge}</span>
               )}
             </div>
-            <span style={{ ...S.label, color: active ? '#4f9cf9' : C.navLabel }}>
-              {label}
-            </span>
           </button>
         )
       })}
@@ -103,34 +100,29 @@ function SettingsIcon({ size = 20 }) {
 const S = {
   bar: {
     display: 'flex', flexDirection: 'row',
-    height: 60, flexShrink: 0,
+    height: 54, flexShrink: 0,
     userSelect: 'none',
   },
   btn: {
     flex: 1, position: 'relative',
     display: 'flex', flexDirection: 'column',
-    alignItems: 'center', justifyContent: 'center', gap: 2,
+    alignItems: 'center', justifyContent: 'center',
     border: 'none', cursor: 'pointer',
-    padding: '6px 0 4px',
+    padding: '0',
     transition: 'background 0.12s',
   },
   pip: {
     position: 'absolute', top: 0, left: '50%',
     transform: 'translateX(-50%)',
-    width: 22, height: 3,
+    width: 20, height: 2.5,
     background: '#4f9cf9', borderRadius: '0 0 3px 3px',
   },
   badge: {
-    position: 'absolute', top: -4, right: -6,
+    position: 'absolute', top: -5, right: -7,
     background: '#ef4444', color: 'white',
     borderRadius: 8, fontSize: 8, fontWeight: 800,
     padding: '1px 4px', lineHeight: 1.4,
     pointerEvents: 'none',
   },
-  icon:  { display: 'flex', transition: 'color 0.12s' },
-  label: {
-    fontSize: 8, fontWeight: 700,
-    textTransform: 'uppercase', letterSpacing: '0.4px',
-    lineHeight: 1, transition: 'color 0.12s',
-  },
+  icon: { display: 'flex', transition: 'color 0.12s, transform 0.12s' },
 }
