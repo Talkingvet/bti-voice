@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useTheme } from '../ThemeContext'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
@@ -22,9 +23,11 @@ function normalizeStatus(s) {
 export default function TitleBar({ agent, unreadCount = 0, onBellClick, agentStatus = 'available', onStatusChange }) {
   const { theme } = useTheme()
   const isDark = theme === 'dark'
-  const [maximized,   setMaximized]   = useState(false)
+  const [maximized,    setMaximized]    = useState(false)
   const [showDropdown, setShowDropdown] = useState(false)
-  const dropdownRef = useRef(null)
+  const [dropPos,      setDropPos]      = useState({ top: 0, left: 0 })
+  const btnRef     = useRef(null)
+  const dropRef    = useRef(null)
 
   useEffect(() => {
     if (isElectron) {
@@ -32,17 +35,33 @@ export default function TitleBar({ agent, unreadCount = 0, onBellClick, agentSta
     }
   }, [])
 
+  // When dropdown opens, measure button position so the portal can align to it
+  useEffect(() => {
+    if (showDropdown && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect()
+      setDropPos({
+        top:  r.bottom + 6,
+        left: r.left + r.width / 2,
+      })
+    }
+  }, [showDropdown])
+
   // Close dropdown on outside click
   useEffect(() => {
     if (!showDropdown) return
     function handle(e) {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setShowDropdown(false)
+      if (
+        dropRef.current  && !dropRef.current.contains(e.target) &&
+        btnRef.current   && !btnRef.current.contains(e.target)
+      ) {
+        setShowDropdown(false)
+      }
     }
     document.addEventListener('mousedown', handle)
     return () => document.removeEventListener('mousedown', handle)
   }, [showDropdown])
 
-  const status = normalizeStatus(agentStatus)
+  const status  = normalizeStatus(agentStatus)
   const current = STATUSES.find(s => s.value === status) || STATUSES[0]
 
   const barBg     = isDark ? '#1d2330' : '#1a2035'
@@ -56,10 +75,11 @@ export default function TitleBar({ agent, unreadCount = 0, onBellClick, agentSta
         <span style={S.brand}>BTI Voice</span>
       </div>
 
-      {/* Center: agent status button + dropdown */}
+      {/* Center: agent status button */}
       {agent && (
-        <div ref={dropdownRef} style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', WebkitAppRegion: 'no-drag' }}>
+        <div style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', WebkitAppRegion: 'no-drag' }}>
           <button
+            ref={btnRef}
             style={S.agentBtn}
             onClick={() => setShowDropdown(v => !v)}
             title="Change status"
@@ -72,27 +92,6 @@ export default function TitleBar({ agent, unreadCount = 0, onBellClick, agentSta
             <StatusIcon status={current} size={11} />
             <ChevronIcon open={showDropdown} />
           </button>
-
-          {showDropdown && (
-            <div style={S.dropdown}>
-              <div style={S.dropHeader}>Set status</div>
-              {STATUSES.map(s => (
-                <button
-                  key={s.value}
-                  style={{
-                    ...S.dropItem,
-                    background: s.value === status ? 'rgba(79,156,249,0.12)' : 'transparent',
-                    fontWeight: s.value === status ? 700 : 400,
-                  }}
-                  onClick={() => { onStatusChange?.(s.value); setShowDropdown(false) }}
-                >
-                  <StatusIcon status={s} size={13} />
-                  <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12 }}>{s.label}</span>
-                  {s.value === status && <span style={{ marginLeft: 'auto', color: '#4f9cf9', fontSize: 10 }}>✓</span>}
-                </button>
-              ))}
-            </div>
-          )}
         </div>
       )}
 
@@ -121,6 +120,37 @@ export default function TitleBar({ agent, unreadCount = 0, onBellClick, agentSta
           </div>
         )}
       </div>
+
+      {/* Dropdown — rendered via portal to escape overflow:hidden on the root container */}
+      {showDropdown && createPortal(
+        <div
+          ref={dropRef}
+          style={{
+            ...S.dropdown,
+            top:  dropPos.top,
+            left: dropPos.left,
+            transform: 'translateX(-50%)',
+          }}
+        >
+          <div style={S.dropHeader}>Set status</div>
+          {STATUSES.map(s => (
+            <button
+              key={s.value}
+              style={{
+                ...S.dropItem,
+                background: s.value === status ? 'rgba(79,156,249,0.12)' : 'transparent',
+                fontWeight: s.value === status ? 700 : 400,
+              }}
+              onClick={() => { onStatusChange?.(s.value); setShowDropdown(false) }}
+            >
+              <StatusIcon status={s} size={13} />
+              <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12 }}>{s.label}</span>
+              {s.value === status && <span style={{ marginLeft: 'auto', color: '#4f9cf9', fontSize: 10 }}>✓</span>}
+            </button>
+          ))}
+        </div>,
+        document.body
+      )}
     </div>
   )
 }
@@ -129,7 +159,6 @@ export default function TitleBar({ agent, unreadCount = 0, onBellClick, agentSta
 function StatusIcon({ status, size = 11 }) {
   const r = size / 2
   if (status.icon === 'dnd') {
-    // Red circle with a white horizontal bar through the middle
     return (
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ flexShrink: 0 }}>
         <circle cx={r} cy={r} r={r} fill={status.color} />
@@ -138,14 +167,12 @@ function StatusIcon({ status, size = 11 }) {
     )
   }
   if (status.icon === 'offline') {
-    // Grey ring (outline only, like Teams offline)
     return (
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ flexShrink: 0 }}>
         <circle cx={r} cy={r} r={r - 1} fill="none" stroke={status.color} strokeWidth={2} />
       </svg>
     )
   }
-  // Default: filled circle
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ flexShrink: 0 }}>
       <circle cx={r} cy={r} r={r} fill={status.color} />
@@ -216,11 +243,11 @@ const S = {
   agentNum:  { fontSize: 10, color: 'rgba(255,255,255,0.40)', marginLeft: 2 },
 
   dropdown: {
-    position: 'absolute', top: 'calc(100% + 6px)', left: '50%', transform: 'translateX(-50%)',
+    position: 'fixed',
     background: '#1d2330', border: '1px solid rgba(255,255,255,0.12)',
     borderRadius: 10, padding: '4px 0', minWidth: 180,
     boxShadow: '0 8px 28px rgba(0,0,0,0.5)',
-    zIndex: 9999,
+    zIndex: 99999,
   },
   dropHeader: {
     fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.35)',
