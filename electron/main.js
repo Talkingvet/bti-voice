@@ -174,7 +174,8 @@ ipcMain.handle('download-update', async () => {
   const tempPath = path.join(os.tmpdir(), 'BTI-Voice-Setup.exe')
 
   try {
-    const res = await fetch(pendingUpdateInfo.downloadUrl)
+    // Download through the Railway proxy so GH_TOKEN auth is handled server-side
+    const res = await fetch(`${APP_URL}/api/updates/download`)
     if (!res.ok) throw new Error(`Download failed: ${res.status}`)
 
     const total      = parseInt(res.headers.get('content-length') || '0', 10)
@@ -275,6 +276,13 @@ app.whenReady().then(() => {
 
   createWindow()
   createTray()
+
+  // Block native Ctrl+/- keyboard zoom — app uses its own density setting
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.control && (input.key === '=' || input.key === '+' || input.key === '-' || input.key === '0')) {
+      event.preventDefault()
+    }
+  })
 
   // Auto-check for updates 10 seconds after launch (gives the app time to load)
   setTimeout(async () => {
