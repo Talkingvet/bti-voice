@@ -11,11 +11,11 @@ async function seed() {
     { name: 'Warren Anderson', username: 'warren', password: 'warren123', color: '#06b6d4', initials: 'WA' },
   ];
 
-  // Handle Raven → Rick rename: if 'raven' username exists, update it to 'rick' first
-  await pool.query(
-    `UPDATE agents SET username = 'rick', name = 'Rick Almendras', initials = 'RA', color = '#8b5cf6'
-     WHERE username = 'raven'`
-  );
+  // Handle Raven → Rick rename.
+  // If both 'raven' and 'rick' exist (artifact of a failed migration), remove the duplicate 'raven'.
+  // If only 'raven' exists, rename it to 'rick'.
+  await pool.query(`DELETE FROM agents WHERE username = 'raven' AND EXISTS (SELECT 1 FROM agents WHERE username = 'rick')`);
+  await pool.query(`UPDATE agents SET username = 'rick', name = 'Rick Almendras', initials = 'RA', color = '#8b5cf6' WHERE username = 'raven'`);
 
   for (const a of agents) {
     const { rows } = await pool.query('SELECT id FROM agents WHERE username = $1', [a.username]);
