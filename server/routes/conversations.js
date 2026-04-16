@@ -71,6 +71,35 @@ router.get('/', requireAuth, async (req, res) => {
   }
 });
 
+// Unread conversation count for the current agent (lightweight — just a number for BottomNav badge)
+router.get('/unread-count', requireAuth, async (req, res) => {
+  try {
+    const agentId = req.agent.id;
+    const { rows } = await pool.query(`
+      SELECT COUNT(*) AS count
+      FROM conversations c
+      JOIN contacts co ON co.id = c.contact_id
+      WHERE EXISTS (
+        SELECT 1 FROM messages m WHERE m.conversation_id = c.id
+      )
+      AND EXISTS (
+        SELECT 1 FROM messages mi
+        WHERE mi.conversation_id = c.id
+          AND mi.direction = 'inbound'
+          AND mi.sent_at > COALESCE(
+            (SELECT cr.read_at FROM conversation_reads cr
+             WHERE cr.conversation_id = c.id AND cr.agent_id = $1),
+            '1970-01-01'::timestamptz
+          )
+      )
+    `, [agentId]);
+    res.json({ count: parseInt(rows[0].count, 10) });
+  } catch (e) {
+    console.error('[conversations/unread-count]', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Get messages for a specific conversation
 router.get('/:id/messages', requireAuth, async (req, res) => {
   try {

@@ -10,14 +10,17 @@ const TABS = [
   { id: 'settings',      label: 'Settings', Icon: SettingsIcon },
 ]
 
-export default function BottomNav({ activeTab, onChange, notifCount = 0 }) {
+export default function BottomNav({ activeTab, onChange, notifCount = 0, smsCount = 0, vmCount = 0 }) {
   const C = useColors()
 
   return (
     <div style={{ ...S.bar, background: C.navBg, borderTop: `1px solid ${C.navBorder}` }}>
       {TABS.map(({ id, label, Icon }) => {
         const active = activeTab === id
-        const badge  = id === 'notifications' && notifCount > 0 ? notifCount : 0
+        const badge  = id === 'notifications' ? notifCount
+                     : id === 'sms'           ? smsCount
+                     : id === 'calls'         ? vmCount
+                     : 0
         return (
           <button
             key={id}

@@ -45,6 +45,8 @@ function AppInner() {
   const [notifOpen,    setNotifOpen]    = useState(false)
   const [activity,     setActivity]     = useState([])
   const [unreadNotifs, setUnreadNotifs] = useState(0)  // badge on Notifications tab
+  const [unreadSms,    setUnreadSms]    = useState(0)  // badge on Messages tab
+  const [unreadVm,     setUnreadVm]     = useState(0)  // badge on Calls tab (voicemails)
 
   // Per-item read tracking (individual) + base timestamp (everything before this is auto-old)
   const [baseAt,    setBaseAt]    = useState(
@@ -225,7 +227,35 @@ function AppInner() {
   // Clear badge when user opens the notifications tab
   useEffect(() => {
     if (activeTab === 'notifications') setUnreadNotifs(0)
+    if (activeTab === 'sms')           setUnreadSms(0)
+    if (activeTab === 'calls')         setUnreadVm(0)
   }, [activeTab])
+
+  // SMS unread badge — fetch count on load + refresh on conversation_updated socket
+  useEffect(() => {
+    if (!agent) return
+    const fetchSmsUnread = () => {
+      api.conversationsUnreadCount()
+        .then(({ count }) => setUnreadSms(count))
+        .catch(() => {})
+    }
+    fetchSmsUnread()
+    const socket = getSocket()
+    socket.on('conversation_updated', fetchSmsUnread)
+    return () => socket.off('conversation_updated', fetchSmsUnread)
+  }, [agent])
+
+  // Voicemail badge — fetch unplayed count on load + increment on new_voicemail socket
+  useEffect(() => {
+    if (!agent) return
+    api.voicemails()
+      .then(vms => setUnreadVm(vms.filter(v => !v.played).length))
+      .catch(() => {})
+    const socket = getSocket()
+    const onNewVm = () => setUnreadVm(c => c + 1)
+    socket.on('new_voicemail', onNewVm)
+    return () => socket.off('new_voicemail', onNewVm)
+  }, [agent])
 
   // Sync own status in real-time when another session changes it
   useEffect(() => {
@@ -491,7 +521,7 @@ function AppInner() {
         <ComposePenIcon />
       </button>}
 
-      <BottomNav activeTab={activeTab} onChange={setActiveTab} notifCount={unreadNotifs} />
+      <BottomNav activeTab={activeTab} onChange={setActiveTab} notifCount={unreadNotifs} smsCount={unreadSms} vmCount={unreadVm} />
 
       {compose && (
         <NewMessageModal

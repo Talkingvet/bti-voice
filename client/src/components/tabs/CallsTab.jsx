@@ -71,6 +71,7 @@ export default function CallsTab({ agent }) {
   const [playingVm,   setPlayingVm]  = useState(null)
   const [unreadVm,     setUnreadVm]    = useState(0)
   const [expandedCall, setExpandedCall] = useState(null)
+  const [search,       setSearch]       = useState('')
 
   const loadCalls = useCallback(() => {
     api.calls().then(setCalls).catch(console.error)
@@ -105,11 +106,18 @@ export default function CallsTab({ agent }) {
   }, [loadCalls, loadVoicemails])
 
   /* Filter calls */
+  const searchLower = search.toLowerCase()
   const filteredCalls = calls.filter(c => {
     if (filter === 'missed')   return c.status === 'missed'
     if (filter === 'inbound')  return c.direction === 'inbound'
     if (filter === 'outbound') return c.direction === 'outbound'
     return true
+  }).filter(c => {
+    if (!searchLower) return true
+    return (
+      (c.contact_name   || '').toLowerCase().includes(searchLower) ||
+      (c.contact_number || '').toLowerCase().includes(searchLower)
+    )
   })
 
   const callGroups = groupByDate(filteredCalls, 'started_at')
@@ -132,6 +140,24 @@ export default function CallsTab({ agent }) {
       {/* ── LOGS ── */}
       {subTab === 'logs' && (
         <>
+          {/* Search bar */}
+          <div style={{ padding: '8px 10px 0', background: C.panel }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: C.surface, border: `1px solid ${C.borderSoft}`, borderRadius: 7, padding: '5px 9px' }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={C.textMuted} strokeWidth="2.5">
+                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input
+                style={{ border: 'none', outline: 'none', fontSize: 12, background: 'transparent', flex: 1, color: C.text }}
+                placeholder="Search by name or number…"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+              />
+              {search && (
+                <button style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 15, color: C.textMuted, padding: 0, lineHeight: 1 }} onClick={() => setSearch('')}>×</button>
+              )}
+            </div>
+          </div>
+
           {/* Filter row */}
           <div style={{ ...S.filterRow, background: C.panel, borderBottom: `1px solid ${C.borderSoft}` }}>
             {['all', 'inbound', 'outbound', 'missed'].map(f => (

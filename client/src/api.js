@@ -70,6 +70,7 @@ export const api = {
   zohoProfile:       (id)         => request(`/contacts/${id}/zoho-profile`),
 
   // Unread badges
+  conversationsUnreadCount: ()   => request('/conversations/unread-count'),
   markConvRead:      (id)         => request(`/conversations/${id}/read`, { method: 'POST' }),
 
   // Conversation notes
