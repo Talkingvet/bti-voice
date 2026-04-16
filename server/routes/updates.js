@@ -9,12 +9,14 @@ const GH_OWNER = 'Talkingvet';
 const GH_REPO  = 'bti-voice';
 
 // GET /api/updates/latest — version check used by the Electron app
+// NOTE: downloadUrl is included for backwards-compatibility with v1.1.0 and v1.1.1
+// clients, which guard on pendingUpdateInfo?.downloadUrl before attempting a download.
 router.get('/latest', (req, res) => {
   const version = process.env.LATEST_VERSION;
   if (!version) {
     return res.status(500).json({ error: 'LATEST_VERSION not configured on server' });
   }
-  res.json({ version });
+  res.json({ version, downloadUrl: '/api/updates/download' });
 });
 
 // GET /api/updates/download-url — resolves the signed S3 download URL for the
