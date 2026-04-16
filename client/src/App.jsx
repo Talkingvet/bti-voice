@@ -158,6 +158,17 @@ function AppInner() {
     }
   }, [agent, loadActivity])
 
+  // Sync own status in real-time when another session changes it
+  useEffect(() => {
+    if (!agent) return
+    const socket = getSocket()
+    function handleStatusChanged({ agent_id, status }) {
+      if (agent_id === agent.id) setAgentStatus(status)
+    }
+    socket.on('agent_status_changed', handleStatusChanged)
+    return () => socket.off('agent_status_changed', handleStatusChanged)
+  }, [agent])
+
   const unreadCount = activity.filter(a =>
     new Date(a.occurred_at) > baseAt && !readKeys.has(`${a.type}-${a.id}`)
   ).length
