@@ -22,6 +22,17 @@ import { api } from './api'
 const BASE_AT_KEY   = 'bti_notif_base_at'
 const READ_KEYS_KEY = 'bti_notif_read_keys'
 
+const FONT_STACKS = {
+  system:            `-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`,
+  'Plus Jakarta Sans': `'Plus Jakarta Sans', sans-serif`,
+  'DM Sans':           `'DM Sans', sans-serif`,
+  'Figtree':           `'Figtree', sans-serif`,
+  'Outfit':            `'Outfit', sans-serif`,
+}
+export function applyFont(key) {
+  document.body.style.fontFamily = FONT_STACKS[key] || FONT_STACKS.system
+}
+
 function loadReadKeys() {
   try { return new Set(JSON.parse(localStorage.getItem(READ_KEYS_KEY) || '[]')) } catch { return new Set() }
 }
@@ -138,6 +149,12 @@ function AppInner() {
     const DENSITY = { compact: { factor: 0.82, w: 345, h: 595 }, normal: { factor: 1.0, w: 420, h: 720 }, comfortable: { factor: 1.12, w: 470, h: 806 } }
     const d = DENSITY[saved] || DENSITY.normal
     window.electronAPI.setZoom(d.factor, d.w, d.h)
+  }, [])
+
+  // ── Apply saved font on startup ───────────────────────────────────────────────
+  useEffect(() => {
+    const saved = localStorage.getItem('bti_font') || 'system'
+    applyFont(saved)
   }, [])
 
   // ── Auth check on mount ───────────────────────────────────────────────────────

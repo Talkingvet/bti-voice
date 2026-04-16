@@ -4,6 +4,15 @@ import { useTheme }    from '../../ThemeContext'
 import { useColors }   from '../../useColors'
 import { api }         from '../../api'
 import { getSoundPrefs, setSoundPref, startRingtone, stopRingtone, playDTMF } from '../../dtmf'
+import { applyFont }   from '../../App'
+
+const FONTS = [
+  { key: 'system',            label: 'System',        sample: 'Aa' },
+  { key: 'Plus Jakarta Sans', label: 'Jakarta',       sample: 'Aa' },
+  { key: 'DM Sans',           label: 'DM Sans',       sample: 'Aa' },
+  { key: 'Figtree',           label: 'Figtree',       sample: 'Aa' },
+  { key: 'Outfit',            label: 'Outfit',        sample: 'Aa' },
+]
 
 export default function SettingsTab({ agent, onLogout }) {
   const C = useColors()
@@ -316,7 +325,8 @@ function AppearanceSection({ C }) {
   const { theme, toggleTheme } = useTheme()
   const isDark = theme === 'dark'
   const isElectron = typeof window !== 'undefined' && !!window.electronAPI
-  const [density, setDensity] = useState(() => localStorage.getItem('bti_density') || 'normal')
+  const [density,  setDensity]  = useState(() => localStorage.getItem('bti_density') || 'normal')
+  const [font,     setFont]     = useState(() => localStorage.getItem('bti_font')    || 'system')
 
   function applyDensity(key) {
     const d = DENSITIES.find(x => x.key === key)
@@ -326,11 +336,53 @@ function AppearanceSection({ C }) {
     if (window.electronAPI?.setZoom) window.electronAPI.setZoom(d.factor, d.w, d.h)
   }
 
+  function handleFontChange(key) {
+    setFont(key)
+    localStorage.setItem('bti_font', key)
+    applyFont(key)
+  }
+
   return (
     <div style={S.section}>
       <SectionHeader title="APPEARANCE" C={C} />
       <Card C={C}>
         <ToggleRow label="Dark Mode" desc={isDark ? 'Using dark charcoal theme' : 'Using light theme'} value={isDark} onChange={toggleTheme} C={C} />
+      </Card>
+
+      {/* Font picker */}
+      <Card C={C}>
+        <div style={{ padding: '12px 16px' }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 4 }}>Font</div>
+          <div style={{ fontSize: 11, color: C.textSec, marginBottom: 12 }}>Changes the typeface across the whole app</div>
+          <div style={{ display: 'flex', gap: 7 }}>
+            {FONTS.map(f => {
+              const active = font === f.key
+              const fontFamily = f.key === 'system'
+                ? `-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`
+                : `'${f.key}', sans-serif`
+              return (
+                <button
+                  key={f.key}
+                  onClick={() => handleFontChange(f.key)}
+                  style={{
+                    flex: 1, padding: '10px 4px', borderRadius: 10, cursor: 'pointer',
+                    border: active ? '2px solid #4f9cf9' : `2px solid ${C.border}`,
+                    background: active ? 'rgba(79,156,249,0.1)' : C.surface,
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  <span style={{ fontFamily, fontSize: 18, fontWeight: 600, color: active ? '#4f9cf9' : C.text, lineHeight: 1 }}>
+                    {f.sample}
+                  </span>
+                  <span style={{ fontSize: 9, fontWeight: active ? 700 : 500, color: active ? '#4f9cf9' : C.textSec, letterSpacing: '0.2px' }}>
+                    {f.label}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
       </Card>
 
       {isElectron && (
