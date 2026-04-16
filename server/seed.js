@@ -11,15 +11,28 @@ async function seed() {
     { name: 'Warren Anderson', username: 'warren', password: 'warren123', color: '#06b6d4', initials: 'WA' },
   ];
 
+  // Handle Raven → Rick rename: if 'raven' username exists, update it to 'rick' first
+  await pool.query(
+    `UPDATE agents SET username = 'rick', name = 'Rick Almendras', initials = 'RA', color = '#8b5cf6'
+     WHERE username = 'raven'`
+  );
+
   for (const a of agents) {
     const { rows } = await pool.query('SELECT id FROM agents WHERE username = $1', [a.username]);
     if (!rows.length) {
+      // New agent — insert with hashed password
       const hash = await bcrypt.hash(a.password, 10);
       await pool.query(
         'INSERT INTO agents (name, username, password_hash, color, initials) VALUES ($1,$2,$3,$4,$5)',
         [a.name, a.username, hash, a.color, a.initials]
       );
       console.log(`[seed] Created agent: ${a.name}  (login: ${a.username} / ${a.password})`);
+    } else {
+      // Existing agent — keep password, just sync name/initials/color
+      await pool.query(
+        'UPDATE agents SET name = $1, initials = $2, color = $3 WHERE username = $4',
+        [a.name, a.initials, a.color, a.username]
+      );
     }
   }
 
