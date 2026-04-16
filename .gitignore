@@ -41,3 +41,4 @@ release/
 # ── Misc ──────────────────────────────────────────────────────
 .cache/
 *.local
+client/vite.config.js.timestamp-*.mjs
