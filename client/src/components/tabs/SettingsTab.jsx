@@ -335,8 +335,158 @@ function AudioSection({ C }) {
         </div>
       </Card>
 
+      <MicTestCard C={C} />
       {window.electronAPI && <StartupCard C={C} />}
     </div>
+  )
+}
+
+/* ── Mic Test card ──────────────────────────────────────────────────────────── */
+function MicTestCard({ C }) {
+  const [devices,    setDevices]    = useState([])        // available mic devices
+  const [deviceId,   setDeviceId]   = useState(() => localStorage.getItem('bti_mic_device') || '')
+  const [testing,    setTesting]    = useState(false)
+  const [level,      setLevel]      = useState(0)         // 0–100
+  const [error,      setError]      = useState('')
+
+  const streamRef   = useRef(null)
+  const ctxRef      = useRef(null)
+  const rafRef      = useRef(null)
+  const analyserRef = useRef(null)
+
+  // Enumerate microphones on mount (and after permission is granted)
+  useEffect(() => {
+    async function load() {
+      try {
+        const all = await navigator.mediaDevices.enumerateDevices()
+        setDevices(all.filter(d => d.kind === 'audioinput'))
+      } catch {}
+    }
+    load()
+    navigator.mediaDevices.addEventListener?.('devicechange', load)
+    return () => navigator.mediaDevices.removeEventListener?.('devicechange', load)
+  }, [])
+
+  // Clean up when component unmounts
+  useEffect(() => () => stopTest(), []) // eslint-disable-line
+
+  function stopTest() {
+    cancelAnimationFrame(rafRef.current)
+    streamRef.current?.getTracks().forEach(t => t.stop())
+    ctxRef.current?.close()
+    streamRef.current = null
+    ctxRef.current    = null
+    analyserRef.current = null
+    setLevel(0)
+    setTesting(false)
+  }
+
+  async function startTest() {
+    setError('')
+    try {
+      const constraints = { audio: deviceId ? { deviceId: { exact: deviceId } } : true }
+      const stream = await navigator.mediaDevices.getUserMedia(constraints)
+
+      // Refresh device list now that we have permission
+      const all = await navigator.mediaDevices.enumerateDevices()
+      setDevices(all.filter(d => d.kind === 'audioinput'))
+
+      const ctx      = new AudioContext()
+      const source   = ctx.createMediaStreamSource(stream)
+      const analyser = ctx.createAnalyser()
+      analyser.fftSize = 256
+
+      // Passthrough: hear yourself in real time
+      source.connect(analyser)
+      analyser.connect(ctx.destination)
+
+      streamRef.current   = stream
+      ctxRef.current      = ctx
+      analyserRef.current = analyser
+      setTesting(true)
+
+      const data = new Uint8Array(analyser.frequencyBinCount)
+      function tick() {
+        analyser.getByteFrequencyData(data)
+        const avg = data.reduce((s, v) => s + v, 0) / data.length
+        setLevel(Math.min(100, Math.round(avg * 2.2)))
+        rafRef.current = requestAnimationFrame(tick)
+      }
+      tick()
+    } catch (e) {
+      setError(e.name === 'NotAllowedError'
+        ? 'Microphone access denied — check browser/OS permissions.'
+        : 'Could not access microphone: ' + e.message)
+    }
+  }
+
+  function handleDeviceChange(id) {
+    setDeviceId(id)
+    localStorage.setItem('bti_mic_device', id)
+    if (testing) { stopTest(); setTimeout(startTest, 100) }
+  }
+
+  // Level bar colour: green → amber → red
+  const barColor = level > 75 ? '#ef4444' : level > 45 ? '#f59e0b' : '#22c55e'
+
+  return (
+    <Card C={C}>
+      <div style={{ ...S.cardTitle, color: C.textMuted, borderBottom: `1px solid ${C.borderSoft}` }}>MIC TEST</div>
+
+      {/* Device selector */}
+      <div style={{ padding: '10px 14px', borderBottom: `1px solid ${C.borderSoft}` }}>
+        <div style={{ ...S.rowDesc, color: C.textMuted, marginBottom: 6 }}>Microphone</div>
+        <select
+          value={deviceId}
+          onChange={e => handleDeviceChange(e.target.value)}
+          style={{ ...S.input, background: C.inputBg, border: `1px solid ${C.inputBorder}`, color: C.text, width: '100%' }}
+        >
+          <option value="">Default microphone</option>
+          {devices.map(d => (
+            <option key={d.deviceId} value={d.deviceId}>
+              {d.label || `Microphone ${d.deviceId.slice(0, 6)}`}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Level meter + controls */}
+      <div style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {/* Level bar */}
+        <div>
+          <div style={{ ...S.rowDesc, color: C.textMuted, marginBottom: 5 }}>
+            Input level {testing ? '(speak to test)' : ''}
+          </div>
+          <div style={{ height: 8, borderRadius: 4, background: C.surface, overflow: 'hidden', border: `1px solid ${C.borderSoft}` }}>
+            <div style={{
+              height: '100%',
+              width: `${level}%`,
+              background: barColor,
+              borderRadius: 4,
+              transition: 'width 0.05s linear, background 0.2s',
+            }} />
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button
+            style={{
+              ...S.primaryBtn,
+              background: testing ? '#ef4444' : '#4f9cf9',
+            }}
+            onClick={testing ? stopTest : startTest}
+          >
+            {testing ? '⏹ Stop' : '🎙 Test Mic'}
+          </button>
+          {testing && (
+            <span style={{ fontSize: 11, color: C.textMuted }}>
+              You will hear yourself in real time
+            </span>
+          )}
+          {error && <span style={{ fontSize: 11, color: '#ef4444' }}>{error}</span>}
+        </div>
+      </div>
+    </Card>
   )
 }
 
