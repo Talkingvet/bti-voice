@@ -170,15 +170,22 @@ ipcMain.handle('check-for-updates', async () => {
 })
 
 ipcMain.handle('download-update', async () => {
-  if (!pendingUpdateInfo?.downloadUrl) return false
   const tempPath = path.join(os.tmpdir(), 'BTI-Voice-Setup.exe')
 
   try {
-    // Download through the Railway proxy so GH_TOKEN auth is handled server-side
-    const res = await fetch(`${APP_URL}/api/updates/download`)
-    if (!res.ok) throw new Error(`Download failed: ${res.status}`)
+    // Step 1: Ask the server to resolve the signed S3 download URL.
+    // The GitHub token stays server-side; we only get back a time-limited S3 URL.
+    const urlRes = await fetch(`${APP_URL}/api/updates/download-url`)
+    if (!urlRes.ok) throw new Error(`Could not resolve download URL: ${urlRes.status}`)
+    const { url: s3Url, size } = await urlRes.json()
+    if (!s3Url) throw new Error('Server returned no download URL')
 
-    const total      = parseInt(res.headers.get('content-length') || '0', 10)
+    // Step 2: Download directly from S3 — no auth header needed (credentials
+    // are embedded in the signed URL query string). This avoids Railway timeouts.
+    const res = await fetch(s3Url)
+    if (!res.ok) throw new Error(`S3 download failed: ${res.status}`)
+
+    const total      = size || parseInt(res.headers.get('content-length') || '0', 10)
     let   downloaded = 0
     const chunks     = []
     const reader     = res.body.getReader()
@@ -200,6 +207,7 @@ ipcMain.handle('download-update', async () => {
     return true
   } catch (e) {
     console.error('[updater] download error:', e.message)
+    mainWindow?.webContents.send('update-error', { message: e.message })
     return false
   }
 })
