@@ -14,30 +14,77 @@ const FONTS = [
   { key: 'Outfit',            label: 'Outfit',        sample: 'Aa' },
 ]
 
+const TABS = [
+  { id: 'profile',    label: 'Profile',     icon: '👤' },
+  { id: 'audio',      label: 'Audio',       icon: '🔊' },
+  { id: 'appearance', label: 'Appearance',  icon: '🎨' },
+  { id: 'calls',      label: 'Calls',       icon: '📞' },
+  { id: 'about',      label: 'About',       icon: 'ℹ️'  },
+]
+
 export default function SettingsTab({ agent, onLogout }) {
   const C = useColors()
+  const [activeTab, setActiveTab] = useState('profile')
 
   return (
     <div style={{ ...S.page, background: C.bg }}>
-      <div style={S.scroll}>
-        <ProfileSection  agent={agent} C={C} />
-        <TeamSection     C={C} />
-        <AudioSection    C={C} />
-        <AppearanceSection C={C} />
-        <IVRSection      C={C} />
-        <MissedCallAutoTextSection C={C} />
-        <CannedResponsesSection C={C} />
-        <ZohoCRMSection  C={C} />
-        <AboutSection    C={C} />
+      {/* Tab strip */}
+      <div style={{ ...S.tabStrip, borderBottom: `1px solid ${C.border}`, background: C.panel }}>
+        {TABS.map(tab => {
+          const active = tab.id === activeTab
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              style={{
+                ...S.tabBtn,
+                color:            active ? '#4f9cf9' : C.textMuted,
+                borderBottom:     active ? '2px solid #4f9cf9' : '2px solid transparent',
+                background:       'none',
+              }}
+            >
+              <span style={{ fontSize: 13 }}>{tab.icon}</span>
+              <span style={{ fontSize: 10, fontWeight: active ? 700 : 500, marginTop: 1 }}>{tab.label}</span>
+            </button>
+          )
+        })}
+      </div>
 
-        <div style={{ padding: '8px 16px 24px' }}>
-          <button
-            style={{ ...S.logoutBtn, border: `1px solid rgba(239,68,68,0.4)`, color: '#ef4444', background: 'rgba(239,68,68,0.08)' }}
-            onClick={onLogout}
-          >
-            Sign Out
-          </button>
-        </div>
+      {/* Tab content */}
+      <div style={S.scroll}>
+        {activeTab === 'profile' && (
+          <>
+            <ProfileSection agent={agent} C={C} />
+            <TeamSection C={C} />
+          </>
+        )}
+        {activeTab === 'audio' && (
+          <AudioSection C={C} />
+        )}
+        {activeTab === 'appearance' && (
+          <AppearanceSection C={C} />
+        )}
+        {activeTab === 'calls' && (
+          <>
+            <IVRSection C={C} />
+            <MissedCallAutoTextSection C={C} />
+            <CannedResponsesSection C={C} />
+          </>
+        )}
+        {activeTab === 'about' && (
+          <>
+            <ZohoCRMSection C={C} />
+            <AboutSection C={C} />
+            <div style={{ padding: '8px 16px 24px' }}>
+              <button
+                style={{ ...S.logoutBtn, border: `1px solid rgba(239,68,68,0.4)`, color: '#ef4444', background: 'rgba(239,68,68,0.08)' }}
+                onClick={onLogout}
+              >
+                Sign Out
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   )
@@ -1241,4 +1288,7 @@ const S = {
   aboutLogo: { width: 48, height: 48, borderRadius: 12, background: 'linear-gradient(135deg,#1d4ed8,#4f9cf9)', color: 'white', fontWeight: 900, fontSize: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
 
   logoutBtn: { width: '100%', padding: '10px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: 'center' },
+
+  tabStrip: { display: 'flex', flexShrink: 0 },
+  tabBtn:   { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '8px 4px 6px', border: 'none', cursor: 'pointer', transition: 'color 0.15s' },
 }
