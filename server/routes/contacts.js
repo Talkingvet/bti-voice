@@ -159,4 +159,136 @@ router.post('/:id/sync-zoho', async (req, res) => {
   }
 });
 
+// ── GET /:id/zoho-profile — fetch rich CRM context for a contact ───────────────
+// Returns Contact record, related Deals, and Lead fallback from Zoho.
+// Used by the client-side Zoho context panel in the conversation view.
+router.get('/:id/zoho-profile', async (req, res) => {
+  if (!process.env.ZOHO_REFRESH_TOKEN) {
+    return res.status(400).json({ error: 'Zoho is not configured' });
+  }
+
+  try {
+    const { rows: [contact] } = await pool.query(
+      'SELECT * FROM contacts WHERE id = $1', [req.params.id]
+    );
+    if (!contact) return res.status(404).json({ error: 'Contact not found' });
+
+    const { zohoAPI, findContactByPhone } = require('../zoho');
+
+    // Build profile object we'll return
+    const profile = {
+      type:         null,   // 'contact' | 'lead' | null
+      zoho_id:      contact.zoho_contact_id || null,
+      name:         null,
+      email:        null,
+      account_name: null,
+      account_type: null,
+      lead_status:  null,
+      lead_source:  null,
+      description:  null,
+      last_activity:null,
+      created_at:   null,
+      deals:        [],
+      zoho_url:     null,
+    };
+
+    // ── 1. Try Contact record ────────────────────────────────────────────────
+    let zohoId = contact.zoho_contact_id;
+
+    // If we don't have a stored ID, try to look one up now
+    if (!zohoId) {
+      const found = await findContactByPhone(contact.phone_number);
+      zohoId = found?.id || null;
+      if (zohoId) {
+        // Cache it for next time
+        await pool.query(
+          'UPDATE contacts SET zoho_contact_id = $1, zoho_synced_at = NOW() WHERE id = $2',
+          [zohoId, contact.id]
+        );
+      }
+    }
+
+    if (zohoId) {
+      // Fetch Contact fields
+      try {
+        const contactData = await zohoAPI('GET',
+          `/Contacts/${zohoId}?fields=Full_Name,Email,Phone,Mobile,Account_Name,Lead_Source,Description,Modified_Time,Created_Time`
+        );
+        const c = contactData?.data?.[0];
+        if (c) {
+          profile.type         = 'contact';
+          profile.zoho_id      = zohoId;
+          profile.name         = c.Full_Name || null;
+          profile.email        = c.Email || null;
+          profile.account_name = c.Account_Name?.name || c.Account_Name || null;
+          profile.lead_source  = c.Lead_Source || null;
+          profile.description  = c.Description || null;
+          profile.last_activity= c.Modified_Time || null;
+          profile.created_at   = c.Created_Time || null;
+          profile.zoho_url     = `https://crm.zoho.com/crm/tab/Contacts/${zohoId}`;
+
+          // Fetch Account type if we have an account name
+          if (c.Account_Name?.id) {
+            try {
+              const acctData = await zohoAPI('GET',
+                `/Accounts/${c.Account_Name.id}?fields=Account_Name,Account_Type,Industry`
+              );
+              const acct = acctData?.data?.[0];
+              if (acct) profile.account_type = acct.Account_Type || null;
+            } catch (e) { /* ignore */ }
+          }
+        }
+      } catch (e) { console.error('[zoho-profile] Contact fetch:', e.message); }
+
+      // Fetch related Deals
+      try {
+        const dealsData = await zohoAPI('GET',
+          `/Contacts/${zohoId}/Deals?fields=Deal_Name,Stage,Amount,Closing_Date,Modified_Time,Probability&sort_by=Modified_Time&sort_order=desc`
+        );
+        if (dealsData?.data?.length) {
+          profile.deals = dealsData.data.map(d => ({
+            id:           d.id,
+            name:         d.Deal_Name,
+            stage:        d.Stage,
+            amount:       d.Amount,
+            closing_date: d.Closing_Date,
+            probability:  d.Probability,
+            modified:     d.Modified_Time,
+            url:          `https://crm.zoho.com/crm/tab/Potentials/${d.id}`,
+          }));
+        }
+      } catch (e) { console.error('[zoho-profile] Deals fetch:', e.message); }
+    }
+
+    // ── 2. Fallback: try Leads module if no Contact found ────────────────────
+    if (!profile.type) {
+      try {
+        const digits = contact.phone_number.replace(/\D/g, '');
+        const search10 = digits.length === 11 && digits.startsWith('1') ? digits.slice(1) : digits;
+        const leadData = await zohoAPI('GET',
+          `/Leads/search?phone=${encodeURIComponent(search10)}&fields=Full_Name,Lead_Status,Lead_Source,Email,Modified_Time,Created_Time,Description`
+        );
+        const lead = leadData?.data?.[0];
+        if (lead) {
+          profile.type         = 'lead';
+          profile.zoho_id      = lead.id;
+          profile.name         = lead.Full_Name || null;
+          profile.email        = lead.Email || null;
+          profile.lead_status  = lead.Lead_Status || null;
+          profile.lead_source  = lead.Lead_Source || null;
+          profile.description  = lead.Description || null;
+          profile.last_activity= lead.Modified_Time || null;
+          profile.created_at   = lead.Created_Time || null;
+          profile.zoho_url     = `https://crm.zoho.com/crm/tab/Leads/${lead.id}`;
+        }
+      } catch (e) { /* 204 = not found, that's fine */ }
+    }
+
+    res.json(profile);
+  } catch (e) {
+    console.error('[contacts GET /:id/zoho-profile]', e.message);
+    res.status(500).json({ error: 'Zoho profile fetch failed: ' + e.message });
+  }
+});
+
 module.exports = router;

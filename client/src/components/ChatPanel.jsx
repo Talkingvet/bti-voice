@@ -41,6 +41,11 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
   const [cannedQuery,  setCannedQuery] = useState('')
   const [showAssign,   setShowAssign]  = useState(false)
 
+  // Zoho profile state
+  const [zohoProfile,   setZohoProfile]  = useState(null)
+  const [zohoLoading,   setZohoLoading]  = useState(false)
+  const [showZoho,      setShowZoho]     = useState(true)
+
   // Notes state
   const [notes,       setNotes]       = useState([])
   const [noteBody,    setNoteBody]    = useState('')
@@ -75,6 +80,17 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
     setNotes([])
     api.notes(conv.id).then(setNotes).catch(console.error)
   }, [conv?.id])
+
+  // Load Zoho profile when conversation changes
+  useEffect(() => {
+    if (!conv?.contact_id) return
+    setZohoProfile(null)
+    setZohoLoading(true)
+    api.zohoProfile(conv.contact_id)
+      .then(p => setZohoProfile(p))
+      .catch(() => setZohoProfile(null))
+      .finally(() => setZohoLoading(false))
+  }, [conv?.contact_id])
 
   // ── Canned responses: show dropdown when user types /
   function handleBodyChange(e) {
@@ -299,6 +315,9 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
         </div>
       </div>
 
+      {/* ── Zoho CRM Panel ── */}
+      <ZohoPanel profile={zohoProfile} loading={zohoLoading} open={showZoho} onToggle={() => setShowZoho(v => !v)} C={C} />
+
       {/* ── Messages tab ── */}
       {activeTab === 'messages' && (
         <>
@@ -460,6 +479,161 @@ function OutboundMsg({ msg, currentAgentId, C }) {
         </div>
       </div>
     </div>
+  )
+}
+
+/* ── Zoho CRM Context Panel ─────────────────────────────────────── */
+function ZohoPanel({ profile, loading, open, onToggle, C }) {
+  // Don't render anything if still loading and no prior profile
+  if (!loading && !profile) return null
+  if (!loading && profile && !profile.type) return null
+
+  function fmtDate(str) {
+    if (!str) return '—'
+    return new Date(str).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  }
+  function fmtMoney(n) {
+    if (!n) return null
+    return '$' + Number(n).toLocaleString()
+  }
+
+  const stageColor = (stage) => {
+    if (!stage) return '#8b96ab'
+    const s = stage.toLowerCase()
+    if (s.includes('closed won') || s.includes('won')) return '#22c55e'
+    if (s.includes('closed lost') || s.includes('lost')) return '#ef4444'
+    if (s.includes('proposal') || s.includes('negotiat')) return '#f59e0b'
+    if (s.includes('qualify') || s.includes('prospect')) return '#0ea5e9'
+    return '#8b96ab'
+  }
+
+  const typeLabel = profile?.type === 'lead' ? 'Lead' : profile?.type === 'contact' ? 'Contact' : null
+
+  return (
+    <div style={{ borderBottom: `1px solid ${C.border}`, background: C.panel }}>
+      {/* Toggle header */}
+      <button
+        onClick={onToggle}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '6px 12px', border: 'none', background: 'transparent',
+          cursor: 'pointer', color: C.textMuted, fontSize: 11, fontWeight: 600,
+        }}
+      >
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <ZohoIcon />
+          ZOHO CRM
+          {loading && <span style={{ opacity: 0.5, fontWeight: 400 }}>loading…</span>}
+          {!loading && typeLabel && (
+            <span style={{
+              fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 4,
+              background: profile.type === 'lead' ? 'rgba(245,158,11,0.15)' : 'rgba(34,197,94,0.15)',
+              color: profile.type === 'lead' ? '#f59e0b' : '#22c55e',
+            }}>{typeLabel}</span>
+          )}
+        </span>
+        <span style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>▾</span>
+      </button>
+
+      {/* Content */}
+      {open && !loading && profile?.type && (
+        <div style={{ padding: '4px 12px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+
+          {/* Row 1: account + status */}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {profile.account_name && (
+              <ZField label="Account" value={profile.account_name} />
+            )}
+            {profile.account_type && (
+              <ZField label="Type" value={profile.account_type} />
+            )}
+            {profile.lead_status && (
+              <ZField label="Status" value={profile.lead_status} />
+            )}
+            {profile.lead_source && (
+              <ZField label="Source" value={profile.lead_source} />
+            )}
+          </div>
+
+          {/* Row 2: last activity + created */}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <ZField label="Last Activity" value={fmtDate(profile.last_activity)} />
+            <ZField label="Created" value={fmtDate(profile.created_at)} />
+          </div>
+
+          {/* Deals */}
+          {profile.deals?.length > 0 && (
+            <div style={{ marginTop: 2 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: C.textMuted, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Deals ({profile.deals.length})
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {profile.deals.slice(0, 3).map(deal => (
+                  <a
+                    key={deal.id}
+                    href={deal.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      padding: '5px 8px', borderRadius: 6,
+                      background: 'rgba(255,255,255,0.04)', textDecoration: 'none',
+                      border: `1px solid ${C.borderSoft}`,
+                    }}
+                  >
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: C.text }}>{deal.name || 'Unnamed Deal'}</span>
+                      <span style={{ fontSize: 10, color: C.textMuted }}>Closes {fmtDate(deal.closing_date)}</span>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                      <span style={{
+                        fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 4,
+                        background: stageColor(deal.stage) + '22',
+                        color: stageColor(deal.stage),
+                      }}>{deal.stage || '—'}</span>
+                      {deal.amount && (
+                        <span style={{ fontSize: 10, color: C.textMuted }}>{fmtMoney(deal.amount)}</span>
+                      )}
+                    </div>
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Open in Zoho link */}
+          {profile.zoho_url && (
+            <a
+              href={profile.zoho_url}
+              target="_blank"
+              rel="noreferrer"
+              style={{ fontSize: 10, color: '#4f9cf9', textDecoration: 'none', marginTop: 2, alignSelf: 'flex-start' }}
+            >
+              Open in Zoho CRM ↗
+            </a>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ZField({ label, value }) {
+  if (!value) return null
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 80 }}>
+      <span style={{ fontSize: 9, fontWeight: 700, color: '#8b96ab', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</span>
+      <span style={{ fontSize: 11, color: '#d1d9e6', fontWeight: 500 }}>{value}</span>
+    </div>
+  )
+}
+
+function ZohoIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="2" y="3" width="20" height="14" rx="2" />
+      <path d="M8 21h8M12 17v4" />
+    </svg>
   )
 }
 

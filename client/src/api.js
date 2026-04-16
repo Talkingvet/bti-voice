@@ -67,6 +67,7 @@ export const api = {
   createContact:     (data)       => request('/contacts', { method: 'POST', body: data }),
   updateContact:     (id, data)   => request(`/contacts/${id}`, { method: 'PATCH', body: data }),
   syncContactZoho:   (id)         => request(`/contacts/${id}/sync-zoho`, { method: 'POST' }),
+  zohoProfile:       (id)         => request(`/contacts/${id}/zoho-profile`),
 
   // Unread badges
   markConvRead:      (id)         => request(`/conversations/${id}/read`, { method: 'POST' }),
