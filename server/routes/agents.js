@@ -23,10 +23,10 @@ router.patch('/me/number', requireAuth, async (req, res) => {
   res.json(rows[0]);
 });
 
-// Update own status (online / away / offline)
+// Update own status
 router.patch('/me/status', requireAuth, async (req, res) => {
   const { status } = req.body;
-  const allowed = ['online', 'away', 'offline'];
+  const allowed = ['available', 'busy', 'dnd', 'be_right_back', 'offline', 'online', 'away'];
   if (!allowed.includes(status)) return res.status(400).json({ error: 'Invalid status' });
   try {
     const { rows } = await pool.query(
