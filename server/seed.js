@@ -12,9 +12,10 @@ async function seed() {
   ];
 
   // Handle Raven → Rick rename.
-  // If both 'raven' and 'rick' exist (artifact of a failed migration), remove the duplicate 'raven'.
+  // If both 'raven' and 'rick' exist (artifact of a failed migration), deactivate 'raven' — can't
+  // delete it because messages reference it via foreign key. It will be hidden from the active list.
   // If only 'raven' exists, rename it to 'rick'.
-  await pool.query(`DELETE FROM agents WHERE username = 'raven' AND EXISTS (SELECT 1 FROM agents WHERE username = 'rick')`);
+  await pool.query(`UPDATE agents SET is_active = false WHERE username = 'raven' AND EXISTS (SELECT 1 FROM agents WHERE username = 'rick')`);
   await pool.query(`UPDATE agents SET username = 'rick', name = 'Rick Almendras', initials = 'RA', color = '#8b5cf6' WHERE username = 'raven'`);
 
   for (const a of agents) {
