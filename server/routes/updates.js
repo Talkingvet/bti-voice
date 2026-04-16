@@ -82,4 +82,54 @@ router.get('/download-url', async (req, res) => {
   }
 });
 
+// GET /api/updates/download — backwards-compatible route for v1.1.0 and v1.1.1.
+// Those builds call this endpoint directly. We resolve the S3 URL and issue a
+// 302 redirect — the old Electron fetch() follows redirects automatically so it
+// downloads straight from S3 without proxying through Railway.
+router.get('/download', async (req, res) => {
+  const token   = process.env.GH_TOKEN;
+  const version = process.env.LATEST_VERSION;
+
+  if (!token || !version) {
+    return res.status(500).send('Server not configured');
+  }
+
+  try {
+    const tag        = `v${version}`;
+    const releaseRes = await fetch(
+      `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/releases/tags/${tag}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept:        'application/vnd.github.v3+json',
+          'User-Agent':  'bti-voice-updater',
+        },
+      }
+    );
+    if (!releaseRes.ok) return res.status(releaseRes.status).send('GitHub API error');
+
+    const release = await releaseRes.json();
+    const asset   = release.assets?.find(a => a.name.endsWith('.exe'));
+    if (!asset) return res.status(404).send('No .exe asset found');
+
+    const redirectRes = await fetch(asset.url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept:        'application/octet-stream',
+        'User-Agent':  'bti-voice-updater',
+      },
+      redirect: 'manual',
+    });
+
+    const s3Url = redirectRes.headers.get('location');
+    if (!s3Url) return res.status(502).send('Could not resolve download URL');
+
+    // Redirect the old client straight to S3 — no proxying through Railway
+    res.redirect(302, s3Url);
+  } catch (e) {
+    console.error('[updates/download legacy]', e.message);
+    res.status(500).send(e.message);
+  }
+});
+
 module.exports = router;
