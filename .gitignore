@@ -41,4 +41,15 @@ release/
 # ── Misc ──────────────────────────────────────────────────────
 .cache/
 *.local
+
+# ── Vite temp files ───────────────────────────────────────────
 client/vite.config.js.timestamp-*.mjs
+
+# ── Electron junk (accidentally created at root) ──────────────
+electron/bti-voice-desktop@*
+electron/electron-builder
+electron/npm
+package-lock.json
+
+# ── Migration scripts (one-time use, not needed in repo) ──────
+server/migrate-agents.js

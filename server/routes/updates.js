@@ -46,6 +46,10 @@ router.get('/download', async (req, res) => {
     res.set('Content-Type', 'application/octet-stream');
     res.set('Content-Disposition', 'attachment; filename="BTI-Voice-Setup.exe"');
 
+    // Forward Content-Length so the client can show download progress
+    const contentLength = response.headers.get('content-length');
+    if (contentLength) res.set('Content-Length', contentLength);
+
     const { Readable } = require('stream');
     Readable.fromWeb(response.body).pipe(res);
   } catch (e) {
