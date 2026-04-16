@@ -104,18 +104,16 @@ router.post('/:id/sync-zoho', async (req, res) => {
     );
     if (!contact) return res.status(404).json({ error: 'Contact not found' });
 
-    const { findContactByPhone, zohoAPI } = require('../zoho');
+    const { findContactByPhone } = require('../zoho');
 
-    // Look up by phone number
-    const zohoId = await findContactByPhone(contact.phone_number);
-    if (!zohoId) {
+    // Look up by phone — returns the full Zoho contact object (with id + Full_Name) or null
+    const zohoContact = await findContactByPhone(contact.phone_number);
+    if (!zohoContact) {
       return res.json({ synced: false, message: 'No matching contact found in Zoho CRM' });
     }
 
-    // Fetch the Zoho contact record
-    const data = await zohoAPI('GET', `/crm/v2/Contacts/${zohoId}`);
-    const zohoContact = data?.data?.[0];
-    const zohoName = zohoContact?.Full_Name || null;
+    const zohoId   = zohoContact.id;
+    const zohoName = zohoContact.Full_Name || null;
 
     // Determine if we should update the name:
     // Only overwrite if current name is null, empty, or equals the raw phone number
