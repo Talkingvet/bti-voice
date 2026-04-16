@@ -16,7 +16,7 @@ async function seed() {
   // delete it because messages reference it via foreign key. It will be hidden from the active list.
   // If only 'raven' exists, rename it to 'rick'.
   await pool.query(`UPDATE agents SET is_active = false WHERE username = 'raven' AND EXISTS (SELECT 1 FROM agents WHERE username = 'rick')`);
-  await pool.query(`UPDATE agents SET username = 'rick', name = 'Rick Almendras', initials = 'RA', color = '#8b5cf6' WHERE username = 'raven'`);
+  await pool.query(`UPDATE agents SET username = 'rick', name = 'Rick Almendras', initials = 'RA', color = '#8b5cf6' WHERE username = 'raven' AND NOT EXISTS (SELECT 1 FROM agents WHERE username = 'rick')`);
 
   for (const a of agents) {
     const { rows } = await pool.query('SELECT id FROM agents WHERE username = $1', [a.username]);
