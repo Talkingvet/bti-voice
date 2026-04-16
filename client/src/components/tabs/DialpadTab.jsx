@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useColors } from '../../useColors'
 import { playDTMF } from '../../dtmf'
+import { api } from '../../api'
 
 const KEYS = [
   ['1',''],  ['2','ABC'],  ['3','DEF'],
@@ -12,9 +13,48 @@ const KEYS = [
 // device, activeCall, onCallStart, onCallEnd provided by App.jsx
 export default function DialpadTab({ agent, device, activeCall, onCallStart, onCallEnd }) {
   const C = useColors()
-  const [number,    setNumber]    = useState('')
-  const [status,    setStatus]    = useState('')
-  const [callState, setCallState] = useState('idle') // idle | connecting | active
+  const [number,       setNumber]       = useState('')
+  const [status,       setStatus]       = useState('')
+  const [callState,    setCallState]    = useState('idle') // idle | connecting | active
+  const [quickDials,   setQuickDials]   = useState([])
+  const [addingQD,     setAddingQD]     = useState(false)
+  const [qdName,       setQdName]       = useState('')
+  const [qdPhone,      setQdPhone]      = useState('')
+  const [savingQD,     setSavingQD]     = useState(false)
+
+  useEffect(() => {
+    api.quickDial().then(setQuickDials).catch(console.error)
+  }, [])
+
+  async function handleAddQuickDial() {
+    if (!qdName.trim() || !qdPhone.trim() || savingQD) return
+    setSavingQD(true)
+    try {
+      const entry = await api.addQuickDial({ name: qdName.trim(), phone_number: qdPhone.trim() })
+      setQuickDials(prev => [...prev, entry].sort((a, b) => a.name.localeCompare(b.name)))
+      setQdName(''); setQdPhone(''); setAddingQD(false)
+    } catch (e) {
+      alert('Failed to save: ' + e.message)
+    } finally {
+      setSavingQD(false)
+    }
+  }
+
+  async function handleDeleteQD(id) {
+    if (!window.confirm('Remove this quick dial?')) return
+    try {
+      await api.deleteQuickDial(id)
+      setQuickDials(prev => prev.filter(q => q.id !== id))
+    } catch (e) {
+      alert('Failed to delete: ' + e.message)
+    }
+  }
+
+  function dialQuickDial(phone) {
+    const digits = phone.replace(/\D/g, '')
+    setNumber(digits)
+    setStatus('')
+  }
 
   // ── Keyboard input ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -172,8 +212,50 @@ export default function DialpadTab({ agent, device, activeCall, onCallStart, onC
 
       {/* Quick dial */}
       <div style={{ ...S.quickSection, borderTop: `1px solid ${C.border}` }}>
-        <div style={{ ...S.quickTitle, color: C.textMuted }}>Quick Dial</div>
-        <div style={{ ...S.quickEmpty, color: C.emptyText }}>No saved contacts yet</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+          <div style={{ ...S.quickTitle, color: C.textMuted }}>Quick Dial</div>
+          <button
+            style={{ ...S.qdAddBtn, color: '#4f9cf9' }}
+            onClick={() => setAddingQD(v => !v)}
+            title="Add quick dial"
+          >+</button>
+        </div>
+
+        {addingQD && (
+          <div style={{ ...S.qdForm, background: C.surface, border: `1px solid ${C.border}` }}>
+            <input
+              style={{ ...S.qdInput, background: C.inputBg, border: `1px solid ${C.inputBorder}`, color: C.text }}
+              placeholder="Name"
+              value={qdName}
+              onChange={e => setQdName(e.target.value)}
+            />
+            <input
+              style={{ ...S.qdInput, background: C.inputBg, border: `1px solid ${C.inputBorder}`, color: C.text }}
+              placeholder="Phone number"
+              value={qdPhone}
+              onChange={e => setQdPhone(e.target.value)}
+            />
+            <button
+              style={{ ...S.qdSaveBtn, opacity: savingQD || !qdName.trim() || !qdPhone.trim() ? 0.5 : 1 }}
+              onClick={handleAddQuickDial}
+              disabled={savingQD || !qdName.trim() || !qdPhone.trim()}
+            >Save</button>
+          </div>
+        )}
+
+        {quickDials.length === 0 && !addingQD && (
+          <div style={{ ...S.quickEmpty, color: C.emptyText }}>No saved contacts yet</div>
+        )}
+
+        {quickDials.map(qd => (
+          <div key={qd.id} style={{ ...S.qdRow, borderBottom: `1px solid ${C.border}` }}>
+            <button style={{ ...S.qdDialBtn }} onClick={() => dialQuickDial(qd.phone_number)} title={`Dial ${qd.phone_number}`}>
+              <div style={{ ...S.qdName, color: C.text }}>{qd.name}</div>
+              <div style={{ ...S.qdNum, color: C.textMuted }}>{qd.phone_number}</div>
+            </button>
+            <button style={{ ...S.qdDeleteBtn, color: C.textMuted }} onClick={() => handleDeleteQD(qd.id)} title="Remove">✕</button>
+          </div>
+        ))}
       </div>
     </div>
   )
@@ -232,6 +314,15 @@ const S = {
   activeDot:    { width: 7, height: 7, borderRadius: '50%', background: '#22c55e', display: 'inline-block' },
   hint:         { fontSize: 10, textAlign: 'center', padding: '0 20px 6px', opacity: 0.5 },
   quickSection: { width: '100%', padding: '12px 20px 0', marginTop: 4 },
-  quickTitle:   { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 },
+  quickTitle:   { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 },
   quickEmpty:   { fontSize: 13, textAlign: 'center', padding: '12px 0' },
+  qdAddBtn:     { background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, lineHeight: 1, padding: '0 2px', fontWeight: 700 },
+  qdForm:       { borderRadius: 10, padding: 10, marginBottom: 8, display: 'flex', flexDirection: 'column', gap: 6 },
+  qdInput:      { borderRadius: 8, padding: '6px 10px', fontSize: 12, outline: 'none', fontFamily: 'inherit' },
+  qdSaveBtn:    { background: '#4f9cf9', color: 'white', border: 'none', borderRadius: 8, padding: '6px 0', fontSize: 12, fontWeight: 700, cursor: 'pointer' },
+  qdRow:        { display: 'flex', alignItems: 'center', padding: '8px 0' },
+  qdDialBtn:    { flex: 1, background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', padding: 0 },
+  qdName:       { fontSize: 13, fontWeight: 600 },
+  qdNum:        { fontSize: 11, marginTop: 1 },
+  qdDeleteBtn:  { background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, padding: '0 4px', opacity: 0.5 },
 }
