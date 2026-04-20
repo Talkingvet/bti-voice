@@ -168,6 +168,10 @@ router.post('/log-by-phone', requireAuth, async (req, res) => {
     // Sync to Zoho
     syncCallToZoho(call.id);
 
+    // Track call activity
+    const contactLabel = contact.name && contact.name !== e164 ? contact.name : phone;
+    logActivity(req, req.agent, 'call', `${direction} · ${status} · ${duration}s · ${contactLabel}`);
+
     // Notify all clients to refresh calls list
     const io = getIO();
     if (io) io.emit('call_logged', { call_id: call.id });

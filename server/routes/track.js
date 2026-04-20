@@ -8,6 +8,7 @@ const router = express.Router();
 router.post('/', requireAuth, async (req, res) => {
   const { event, detail } = req.body || {};
   if (!event) return res.status(400).json({ error: 'event required' });
+  console.log(`[track] ${req.agent?.name} → ${event}${detail ? ' · ' + detail : ''}`);
   await logActivity(req, req.agent, event, detail || null);
   res.json({ ok: true });
 });
