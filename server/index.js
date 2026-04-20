@@ -31,6 +31,8 @@ app.use('/api/conversations', require('./routes/notes'));
 app.use('/api/canned-responses', require('./routes/cannedResponses'));
 app.use('/api/quick-dial',    require('./routes/quickDial'));
 app.use('/api/notifications', require('./routes/notifications'));
+app.use('/api/track',         require('./routes/track'));
+app.use('/admin/activity',    require('./routes/adminActivity'));
 
 // ── Twilio Webhooks ───────────────────────────────────────────
 app.use('/webhooks/sms',       require('./webhooks/sms'));

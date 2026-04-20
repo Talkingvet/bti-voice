@@ -21,6 +21,12 @@ function syncSMSToZoho(messageId) {
 
 const router = express.Router();
 
+// Twilio sends a GET request to validate the URL when saving in the console
+router.get('/', (req, res) => {
+  res.set('Content-Type', 'text/xml')
+  res.send('<Response></Response>')
+})
+
 router.post('/', async (req, res) => {
   const { From, To, Body, MessageSid } = req.body;
 

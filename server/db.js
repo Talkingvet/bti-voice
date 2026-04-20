@@ -173,6 +173,21 @@ async function migrate() {
     );
   `);
 
+  // User activity tracking (admin-only, not visible in app)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS user_activity_logs (
+      id         SERIAL PRIMARY KEY,
+      agent_id   INTEGER REFERENCES agents(id),
+      agent_name VARCHAR(100),
+      event      VARCHAR(50)  NOT NULL,
+      detail     VARCHAR(200),
+      ip         VARCHAR(50),
+      city       VARCHAR(100),
+      country    VARCHAR(10),
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
+
   console.log('[db] Migrations complete.');
 }
 

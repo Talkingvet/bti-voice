@@ -102,4 +102,7 @@ export const api = {
   markAllNotifsRead:    ()    => request('/notifications/read-all', { method: 'POST' }),
   dismissNotif:         (id)  => request(`/notifications/${id}`, { method: 'DELETE' }),
   clearReadNotifs:      ()    => request('/notifications', { method: 'DELETE' }),
+
+  // Activity tracking (fire-and-forget)
+  track: (event, detail) => request('/track', { method: 'POST', body: { event, detail } }).catch(() => {}),
 }

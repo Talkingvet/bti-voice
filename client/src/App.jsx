@@ -231,6 +231,12 @@ function AppInner() {
     if (activeTab === 'calls')         setUnreadVm(0)
   }, [activeTab])
 
+  // Track tab navigation (fire-and-forget, only when logged in)
+  useEffect(() => {
+    if (!agent) return
+    api.track(`tab_${activeTab}`)
+  }, [activeTab, agent])
+
   // SMS unread badge — fetch count on load + refresh on conversation_updated socket
   useEffect(() => {
     if (!agent) return

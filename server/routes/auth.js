@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const { pool } = require('../db');
 const { generateToken, requireAuth } = require('../auth');
+const { logActivity } = require('../helpers/logActivity');
 
 const router = express.Router();
 
@@ -19,6 +20,7 @@ router.post('/login', async (req, res) => {
     if (!valid) return res.status(401).json({ error: 'Invalid username or password' });
 
     delete agent.password_hash;
+    logActivity(req, agent, 'login');
     res.json({ agent, token: generateToken(agent) });
   } catch (e) {
     console.error('[auth/login]', e);
