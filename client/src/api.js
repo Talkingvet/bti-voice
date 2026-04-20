@@ -104,5 +104,5 @@ export const api = {
   clearReadNotifs:      ()    => request('/notifications', { method: 'DELETE' }),
 
   // Activity tracking (fire-and-forget)
-  track: (event, detail) => request('/track', { method: 'POST', body: { event, detail } }).catch(() => {}),
+  track: (event, detail) => request('/track', { method: 'POST', body: { event, detail } }).catch(e => console.warn('[track]', e.message)),
 }

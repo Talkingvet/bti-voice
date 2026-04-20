@@ -231,9 +231,14 @@ function AppInner() {
     if (activeTab === 'calls')         setUnreadVm(0)
   }, [activeTab])
 
-  // Track tab navigation (fire-and-forget, only when logged in)
+  // Track app open + tab navigation (fire-and-forget, only when logged in)
+  const trackedOpen = useRef(false)
   useEffect(() => {
     if (!agent) return
+    if (!trackedOpen.current) {
+      trackedOpen.current = true
+      api.track('app_open')
+    }
     api.track(`tab_${activeTab}`)
   }, [activeTab, agent])
 

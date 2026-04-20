@@ -7,6 +7,8 @@ const ADMIN_KEY = process.env.ADMIN_KEY || 'bti-admin-2026';
 
 const EVENT_LABELS = {
   login:        '🔑 Login',
+  app_open:     '📱 App Opened',
+  call:         '📞 Call Made',
   tab_sms:      '💬 Opened Messages',
   tab_calls:    '📞 Opened Calls',
   tab_dialpad:  '🔢 Opened Dialpad',

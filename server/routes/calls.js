@@ -1,6 +1,7 @@
 const express = require('express');
 const { pool } = require('../db');
 const { requireAuth } = require('../auth');
+const { logActivity } = require('../helpers/logActivity');
 
 // Fire-and-forget Zoho sync — never blocks the response
 function syncCallToZoho(callId, port) {
@@ -59,6 +60,9 @@ router.post('/log', requireAuth, async (req, res) => {
 
     // Sync to Zoho CRM in the background
     syncCallToZoho(call.id);
+
+    // Track call activity
+    logActivity(req, req.agent, 'call', `${direction} · ${status} · ${duration || 0}s`);
 
     res.json(call);
   } catch (e) {
