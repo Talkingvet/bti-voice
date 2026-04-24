@@ -16,8 +16,9 @@ function fmtTime(d) {
   return new Date(d).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
 }
 function fmtDuration(secs) {
-  if (!secs || secs === 0) return null
-  const m = Math.floor(secs / 60), s = secs % 60
+  const n = Number(secs)
+  if (!n) return null
+  const m = Math.floor(n / 60), s = n % 60
   return m > 0 ? `${m}:${String(s).padStart(2, '0')}` : `0:${String(s).padStart(2, '0')}`
 }
 function groupByDate(items, dateField) {

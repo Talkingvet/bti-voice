@@ -1,6 +1,6 @@
 {
   "name": "bti-voice-desktop",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "description": "BTI Voice – Shared SMS & VOIP Desktop App",
   "author": "Business Technology Insight",
   "main": "main.js",

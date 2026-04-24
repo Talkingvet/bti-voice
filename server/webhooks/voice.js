@@ -33,6 +33,26 @@ function autoLogCall({ callSid, from, to, duration, direction, status }) {
                     : phone;
       const tenDigit = digits.length === 11 ? digits.slice(1) : digits;
 
+      // Secondary dedup: check if the frontend already logged this call (SID mismatch
+      // between parent call SID stored here and child leg SID sent by the browser SDK)
+      const twoMinsAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+      const { rows: [frontendRecord] } = await pool.query(`
+        SELECT ca.id FROM calls ca
+        JOIN conversations cv ON cv.id = ca.conversation_id
+        JOIN contacts co ON co.id = cv.contact_id
+        WHERE ca.twilio_call_sid IS NULL
+          AND ca.direction = $1
+          AND co.phone_number = ANY($2::text[])
+          AND ca.started_at > $3
+        ORDER BY ca.started_at DESC LIMIT 1
+      `, [direction, [e164, phone, tenDigit], twoMinsAgo]);
+      if (frontendRecord) {
+        // Frontend beat the webhook — stamp the parent SID so future dedup works
+        await pool.query('UPDATE calls SET twilio_call_sid = $1 WHERE id = $2', [callSid, frontendRecord.id]);
+        console.log(`[autoLog] Matched frontend-logged call for ${phone} — stamped SID ${callSid}`);
+        return;
+      }
+
       // Find or create contact
       let contact = null;
       for (const p of [e164, phone, tenDigit]) {
@@ -429,6 +449,14 @@ router.post('/status', async (req, res) => {
         return;
       }
 
+      // Normalize phone number up front (needed for both dedup and contact lookup)
+      const digits  = phone.replace(/\D/g, '');
+      const normalized = (digits.length === 11 && digits.startsWith('1'))
+        ? '+' + digits
+        : digits.length === 10
+          ? '+1' + digits
+          : phone;
+
       // Secondary dedup: if the frontend logged without a SID (null), check for a
       // matching call by phone + direction within the last 2 minutes to avoid doubles
       const twoMinsAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
@@ -450,13 +478,6 @@ router.post('/status', async (req, res) => {
       }
 
       // Find or create contact
-      const digits  = phone.replace(/\D/g, '');
-      const normalized = (digits.length === 11 && digits.startsWith('1'))
-        ? '+' + digits
-        : digits.length === 10
-          ? '+1' + digits
-          : phone;
-
       let { rows: [contact] } = await pool.query(
         'SELECT * FROM contacts WHERE phone_number = $1', [normalized]
       );
@@ -563,7 +584,7 @@ router.post('/recording-complete', async (req, res) => {
       // If this is a voicemail (no existing call record), create one
       if (!callRecord || callRecord.status === 'voicemail') {
         const phone = From || 'unknown';
-        await pool.query('INSERT INTO contacts (phone_number) VALUES ($1) ON CONFLICT DO NOTHING', [phone]);
+        await pool.query('INSERT INTO contacts (phone_number, name) VALUES ($1, $2) ON CONFLICT (phone_number) DO NOTHING', [phone, phone]);
         const { rows: [contact] } = await pool.query('SELECT * FROM contacts WHERE phone_number = $1', [phone]);
         let { rows: [conv] } = await pool.query(
           'SELECT * FROM conversations WHERE contact_id = $1 ORDER BY created_at DESC LIMIT 1', [contact.id]
