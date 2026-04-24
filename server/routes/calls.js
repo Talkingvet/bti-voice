@@ -333,4 +333,51 @@ router.post('/resume', requireAuth, async (req, res) => {
     const targetSid = await resolveParentSid(client, callSid);
     console.log(`[resume] Reconnecting ${targetSid} to agent_${agentId}`);
     await client.calls(targetSid).update({
-      twiml: 
+      twiml: `<Response><Dial timeout="30" action="${serverUrl}/webhooks/voice/no-answer" method="POST"><Client>agent_${agentId}</Client></Dial></Response>`,
+    });
+    res.json({ success: true });
+  } catch (e) {
+    console.error('[resume]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Blind transfer — redirects PSTN caller to a different agent's browser client
+router.post('/transfer', requireAuth, async (req, res) => {
+  const { callSid, targetAgentId } = req.body;
+  if (!callSid || !targetAgentId) return res.status(400).json({ error: 'callSid and targetAgentId required' });
+  const serverUrl = process.env.SERVER_URL || '';
+  try {
+    const client    = getTwilioClient();
+    const targetSid = await resolveParentSid(client, callSid);
+    console.log(`[transfer] Transferring ${targetSid} to agent_${targetAgentId}`);
+    await client.calls(targetSid).update({
+      twiml: `<Response><Dial timeout="30" action="${serverUrl}/webhooks/voice/no-answer" method="POST"><Client>agent_${agentId}</Client></Dial></Response>`,
+    });
+    res.json({ success: true });
+  } catch (e) {
+    console.error('[resume]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Blind transfer â redirects PSTN caller to a different agent's browser client
+router.post('/transfer', requireAuth, async (req, res) => {
+  const { callSid, targetAgentId } = req.body;
+  if (!callSid || !targetAgentId) return res.status(400).json({ error: 'callSid and targetAgentId required' });
+  const serverUrl = process.env.SERVER_URL || '';
+  try {
+    const client    = getTwilioClient();
+    const targetSid = await resolveParentSid(client, callSid);
+    console.log(`[transfer] Transferring ${targetSid} to agent_${targetAgentId}`);
+    await client.calls(targetSid).update({
+      twiml: `<Response><Dial timeout="30" action="${serverUrl}/webhooks/voice/no-answer" method="POST"><Client>agent_${targetAgentId}</Client></Dial></Response>`,
+    });
+    res.json({ success: true });
+  } catch (e) {
+    console.error('[transfer]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+module.exports = router;
