@@ -131,7 +131,8 @@ router.post('/log-by-phone', requireAuth, async (req, res) => {
     // Secondary dedup: the browser SDK sends the child leg SID but the webhook stores
     // the parent SID — they won't match. Fall back to a phone + direction + time-window
     // check to catch the case where autoLogCall already logged this call.
-    const twoMinsAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+    // 30 min window so calls longer than 2 min are still caught.
+    const twoMinsAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
     const { rows: [webhookRecord] } = await pool.query(`
       SELECT ca.id FROM calls ca
       JOIN conversations cv ON cv.id = ca.conversation_id
