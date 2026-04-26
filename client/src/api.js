@@ -49,6 +49,15 @@ export const api = {
   zohoStatus: ()     => request('/zoho/status'),
   zohoTest:   ()     => request('/zoho/test'),
 
+  // Zoho — used by post-call wrap-up screen (v1.4.0)
+  zohoFindContactsByPhone: (phone) => request('/zoho/find-contacts-by-phone', { method: 'POST', body: { phone } }),
+  zohoCreateContact:       (data)  => request('/zoho/create-contact',         { method: 'POST', body: data }),
+  zohoUsers:               ()      => request('/zoho/users'),
+
+  // Calls — wrap-up screen (v1.4.0)
+  getCall:    (id)        => request(`/calls/${id}`),
+  wrapUpCall: (id, data)  => request(`/calls/${id}/wrap-up`, { method: 'POST', body: data }),
+
   // Active call controls (hold, resume, blind transfer)
   holdCall:          (callSid)                => request('/calls/hold',     { method: 'POST', body: { callSid } }),
   resumeCall:        (callSid, agentId)       => request('/calls/resume',   { method: 'POST', body: { callSid, agentId } }),

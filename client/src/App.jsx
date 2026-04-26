@@ -11,6 +11,7 @@ import BottomNav                   from './components/BottomNav'
 import NotificationsPanel          from './components/NotificationsPanel'
 import NewMessageModal             from './components/NewMessageModal'
 import ActiveCallPanel             from './components/ActiveCallPanel'
+import PostCallScreen             from './components/PostCallScreen'
 import SMSTab                      from './components/tabs/SMSTab'
 import DialpadTab                  from './components/tabs/DialpadTab'
 import ContactsTab                 from './components/tabs/ContactsTab'
@@ -59,6 +60,7 @@ function AppInner() {
   const [incomingCall,  setIncomingCall]  = useState(null)
   const [activeCall,    setActiveCall]    = useState(null)
   const [callerInfo,    setCallerInfo]    = useState(null)  // { phone, name }
+  const [wrapUpCall,    setWrapUpCall]    = useState(null)  // { id, phone, contact_name, duration, direction } — opens post-call screen
   const [deviceStatus,  setDeviceStatus]  = useState('idle') // 'idle' | 'registering' | 'registered' | 'unregistered' | 'error'
   const deviceRef    = useRef(null)
   const callStartRef = useRef(null)   // timestamp when call was answered
@@ -358,7 +360,10 @@ function AppInner() {
   }, [agent]) // eslint-disable-line
 
   // ── Shared call end logic (logs to DB + plays sound) ─────────────────────────
-  function handleCallEnded(phone, direction, status = 'completed', callSid = null) {
+  // v1.4.0: After a connected call >= 15s ends, opens the PostCallScreen so
+  // the agent can pick the right contact (handles shared-phone scenarios)
+  // and optionally drop a Zoho note + follow-up task.
+  async function handleCallEnded(phone, direction, status = 'completed', callSid = null) {
     // Guard: callStartRef is cleared on the first call — if both refs are gone,
     // this is a duplicate fire (disconnect event + onHangup callback both trigger this).
     if (!callStartRef.current && !activeCallRef.current) return
@@ -373,12 +378,29 @@ function AppInner() {
     setCallerInfo(null)
     // Tell the mini widget the call is done
     window.electronAPI?.callEnd?.()
-    if (phone) {
-      api.logCallByPhone(
+
+    if (!phone) return
+
+    try {
+      const callRecord = await api.logCallByPhone(
         phone, duration, direction,
         new Date(Date.now() - duration * 1000).toISOString(),
         callSid
-      ).catch(console.error)
+      )
+
+      // v1.4.0 trigger: open the post-call wrap-up screen for connected calls >= 15s.
+      // Status='completed' means connected (vs 'missed', 'voicemail', 'failed').
+      if (callRecord && callRecord.id && status === 'completed' && duration >= 15) {
+        setWrapUpCall({
+          id:           callRecord.id,
+          phone:        phone,
+          contact_name: callRecord.contact_name || null,
+          duration:     duration,
+          direction:    direction,
+        })
+      }
+    } catch (e) {
+      console.error('[handleCallEnded]', e)
     }
   }
 
@@ -489,7 +511,7 @@ function AppInner() {
           }}
         />}
         {activeTab === 'contacts' && <ContactsTab agent={agent} />}
-        {activeTab === 'calls'    && <CallsTab    agent={agent} />}
+        {activeTab === 'calls'    && <CallsTab    agent={agent} onWrapUpClick={c => setWrapUpCall(c)} />}
         {activeTab === 'dialpad'  && (
           <DialpadTab
             agent={agent}
@@ -544,6 +566,14 @@ function AppInner() {
           currentAgent={agent}
           onClose={() => setCompose(false)}
           onSent={() => setActiveTab('sms')}
+        />
+      )}
+
+      {wrapUpCall && (
+        <PostCallScreen
+          call={wrapUpCall}
+          onClose={() => setWrapUpCall(null)}
+          onSaved={() => { /* badge clears via socket call_logged */ }}
         />
       )}
     </div>

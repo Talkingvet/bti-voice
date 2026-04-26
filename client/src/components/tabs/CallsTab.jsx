@@ -63,7 +63,7 @@ const ST = {
 }
 
 /* ── Main component ──────────────────────────────────────────────── */
-export default function CallsTab({ agent }) {
+export default function CallsTab({ agent, onWrapUpClick }) {
   const C = useColors()
   const [subTab,     setSubTab]     = useState('logs')
   const [calls,       setCalls]      = useState([])
@@ -118,10 +118,13 @@ export default function CallsTab({ agent }) {
 
   /* Filter calls */
   const searchLower = search.toLowerCase()
+  const needsWrapUpCount = calls.filter(c => c.needs_wrap_up).length
+
   const filteredCalls = calls.filter(c => {
     if (filter === 'missed')   return c.status === 'missed'
     if (filter === 'inbound')  return c.direction === 'inbound'
     if (filter === 'outbound') return c.direction === 'outbound'
+    if (filter === 'wrap_up')  return !!c.needs_wrap_up
     return true
   }).filter(c => {
     if (!searchLower) return true
@@ -171,18 +174,24 @@ export default function CallsTab({ agent }) {
 
           {/* Filter row */}
           <div style={{ ...S.filterRow, background: C.panel, borderBottom: `1px solid ${C.borderSoft}` }}>
-            {['all', 'inbound', 'outbound', 'missed'].map(f => (
+            {[
+              { id: 'all',      label: 'All' },
+              { id: 'inbound',  label: 'Inbound' },
+              { id: 'outbound', label: 'Outbound' },
+              { id: 'missed',   label: 'Missed' },
+              { id: 'wrap_up',  label: needsWrapUpCount > 0 ? `Needs wrap-up (${needsWrapUpCount})` : 'Needs wrap-up' },
+            ].map(f => (
               <button
-                key={f}
-                onClick={() => setFilter(f)}
+                key={f.id}
+                onClick={() => setFilter(f.id)}
                 style={{
                   ...S.filterBtn,
-                  background: filter === f ? 'rgba(79,156,249,0.15)' : 'transparent',
-                  color: filter === f ? '#4f9cf9' : C.textSec,
-                  border: filter === f ? '1px solid rgba(79,156,249,0.4)' : '1px solid transparent',
+                  background: filter === f.id ? 'rgba(79,156,249,0.15)' : 'transparent',
+                  color:      filter === f.id ? '#4f9cf9' : C.textSec,
+                  border:     filter === f.id ? '1px solid rgba(79,156,249,0.4)' : '1px solid transparent',
                 }}
               >
-                {f.charAt(0).toUpperCase() + f.slice(1)}
+                {f.label}
               </button>
             ))}
           </div>
@@ -201,6 +210,7 @@ export default function CallsTab({ agent }) {
                   call={row.data}
                   expanded={expandedCall === row.data.id}
                   onToggle={() => setExpandedCall(p => p === row.data.id ? null : row.data.id)}
+                  onWrapUp={onWrapUpClick}
                   C={C}
                 />
             )}
@@ -245,7 +255,7 @@ function DateHeader({ label, C }) {
 }
 
 /* ── Call row ────────────────────────────────────────────────────── */
-function CallRow({ call, expanded, onToggle, C }) {
+function CallRow({ call, expanded, onToggle, onWrapUp, C }) {
   const isMissed  = call.status === 'missed'
   const isInbound = call.direction === 'inbound'
   const color     = isMissed ? '#ef4444' : isInbound ? '#22c55e' : '#4f9cf9'
@@ -262,8 +272,34 @@ function CallRow({ call, expanded, onToggle, C }) {
           <CallDirIcon direction={call.direction} missed={isMissed} />
         </div>
         <div style={S.rowInfo}>
-          <div style={{ ...S.rowName, color: C.text }}>
-            {call.contact_name || call.contact_number || 'Unknown'}
+          <div style={{ ...S.rowName, color: C.text, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {call.contact_name || call.contact_number || 'Unknown'}
+            </span>
+            {call.needs_wrap_up && (
+              <button
+                onClick={e => {
+                  e.stopPropagation()
+                  if (onWrapUp) onWrapUp({
+                    id:           call.id,
+                    phone:        call.contact_number,
+                    contact_name: call.contact_name,
+                    duration:     call.duration,
+                    direction:    call.direction,
+                  })
+                }}
+                title="Click to wrap up this call"
+                style={{
+                  fontSize: 9, fontWeight: 700,
+                  background: 'rgba(245,158,11,0.18)',
+                  color: '#f59e0b',
+                  border: '1px solid rgba(245,158,11,0.45)',
+                  borderRadius: 4, padding: '1px 6px',
+                  cursor: 'pointer', flexShrink: 0,
+                  letterSpacing: 0.3, textTransform: 'uppercase',
+                }}
+              >Wrap up</button>
+            )}
           </div>
           <div style={{ ...S.rowMeta, color: C.textSec }}>
             {call.agent_name && (
