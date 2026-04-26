@@ -33,20 +33,22 @@ function autoLogCall({ callSid, from, to, duration, direction, status, callStart
                     : phone;
       const tenDigit = digits.length === 11 ? digits.slice(1) : digits;
 
-      // Secondary dedup: check if the frontend already logged this call (SID mismatch
-      // between parent call SID stored here and child leg SID sent by the browser SDK).
-      // Window is 30 min so calls longer than 2 min are still caught.
+      // Secondary dedup: check if the frontend already logged this call.
+      // The browser SDK gives the child leg SID (different from the parent SID we have here),
+      // so we can't match by SID. We also cannot assume the frontend record has twilio_call_sid IS NULL
+      // because the frontend DOES send its child SID. So match by phone + direction + time window only,
+      // excluding only records that already have OUR exact parent SID (those would be self-matches).
       const thirtyMinsAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
       const { rows: [frontendRecord] } = await pool.query(`
-        SELECT ca.id FROM calls ca
+        SELECT ca.id, ca.twilio_call_sid FROM calls ca
         JOIN conversations cv ON cv.id = ca.conversation_id
         JOIN contacts co ON co.id = cv.contact_id
-        WHERE ca.twilio_call_sid IS NULL
+        WHERE (ca.twilio_call_sid IS NULL OR ca.twilio_call_sid != $4)
           AND ca.direction = $1
           AND co.phone_number = ANY($2::text[])
           AND ca.started_at > $3
         ORDER BY ca.started_at DESC LIMIT 1
-      `, [direction, [e164, phone, tenDigit], thirtyMinsAgo]);
+      `, [direction, [e164, phone, tenDigit], thirtyMinsAgo, callSid]);
       if (frontendRecord) {
         // Frontend beat the webhook — stamp the parent SID so future dedup works
         await pool.query('UPDATE calls SET twilio_call_sid = $1 WHERE id = $2', [callSid, frontendRecord.id]);
@@ -466,24 +468,24 @@ router.post('/status', async (req, res) => {
           ? '+1' + digits
           : phone;
 
-      // Secondary dedup: if the frontend logged without a SID (null), check for a
-      // matching call by phone + direction within the last 30 minutes to avoid doubles
-      // (30 min so calls longer than 2 min are still caught)
+      // Secondary dedup: check if the frontend already logged this call.
+      // Frontend records have a child SID (not null, not our parent SID), so we
+      // cannot use IS NULL. Match by phone + direction + time, excluding our own SID.
       const thirtyMinsAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
       const dupeCheck = await pool.query(`
         SELECT ca.id FROM calls ca
         JOIN conversations cv ON cv.id = ca.conversation_id
         JOIN contacts co ON co.id = cv.contact_id
-        WHERE ca.twilio_call_sid IS NULL
+        WHERE (ca.twilio_call_sid IS NULL OR ca.twilio_call_sid != $4)
           AND ca.direction = $1
           AND co.phone_number = ANY($2::text[])
           AND ca.started_at > $3
         LIMIT 1
-      `, [callDir, [normalized, phone], thirtyMinsAgo]);
+      `, [callDir, [normalized, phone], thirtyMinsAgo, CallSid]);
       if (dupeCheck.rows.length > 0) {
         // Update the existing record with the SID so future dedup works
         await pool.query('UPDATE calls SET twilio_call_sid = $1 WHERE id = $2', [CallSid, dupeCheck.rows[0].id]);
-        console.log(`[status] Matched SID-less call for ${phone} — updated SID, skipping duplicate`);
+        console.log(`[status] Matched frontend-logged call for ${phone} — updated SID, skipping duplicate`);
         return;
       }
 
@@ -822,8 +824,10 @@ function dialSequential(twiml, agentIds, defaultAgent = null) {
   const [first, ...rest] = agentIds.map(String);
   const params = [];
   if (rest.length > 0) params.push(`queue=${rest.join(',')}`);
-  if (defaultAgent)    params.push(`default_agent=${defaultAgent}`);
-  const actionUrl = `/webhooks/voice/next-agent${params.length ? '?' + params.join('&') : ''}`;
+  if (defaultAgent)    params.push(`default_agent=${defaultAgent}`)
+  const actionUrl = `/webhooks/voice/next-agent${
+    params.length ? '?' + params.join('&') : ''
+  }`;
 
   console.log(`[dialSequential] Dialing agent_${first}, fallback queue: [${rest.join(', ')}]`);
 
