@@ -5,7 +5,14 @@
 const express = require('express');
 const router  = express.Router();
 const { pool } = require('../db');
-const { zohoAPI, findContactByPhone } = require('../zoho');
+const {
+  zohoAPI,
+  findContactByPhone,
+  findAllContactsByPhone,
+  listZohoUsers,
+  createZohoContact,
+  createZohoTask,
+} = require('../zoho');
 
 // ── Shared: resolve a Zoho contact ID for a BTI contact ───────────────────────
 // Checks the local cache first, then searches Zoho by phone number.
@@ -23,7 +30,7 @@ async function resolveZohoId(contactId, phoneNumber) {
   const contact = await findContactByPhone(phoneNumber);
   if (!contact) {
     // Clear any stale cached ID
-    if (cached.rows[0]?.zoho_contact_id) {
+    if (cached.rows[0] && cached.rows[0].zoho_contact_id) {
       await pool.query('UPDATE contacts SET zoho_contact_id = NULL WHERE id = $1', [contactId]);
     }
     return null;
@@ -38,33 +45,53 @@ async function resolveZohoId(contactId, phoneNumber) {
 }
 
 // ── POST /api/zoho/log-call ────────────────────────────────────────────────────
+// v1.4.0 changes:
+//   - Accepts optional `zoho_contact_id` override in the body. If provided,
+//     attaches the call to that contact directly (bypasses phone lookup).
+//   - Reads `chosen_zoho_contact_id` from the calls row if no override is
+//     passed (set by the post-call wrap-up screen).
+//   - Stamps `zoho_call_id` and `zoho_logged_at` back on the calls row so the
+//     wrap-up sweep can avoid double-syncing and so the wrap-up endpoint can
+//     re-attach the record later if the agent picks a different contact.
 router.post('/log-call', async (req, res) => {
-  const { call_id } = req.body;
-  if (!call_id) return res.status(400).json({ error: 'call_id required' });
+  const callId          = req.body.call_id;
+  const overrideZohoId  = req.body.zoho_contact_id || null;
+  if (!callId) return res.status(400).json({ error: 'call_id required' });
 
   try {
     // Fetch call details from BTI Voice DB
-    const { rows } = await pool.query(`
-      SELECT ca.id, ca.direction, ca.status, ca.duration, ca.started_at,
-             c.contact_id,
-             co.phone_number, co.name AS contact_name,
-             a.name AS agent_name
-      FROM   calls ca
-      LEFT JOIN conversations c  ON c.id  = ca.conversation_id
-      LEFT JOIN contacts      co ON co.id = c.contact_id
-      LEFT JOIN agents        a  ON a.id  = ca.agent_id
-      WHERE  ca.id = $1
-    `, [call_id]);
+    const queryResult = await pool.query(
+      'SELECT ca.id, ca.direction, ca.status, ca.duration, ca.started_at, ' +
+      '       ca.chosen_zoho_contact_id, ca.zoho_call_id, ca.zoho_logged_at, ' +
+      '       c.contact_id, ' +
+      '       co.phone_number, co.name AS contact_name, ' +
+      '       a.name AS agent_name ' +
+      'FROM   calls ca ' +
+      'LEFT JOIN conversations c  ON c.id  = ca.conversation_id ' +
+      'LEFT JOIN contacts      co ON co.id = c.contact_id ' +
+      'LEFT JOIN agents        a  ON a.id  = ca.agent_id ' +
+      'WHERE  ca.id = $1',
+      [callId]
+    );
 
-    if (!rows[0]) return res.status(404).json({ error: 'Call not found' });
-    const call = rows[0];
+    if (!queryResult.rows[0]) return res.status(404).json({ error: 'Call not found' });
+    const call = queryResult.rows[0];
 
     if (!call.contact_id || !call.phone_number) {
       return res.json({ skipped: true, reason: 'No contact linked to this call' });
     }
 
-    // Find matching Zoho contact
-    const zohoId = await resolveZohoId(call.contact_id, call.phone_number);
+    // Idempotency: if already synced, skip unless an override is passed
+    if (call.zoho_logged_at && !overrideZohoId) {
+      return res.json({ skipped: true, reason: 'Already logged to Zoho', zoho_call_id: call.zoho_call_id });
+    }
+
+    // Decide which Zoho contact to attach the call to.
+    // Priority: explicit override > chosen_zoho_contact_id (from wrap-up) > auto-match.
+    let zohoId = overrideZohoId || call.chosen_zoho_contact_id || null;
+    if (!zohoId) {
+      zohoId = await resolveZohoId(call.contact_id, call.phone_number);
+    }
     if (!zohoId) {
       return res.json({ skipped: true, reason: 'Phone number not found in Zoho CRM' });
     }
@@ -79,17 +106,21 @@ router.post('/log-call', async (req, res) => {
     const mm = String(Math.floor(durationSec / 60)).padStart(2, '0');
     const ss = String(durationSec % 60).padStart(2, '0');
 
+    const startedIso = (call.started_at ? new Date(call.started_at) : new Date())
+      .toISOString().replace(/\.\d{3}Z$/, '+00:00');
+
+    const subject     = callType + ' call - ' + (call.contact_name || call.phone_number);
+    const description = 'Logged by BTI Voice. Agent: ' + (call.agent_name || 'Unknown') +
+                        '. Status: ' + (call.status || 'completed') + '.';
+
     const payload = {
       data: [{
-        Subject:         `${callType} call – ${call.contact_name || call.phone_number}`,
+        Subject:         subject,
         Call_Type:       callType,
-        Call_Start_Time: (call.started_at
-          ? new Date(call.started_at)
-          : new Date()
-        ).toISOString().replace(/\.\d{3}Z$/, '+00:00'),
-        Call_Duration:   `${mm}:${ss}`,
+        Call_Start_Time: startedIso,
+        Call_Duration:   mm + ':' + ss,
         Call_Result:     call.status === 'missed' ? 'No answer' : 'Completed',
-        Description:     `Logged by BTI Voice. Agent: ${call.agent_name || 'Unknown'}. Status: ${call.status || 'completed'}.`,
+        Description:     description,
         Who_Id:          { id: zohoId },
         $se_module:      'Contacts',
       }]
@@ -98,14 +129,22 @@ router.post('/log-call', async (req, res) => {
     const zohoRes = await zohoAPI('POST', '/Calls', payload);
 
     // Zoho returns 200 even on validation errors — check the body
-    const record = zohoRes?.data?.[0];
-    if (record?.status === 'error') {
-      console.error(`[Zoho] Call create failed:`, JSON.stringify(record));
+    const record = zohoRes && zohoRes.data && zohoRes.data[0];
+    if (!record || record.status === 'error') {
+      console.error('[Zoho] Call create failed:', JSON.stringify(record));
       return res.status(500).json({ error: 'Zoho rejected the call record', details: record });
     }
 
-    console.log(`[Zoho] ✓ Call ${call_id} logged on contact ${zohoId} (Zoho record: ${record?.details?.id})`);
-    res.json({ success: true, zoho_contact_id: zohoId });
+    const zohoCallId = record.details && record.details.id;
+
+    // Stamp the call row so we don't re-sync and so wrap-up can re-attach later
+    await pool.query(
+      'UPDATE calls SET zoho_logged_at = NOW(), zoho_call_id = COALESCE($2, zoho_call_id) WHERE id = $1',
+      [callId, zohoCallId || null]
+    );
+
+    console.log('[Zoho] Call ' + callId + ' logged on contact ' + zohoId + ' (Zoho record: ' + zohoCallId + ')');
+    res.json({ success: true, zoho_contact_id: zohoId, zoho_call_id: zohoCallId });
 
   } catch (e) {
     console.error('[Zoho log-call]', e.message, e.body || '');
@@ -115,24 +154,25 @@ router.post('/log-call', async (req, res) => {
 
 // ── POST /api/zoho/log-sms ─────────────────────────────────────────────────────
 router.post('/log-sms', async (req, res) => {
-  const { message_id } = req.body;
-  if (!message_id) return res.status(400).json({ error: 'message_id required' });
+  const messageId = req.body.message_id;
+  if (!messageId) return res.status(400).json({ error: 'message_id required' });
 
   try {
-    const { rows } = await pool.query(`
-      SELECT m.id, m.body, m.direction, m.sent_at,
-             c.contact_id,
-             co.phone_number, co.name AS contact_name,
-             a.name AS agent_name
-      FROM   messages m
-      JOIN   conversations c  ON c.id  = m.conversation_id
-      JOIN   contacts      co ON co.id = c.contact_id
-      LEFT JOIN agents     a  ON a.id  = m.agent_id
-      WHERE  m.id = $1
-    `, [message_id]);
+    const queryResult = await pool.query(
+      'SELECT m.id, m.body, m.direction, m.sent_at, ' +
+      '       c.contact_id, ' +
+      '       co.phone_number, co.name AS contact_name, ' +
+      '       a.name AS agent_name ' +
+      'FROM   messages m ' +
+      'JOIN   conversations c  ON c.id  = m.conversation_id ' +
+      'JOIN   contacts      co ON co.id = c.contact_id ' +
+      'LEFT JOIN agents     a  ON a.id  = m.agent_id ' +
+      'WHERE  m.id = $1',
+      [messageId]
+    );
 
-    if (!rows[0]) return res.status(404).json({ error: 'Message not found' });
-    const msg = rows[0];
+    if (!queryResult.rows[0]) return res.status(404).json({ error: 'Message not found' });
+    const msg = queryResult.rows[0];
 
     const zohoId = await resolveZohoId(msg.contact_id, msg.phone_number);
     if (!zohoId) {
@@ -144,24 +184,27 @@ router.post('/log-sms', async (req, res) => {
     const direction = msg.direction === 'inbound' ? 'Received from' : 'Sent to';
     const preview   = (msg.body || '').substring(0, 80);
     const noteBody  = [
-      `[SMS] ${direction} ${msg.phone_number}`,
-      `Agent: ${msg.agent_name || 'Unknown'}`,
+      '[SMS] ' + direction + ' ' + msg.phone_number,
+      'Agent: ' + (msg.agent_name || 'Unknown'),
       '',
       msg.body || '',
       '',
-      `— Logged by BTI Voice at ${new Date(msg.sent_at || Date.now()).toLocaleString()}`,
+      '- Logged by BTI Voice at ' + new Date(msg.sent_at || Date.now()).toLocaleString(),
     ].join('\n');
+
+    const titleSuffix = msg.body && msg.body.length > 80 ? '...' : '';
+    const noteTitle   = 'SMS: ' + (msg.contact_name || msg.phone_number) + ' - "' + preview + titleSuffix + '"';
 
     await zohoAPI('POST', '/Notes', {
       data: [{
-        Note_Title:   `SMS: ${msg.contact_name || msg.phone_number} — "${preview}${msg.body?.length > 80 ? '…' : ''}"`,
+        Note_Title:   noteTitle,
         Note_Content: noteBody,
         Parent_Id:    { id: zohoId },
         $se_module:   'Contacts',
       }]
     });
 
-    console.log(`[Zoho] ✓ SMS ${message_id} logged on contact ${zohoId}`);
+    console.log('[Zoho] SMS ' + messageId + ' logged on contact ' + zohoId);
     res.json({ success: true, zoho_contact_id: zohoId });
 
   } catch (e) {
@@ -171,23 +214,32 @@ router.post('/log-sms', async (req, res) => {
 });
 
 // ── POST /api/zoho/add-note ────────────────────────────────────────────────────
-// Add a freeform note to a contact. Used for AI call summaries.
+// Add a freeform note to a contact. Used for AI call summaries and the
+// post-call wrap-up screen's "note" field.
+// v1.4.0: accepts optional `zoho_contact_id` override (used by wrap-up so the
+// note lands on the chosen contact, not the auto-matched one).
 router.post('/add-note', async (req, res) => {
-  const { contact_id, note, title } = req.body;
-  if (!contact_id || !note) return res.status(400).json({ error: 'contact_id and note required' });
+  const contactId       = req.body.contact_id;
+  const note            = req.body.note;
+  const title           = req.body.title;
+  const overrideZohoId  = req.body.zoho_contact_id || null;
+  if ((!contactId && !overrideZohoId) || !note) {
+    return res.status(400).json({ error: 'note required, plus either contact_id or zoho_contact_id' });
+  }
 
   try {
-    const { rows: [contact] } = await pool.query(
-      'SELECT * FROM contacts WHERE id = $1', [contact_id]
-    );
-    if (!contact) return res.status(404).json({ error: 'Contact not found' });
-
-    const zohoId = await resolveZohoId(contact_id, contact.phone_number);
+    let zohoId = overrideZohoId;
+    if (!zohoId) {
+      const contactQuery = await pool.query('SELECT * FROM contacts WHERE id = $1', [contactId]);
+      const contact      = contactQuery.rows[0];
+      if (!contact) return res.status(404).json({ error: 'Contact not found' });
+      zohoId = await resolveZohoId(contactId, contact.phone_number);
+    }
     if (!zohoId) return res.json({ skipped: true, reason: 'Contact not found in Zoho CRM' });
 
     await zohoAPI('POST', '/Notes', {
       data: [{
-        Note_Title:   title || `Call Summary — ${new Date().toLocaleDateString()}`,
+        Note_Title:   title || ('Call Summary - ' + new Date().toLocaleDateString()),
         Note_Content: note,
         Parent_Id:    { id: zohoId },
         $se_module:   'Contacts',
@@ -201,20 +253,99 @@ router.post('/add-note', async (req, res) => {
   }
 });
 
+// ── POST /api/zoho/find-contacts-by-phone ─────────────────────────────────────
+// v1.4.0: powers the post-call screen dropdown. Returns ALL Zoho contacts at
+// a given phone number so the agent can pick the right one when several people
+// share a number.
+router.post('/find-contacts-by-phone', async (req, res) => {
+  const phone = req.body.phone;
+  if (!phone) return res.status(400).json({ error: 'phone required' });
+  try {
+    const contacts = await findAllContactsByPhone(phone);
+    res.json({ contacts: contacts });
+  } catch (e) {
+    console.error('[Zoho find-contacts-by-phone]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── POST /api/zoho/create-contact ──────────────────────────────────────────────
+// v1.4.0: powers the "Create in Zoho" button on unknown numbers.
+router.post('/create-contact', async (req, res) => {
+  const first_name   = req.body.first_name;
+  const last_name    = req.body.last_name;
+  const phone        = req.body.phone;
+  const email        = req.body.email;
+  const account_name = req.body.account_name;
+  const link_call_id = req.body.link_call_id || null; // optional: also stamp chosen_zoho_contact_id on this call
+
+  try {
+    const created = await createZohoContact({
+      first_name: first_name,
+      last_name:  last_name,
+      phone:      phone,
+      email:      email,
+      account_name: account_name,
+    });
+
+    // If linked to a call, set chosen_zoho_contact_id so wrap-up flow uses this contact
+    if (link_call_id && created && created.id) {
+      await pool.query(
+        'UPDATE calls SET chosen_zoho_contact_id = $1 WHERE id = $2',
+        [created.id, link_call_id]
+      );
+    }
+
+    res.json({ success: true, zoho_contact: created });
+  } catch (e) {
+    console.error('[Zoho create-contact]', e.message, e.body || '');
+    res.status(500).json({ error: e.message, details: e.body });
+  }
+});
+
+// ── POST /api/zoho/create-task ─────────────────────────────────────────────────
+// v1.4.0: powers the post-call screen "follow-up task" block.
+router.post('/create-task', async (req, res) => {
+  try {
+    const created = await createZohoTask({
+      subject:     req.body.subject,
+      description: req.body.description,
+      due_date:    req.body.due_date,
+      owner_id:    req.body.owner_id,
+      contact_id:  req.body.contact_id,
+    });
+    res.json({ success: true, zoho_task: created });
+  } catch (e) {
+    console.error('[Zoho create-task]', e.message, e.body || '');
+    res.status(500).json({ error: e.message, details: e.body });
+  }
+});
+
+// ── GET /api/zoho/users ────────────────────────────────────────────────────────
+// v1.4.0: powers the task assignee dropdown. Cached server-side for an hour.
+router.get('/users', async (req, res) => {
+  try {
+    const force = req.query.refresh === '1';
+    const users = await listZohoUsers({ force: force });
+    res.json({ users: users });
+  } catch (e) {
+    console.error('[Zoho users]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── GET /api/zoho/status ───────────────────────────────────────────────────────
 // Returns which credentials are configured — never exposes actual values.
 router.get('/status', (req, res) => {
   const required = ['ZOHO_CLIENT_ID', 'ZOHO_CLIENT_SECRET', 'ZOHO_REFRESH_TOKEN'];
-  const optional = ['ZOHO_API_DOMAIN'];
-
-  const missing  = required.filter(k => !process.env[k]);
-  const present  = required.filter(k => !!process.env[k]);
+  const missing  = required.filter(function(k) { return !process.env[k]; });
+  const present  = required.filter(function(k) { return !!process.env[k]; });
   const configured = missing.length === 0;
 
   res.json({
-    configured,
-    present,
-    missing,
+    configured: configured,
+    present:    present,
+    missing:    missing,
     optional: {
       ZOHO_API_DOMAIN: process.env.ZOHO_API_DOMAIN || 'https://www.zohoapis.com (default)',
     },
@@ -226,12 +357,12 @@ router.get('/status', (req, res) => {
 router.get('/test', async (req, res) => {
   try {
     const result = await zohoAPI('GET', '/Contacts?per_page=1&fields=id,Full_Name,Phone');
-    const contact = result?.data?.[0];
+    const contact = result && result.data && result.data[0];
     res.json({
       ok:             true,
       message:        'Zoho CRM connected',
-      sample_contact: contact?.Full_Name || 'No contacts found',
-      sample_phone:   contact?.Phone    || '',
+      sample_contact: (contact && contact.Full_Name) || 'No contacts found',
+      sample_phone:   (contact && contact.Phone)     || '',
     });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });

@@ -187,6 +187,30 @@ async function migrate() {
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
   `);
+  // v1.4.0: Post-call wrap-up screen.
+  // - needs_wrap_up: drives the "Needs wrap-up" badge in CallsTab. Set TRUE
+  //   when a connected call ends with duration >= 15s. Cleared FALSE only
+  //   when the agent actually completes the wrap-up form.
+  // - chosen_zoho_contact_id: the Zoho contact the agent picked in the
+  //   dropdown (overrides the auto-matched one for shared-phone scenarios).
+  // - disposition: outcome code (e.g. 'demo_scheduled', 'callback_requested').
+  // - wrap_up_note: agent's freeform note (gets posted as a Zoho Note).
+  // - wrap_up_completed_at: timestamp the agent submitted the form.
+  // - zoho_logged_at: when /api/zoho/log-call successfully synced this call
+  //   to Zoho. NULL = not yet synced. Used by the 60s sweep job and to
+  //   prevent double-sync.
+  // - zoho_call_id: the id Zoho returned for the Call record. Stored so we
+  //   can update / re-attach the record later if the agent picks a different
+  //   contact after the auto-timeout sweep already synced it.
+  await pool.query(`
+    ALTER TABLE calls ADD COLUMN IF NOT EXISTS needs_wrap_up          BOOLEAN     DEFAULT FALSE;
+    ALTER TABLE calls ADD COLUMN IF NOT EXISTS chosen_zoho_contact_id VARCHAR(50);
+    ALTER TABLE calls ADD COLUMN IF NOT EXISTS disposition            VARCHAR(50);
+    ALTER TABLE calls ADD COLUMN IF NOT EXISTS wrap_up_note           TEXT;
+    ALTER TABLE calls ADD COLUMN IF NOT EXISTS wrap_up_completed_at   TIMESTAMPTZ;
+    ALTER TABLE calls ADD COLUMN IF NOT EXISTS zoho_logged_at         TIMESTAMPTZ;
+    ALTER TABLE calls ADD COLUMN IF NOT EXISTS zoho_call_id           VARCHAR(50);
+  `);
 
   console.log('[db] Migrations complete.');
 }

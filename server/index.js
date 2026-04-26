@@ -6,6 +6,7 @@ const path       = require('path');
 const { migrate } = require('./db');
 const { init: initSocket } = require('./socket');
 const { seed }   = require('./seed');
+const { startWrapUpSweep } = require('./jobs/wrapUpSweep');
 
 const app    = express();
 const server = http.createServer(app);
@@ -52,6 +53,7 @@ const PORT = process.env.PORT || 3000;
   try {
     await migrate();
     await seed();
+    startWrapUpSweep(); // v1.4.0: catches calls the agent skipped wrap-up on
     server.listen(PORT, () => {
       console.log(`\n🚀 BTI Voice running on port ${PORT}`);
       console.log(`   Local:   http://localhost:${PORT}`);

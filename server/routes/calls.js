@@ -2,22 +2,8 @@ const express = require('express');
 const { pool } = require('../db');
 const { requireAuth } = require('../auth');
 const { logActivity } = require('../helpers/logActivity');
-
-// Fire-and-forget Zoho sync — never blocks the response
-function syncCallToZoho(callId, port) {
-  if (!process.env.ZOHO_REFRESH_TOKEN) return; // Zoho not configured, skip silently
-  setImmediate(async () => {
-    try {
-      await fetch(`http://localhost:${port || process.env.PORT || 3000}/api/zoho/log-call`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ call_id: callId }),
-      });
-    } catch (e) {
-      console.error('[Zoho sync] log-call failed:', e.message);
-    }
-  });
-}
+const { syncCallToZoho, fireZohoLogCall } = require('../helpers/syncCallToZoho');
+const { updateZohoCallContact } = require('../zoho');
 
 const router = express.Router();
 
@@ -29,6 +15,8 @@ router.get('/', requireAuth, async (req, res) => {
         ca.id, ca.direction, ca.duration, ca.status,
         ca.started_at, ca.ended_at,
         ca.recording_url, ca.transcription, ca.ai_summary,
+        ca.needs_wrap_up, ca.chosen_zoho_contact_id,
+        ca.disposition, ca.wrap_up_completed_at,
         a.name     AS agent_name,
         a.color    AS agent_color,
         a.initials AS agent_initials,
@@ -377,6 +365,150 @@ router.post('/transfer', requireAuth, async (req, res) => {
     res.json({ success: true });
   } catch (e) {
     console.error('[transfer]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+
+// ── POST /:id/wrap-up ─────────────────────────────────────────────────────────
+// v1.4.0: post-call wrap-up screen submission.
+//
+// Body:
+//   chosen_zoho_contact_id?: string  // Zoho contact id picked from dropdown
+//   disposition?: string             // outcome code, e.g. 'demo_scheduled'
+//   note?: string                    // freeform note (posted as Zoho Note)
+//   task?: { subject, description?, due_date?, owner_id? }  // optional follow-up task
+//   skip?: boolean                   // true = agent clicked Skip; do nothing,
+//                                    //   leave needs_wrap_up = TRUE so the
+//                                    //   "Needs wrap-up" badge persists.
+//
+// Behaviour:
+//   - If skip = true: no DB writes, no Zoho calls. Sweep job will handle Zoho
+//     sync via auto-matched contact after 60s.
+//   - Otherwise: persists wrap-up data, clears needs_wrap_up, then either
+//     (a) fires log-call to chosen contact if not yet synced, or
+//     (b) re-attaches the existing Zoho Call record to the chosen contact if
+//         the sweep already synced it to a different one.
+//   - Fires add-note + create-task in the background if those fields are set.
+router.post('/:id/wrap-up', requireAuth, async (req, res) => {
+  const callId  = parseInt(req.params.id, 10);
+  const body    = req.body || {};
+  const choseId = body.chosen_zoho_contact_id || null;
+  const skip    = !!body.skip;
+  if (Number.isNaN(callId)) return res.status(400).json({ error: 'invalid call id' });
+
+  try {
+    const lookup = await pool.query(
+      'SELECT id, zoho_logged_at, zoho_call_id, chosen_zoho_contact_id ' +
+      'FROM calls WHERE id = $1',
+      [callId]
+    );
+    const call = lookup.rows[0];
+    if (!call) return res.status(404).json({ error: 'Call not found' });
+
+    if (skip) {
+      // Agent dismissed the screen without filling it out. Leave the badge on.
+      // Sweep will handle Zoho sync to auto-matched contact after 60s.
+      return res.json({ success: true, skipped: true });
+    }
+
+    // Persist wrap-up form data; clear the badge.
+    await pool.query(
+      'UPDATE calls SET ' +
+      '  chosen_zoho_contact_id = COALESCE($2, chosen_zoho_contact_id), ' +
+      '  disposition            = COALESCE($3, disposition), ' +
+      '  wrap_up_note           = COALESCE($4, wrap_up_note), ' +
+      '  wrap_up_completed_at   = NOW(), ' +
+      '  needs_wrap_up          = FALSE ' +
+      'WHERE id = $1',
+      [callId, choseId, body.disposition || null, body.note || null]
+    );
+
+    const targetZohoId = choseId || call.chosen_zoho_contact_id || null;
+
+    // Decide what to do for the Zoho Call record itself
+    if (call.zoho_logged_at) {
+      // Already synced (sweep got there first). Re-attach if the agent picked
+      // a different contact from whatever the sweep used.
+      if (targetZohoId && call.zoho_call_id) {
+        try {
+          await updateZohoCallContact(call.zoho_call_id, targetZohoId);
+        } catch (e) {
+          console.error('[wrap-up] Zoho call re-attach failed:', e.message);
+        }
+      }
+    } else {
+      // Not yet synced — fire to chosen contact (or auto-match if null)
+      fireZohoLogCall(callId, { zoho_contact_id: targetZohoId });
+    }
+
+    const port = process.env.PORT || 3000;
+
+    // Post the agent's note (if any) as a Zoho Note on the chosen contact
+    if (body.note && targetZohoId) {
+      setImmediate(async function() {
+        try {
+          await fetch('http://localhost:' + port + '/api/zoho/add-note', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({
+              zoho_contact_id: targetZohoId,
+              note:            body.note,
+              title:           'Call note - ' + new Date().toLocaleDateString(),
+            }),
+          });
+        } catch (e) {
+          console.error('[wrap-up] add-note failed:', e.message);
+        }
+      });
+    }
+
+    // Create the follow-up task (if provided) on the chosen contact
+    if (body.task && body.task.subject && targetZohoId) {
+      setImmediate(async function() {
+        try {
+          await fetch('http://localhost:' + port + '/api/zoho/create-task', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({
+              subject:     body.task.subject,
+              description: body.task.description || null,
+              due_date:    body.task.due_date    || null,
+              owner_id:    body.task.owner_id    || null,
+              contact_id:  targetZohoId,
+            }),
+          });
+        } catch (e) {
+          console.error('[wrap-up] create-task failed:', e.message);
+        }
+      });
+    }
+
+    res.json({ success: true });
+  } catch (e) {
+    console.error('[wrap-up]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── GET /:id ───────────────────────────────────────────────────────────────────
+// Fetch a single call (used by the post-call wrap-up screen to pre-fill).
+router.get('/:id', requireAuth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT ca.id, ca.direction, ca.duration, ca.status, ca.started_at, ca.ended_at, ' +
+      '       ca.needs_wrap_up, ca.chosen_zoho_contact_id, ca.disposition, ca.wrap_up_note, ' +
+      '       ca.wrap_up_completed_at, ca.zoho_logged_at, ca.zoho_call_id, ' +
+      '       co.id AS contact_id, co.name AS contact_name, co.phone_number ' +
+      'FROM   calls ca ' +
+      'JOIN   conversations cv ON cv.id = ca.conversation_id ' +
+      'JOIN   contacts      co ON co.id = cv.contact_id ' +
+      'WHERE  ca.id = $1',
+      [req.params.id]
+    );
+    if (!result.rows[0]) return res.status(404).json({ error: 'Not found' });
+    res.json(result.rows[0]);
+  } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });

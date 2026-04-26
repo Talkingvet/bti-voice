@@ -1,4 +1,5 @@
 const express = require('express');
+const { syncCallToZoho } = require('../helpers/syncCallToZoho');
 const twilio  = require('twilio');
 const { pool } = require('../db');
 const { getIO } = require('../socket');
@@ -100,14 +101,8 @@ function autoLogCall({ callSid, from, to, duration, direction, status, callStart
 
       console.log(`[autoLog] ✓ Logged call ${callSid} (${status}) for ${phone}`);
 
-      // Sync to Zoho
-      if (process.env.ZOHO_REFRESH_TOKEN) {
-        fetch(`http://localhost:${port}/api/zoho/log-call`, {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({ call_id: call.id }),
-        }).catch(e => console.error('[autoLog→Zoho]', e.message));
-      }
+      // Sync to Zoho (v1.4.0: defers via wrap-up flag for connected calls >= 15s)
+      syncCallToZoho(call.id, port);
 
       // Notify connected clients
       const io = getIO();
@@ -545,15 +540,8 @@ router.post('/status', async (req, res) => {
         });
       }
 
-      // Sync to Zoho CRM
-      if (process.env.ZOHO_REFRESH_TOKEN) {
-        const port = process.env.PORT || 3000;
-        fetch(`http://localhost:${port}/api/zoho/log-call`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ call_id: call.id }),
-        }).catch(e => console.error('[status→Zoho]', e.message));
-      }
+      // Sync to Zoho CRM (v1.4.0: defers via wrap-up flag for connected calls >= 15s)
+      syncCallToZoho(call.id);
 
       // Notify connected clients
       const io = getIO();
@@ -702,15 +690,26 @@ Keep it tight — this is for a CRM note, not a report.`,
       });
 
       // ── Sync summary to Zoho CRM as a note (fire-and-forget) ─────────────
+      // v1.4.0: re-read the row to pick up chosen_zoho_contact_id set by the
+      // post-call wrap-up screen. Falls back to auto-match (resolveZohoId) if
+      // the agent didn't pick a contact in time.
+      // To revert: pass only `contact_id: callRecord.contact_id` like before.
       if (process.env.ZOHO_REFRESH_TOKEN && callRecord.contact_id) {
         try {
-          await fetch(`http://localhost:${process.env.PORT || 3000}/api/zoho/add-note`, {
+          const fresh = await pool.query(
+            'SELECT chosen_zoho_contact_id FROM calls WHERE id = $1',
+            [callRecord.id]
+          );
+          const chosenZohoId = fresh.rows[0] && fresh.rows[0].chosen_zoho_contact_id;
+          const noteBody = {
+            contact_id: callRecord.contact_id,
+            note:       'Call Summary (' + new Date().toLocaleDateString() + '):\n\n' + aiSummary,
+          };
+          if (chosenZohoId) noteBody.zoho_contact_id = chosenZohoId;
+          await fetch('http://localhost:' + (process.env.PORT || 3000) + '/api/zoho/add-note', {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({
-              contact_id: callRecord.contact_id,
-              note:       `Call Summary (${new Date().toLocaleDateString()}):\n\n${aiSummary}`,
-            }),
+            body:    JSON.stringify(noteBody),
           });
         } catch (e) {
           console.error('[recording] Zoho note sync failed:', e.message);
