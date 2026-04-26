@@ -9,7 +9,7 @@ const router = express.Router();
 // ── Auto-log a call to the BTI Voice DB + Zoho ────────────────────────────────
 // Called from <Dial> action URLs — fires for every call regardless of Twilio
 // console statusCallback config. Fire-and-forget, never throws.
-function autoLogCall({ callSid, from, to, duration, direction, status }) {
+function autoLogCall({ callSid, from, to, duration, direction, status, callStartTime }) {
   if (!callSid || !from) return;
   // Skip internal Twilio browser-client identifiers (e.g. "client:agent_2")
   if (from.toLowerCase().startsWith('client:') || (to || '').toLowerCase().startsWith('client:')) return;
@@ -83,7 +83,12 @@ function autoLogCall({ callSid, from, to, duration, direction, status }) {
         conv = rows[0];
       }
 
-      const startedAt = new Date(Date.now() - duration * 1000).toISOString();
+      // Use Twilio's CallStartTime if available — much more accurate than backdating from Date.now().
+      // Backdating from Date.now() causes started_at to be 30-90s off (webhook processing delay),
+      // which breaks time-window dedup against frontend-logged records.
+      const startedAt = callStartTime
+        ? new Date(callStartTime).toISOString()
+        : new Date(Date.now() - duration * 1000).toISOString();
       const { rows: [call] } = await pool.query(`
         INSERT INTO calls
           (conversation_id, direction, duration, status, twilio_call_sid, started_at, ended_at)
@@ -337,12 +342,13 @@ router.post('/next-agent', async (req, res) => {
 
   if (DialCallStatus === 'completed' || DialCallStatus === 'answered') {
     autoLogCall({
-      callSid:   CallSid,
-      from:      From,
-      to:        To,
-      duration:  parseInt(DialCallDuration) || 0,
-      direction: 'inbound',
-      status:    'completed',
+      callSid:       CallSid,
+      from:          From,
+      to:            To,
+      duration:      parseInt(DialCallDuration) || 0,
+      direction:     'inbound',
+      status:        'completed',
+      callStartTime: req.body.CallStartTime,
     });
     res.set('Content-Type', 'text/xml');
     return res.send(twiml.toString());
@@ -376,12 +382,13 @@ router.post('/no-answer', async (req, res) => {
   // If the call was actually connected and completed, log it and return
   if (DialCallStatus === 'completed' || DialCallStatus === 'answered') {
     autoLogCall({
-      callSid:   CallSid,
-      from:      From,
-      to:        To,
-      duration:  parseInt(DialCallDuration) || 0,
-      direction: 'inbound',
-      status:    'completed',
+      callSid:       CallSid,
+      from:          From,
+      to:            To,
+      duration:      parseInt(DialCallDuration) || 0,
+      direction:     'inbound',
+      status:        'completed',
+      callStartTime: req.body.CallStartTime,
     });
     res.set('Content-Type', 'text/xml');
     return res.send(twiml.toString());
@@ -394,12 +401,13 @@ router.post('/no-answer', async (req, res) => {
   } catch (e) {
     // ringAllAgents failed entirely — log as missed now
     autoLogCall({
-      callSid:   CallSid,
-      from:      From,
-      to:        To,
-      duration:  0,
-      direction: 'inbound',
-      status:    'missed',
+      callSid:       CallSid,
+      from:          From,
+      to:            To,
+      duration:      0,
+      direction:     'inbound',
+      status:        'missed',
+      callStartTime: req.body.CallStartTime,
     });
     // Fire auto-text on total miss
     setImmediate(() => sendMissedCallAutoText(From));
