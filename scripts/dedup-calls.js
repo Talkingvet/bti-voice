@@ -22,7 +22,8 @@ if (require('fs').existsSync(dotenvPath)) {
 const { Pool } = require(path.join(__dirname, '../server/node_modules/pg'));
 
 const DRY_RUN = !process.argv.includes('--execute');
-const WINDOW_SECONDS = 300; // 5 minutes — webhook start_at can lag frontend by 60-90s
+const WINDOW_SECONDS     = 300; // 5 minutes — same-direction dedup
+const XDIR_WINDOW_SECONDS = 120; // 2 minutes — cross-direction dedup (bug: onHangup + disconnect both fired)
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
 
@@ -41,19 +42,26 @@ function isClientAgent(r) {
   return name.startsWith('client:') || phone.startsWith('client:');
 }
 
-// True if two records are likely the same physical call
+// True if two records are likely the same physical call.
+// Same direction: generous 5-minute window (webhook start_at can lag).
+// Different direction: tight 2-minute window to catch the double-log bug where
+// onHangup + disconnect event both fired handleCallEnded for the same call —
+// one with the real direction, one defaulting to 'inbound'.
 function areSameCall(a, b) {
-  if (a.direction !== b.direction) return false;
   const ms = Math.abs(new Date(a.started_at) - new Date(b.started_at));
-  if (ms > WINDOW_SECONDS * 1000) return false;
+  const sameDir = a.direction === b.direction;
+  const window  = sameDir ? WINDOW_SECONDS : XDIR_WINDOW_SECONDS;
+  if (ms > window * 1000) return false;
 
   const normA = normalizePhone(a.phone_number);
   const normB = normalizePhone(b.phone_number);
 
   if (normA && normB) return normA === normB;
 
-  // One known + one unknown: time+direction is enough. Two unknowns: do NOT group (different blocked-number callers).
-  // time window + direction is sufficient to call them duplicates
+  // Two unknowns: do NOT group (could be different blocked-number callers).
+  if (!normA && !normB) return false;
+
+  // One known + one unknown: time window is enough.
   return true;
 }
 
@@ -87,10 +95,11 @@ async function main() {
     JOIN conversations cv ON cv.id = ca.conversation_id
     JOIN contacts co      ON co.id = cv.contact_id
     WHERE ca.status != 'voicemail'
-    ORDER BY ca.direction, ca.started_at
+    ORDER BY ca.started_at
   `);
 
-  // Group by direction + time window + normalized phone (or unknown)
+  // Group by time window + normalized phone (direction-agnostic to also catch
+  // the double-log bug where same call was logged as inbound + outbound)
   const used = new Set();
   const groups = [];
 

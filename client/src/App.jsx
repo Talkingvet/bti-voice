@@ -359,6 +359,9 @@ function AppInner() {
 
   // ── Shared call end logic (logs to DB + plays sound) ─────────────────────────
   function handleCallEnded(phone, direction, status = 'completed', callSid = null) {
+    // Guard: callStartRef is cleared on the first call — if both refs are gone,
+    // this is a duplicate fire (disconnect event + onHangup callback both trigger this).
+    if (!callStartRef.current && !activeCallRef.current) return
     stopRingtone()
     playDisconnected()
     const duration = callStartRef.current
@@ -468,6 +471,7 @@ function AppInner() {
           device={twilioDevice}
           onCallStart={(call, phone) => {
             const info = { phone, name: null }
+            call.customDirection = 'outbound'
             setActiveCall(call)
             activeCallRef.current = call
             setCallerInfo(info)
@@ -493,6 +497,7 @@ function AppInner() {
             activeCall={activeCall}
             onCallStart={(call, phone) => {
               const info = { phone, name: null }
+              call.customDirection = 'outbound'
               setActiveCall(call)
               activeCallRef.current = call
               setCallerInfo(info)
