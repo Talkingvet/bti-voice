@@ -23,11 +23,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
   callStart: (info) => ipcRenderer.send('call-start', info),
   callEnd:   ()     => ipcRenderer.send('call-end'),
 
-  // Fired when Twilio reports an incoming call. The main process responds by
-  // bringing BTI Voice to the front, bouncing the dock icon (Mac), flashing
-  // the taskbar (Windows), and posting a native OS notification — so the user
-  // sees the call even when BTI Voice is hidden or in the background.
+  // Fired when Twilio reports an incoming call. The main process responds
+  // by bouncing the dock icon (Mac) / flashing the taskbar (Windows) and
+  // popping a custom floating banner with Accept/Decline buttons.
   notifyIncomingCall: (info) => ipcRenderer.send('incoming-call', info),
+
+  // Tell main to hide the floating banner — used when the caller hangs up
+  // before the agent answers, or when the agent answers/declines via the
+  // in-app overlay instead of the banner.
+  dismissIncomingCall: () => ipcRenderer.send('incoming-call-dismiss'),
+
+  // Fires when the user clicks Accept or Decline on the floating banner.
+  // React responds by calling incomingCall.accept() or .reject().
+  onIncomingCallAction: (cb) => {
+    const handler = (_, data) => cb(data)
+    ipcRenderer.on('incoming-call-action', handler)
+    return () => ipcRenderer.removeListener('incoming-call-action', handler)
+  },
+
   onCallAction: (cb) => {
     const handler = (_, data) => cb(data)
     ipcRenderer.on('call-action', handler)

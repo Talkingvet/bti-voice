@@ -5,6 +5,7 @@ const os   = require('os')
 
 let mainWindow      = null
 let callWidget      = null
+let incomingBanner  = null   // Floating Accept/Decline banner shown on inbound call
 let tray            = null
 let pendingUpdateInfo = null   // Stores { version, downloadUrl } when an update is found
 
@@ -187,6 +188,49 @@ function createCallWidget() {
   callWidget.on('closed', () => { callWidget = null })
 }
 
+// ── Incoming-call banner ──────────────────────────────────────────
+// A floating, always-on-top window with Accept/Decline buttons that pops
+// up in the top-right when an inbound call arrives. Mirrors the call-widget
+// pattern but for the *pre-answer* phase. Stays visible across Spaces and
+// over fullscreen apps on macOS so the user can answer no matter what
+// they're doing.
+function createIncomingBanner() {
+  const { width: sw } = screen.getPrimaryDisplay().workAreaSize
+
+  incomingBanner = new BrowserWindow({
+    width:       340,
+    height:      145,
+    x:           sw - 355,   // 15px from right edge
+    y:           14,
+    frame:       false,
+    alwaysOnTop: true,
+    resizable:   false,
+    movable:     true,
+    skipTaskbar: true,
+    transparent: false,
+    backgroundColor: '#0f1e35',
+    hasShadow:   true,
+    show:        false,
+    focusable:   true,    // need to be focusable so button clicks register reliably on Mac
+    webPreferences: {
+      preload:          path.join(__dirname, 'banner-preload.js'),
+      nodeIntegration:  false,
+      contextIsolation: true,
+    },
+  })
+
+  incomingBanner.loadFile(path.join(__dirname, 'incoming-banner.html'))
+
+  // Same Mac visibility tricks as the call widget — the banner is useless
+  // if it's hidden behind a fullscreen Zoom call.
+  if (process.platform === 'darwin') {
+    incomingBanner.setAlwaysOnTop(true, 'screen-saver')
+    incomingBanner.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  }
+
+  incomingBanner.on('closed', () => { incomingBanner = null })
+}
+
 // ── Tray (Mac: menu-bar status icon. Windows: system tray icon) ───
 function createTray() {
   const img  = nativeImage.createFromPath(TRAY_PATH)
@@ -298,13 +342,12 @@ function buildAppMenu() {
 }
 
 // ── IPC: incoming-call alert ──────────────────────────────────────
-// The React app fires this when Twilio reports an inbound call. We notify
-// the user without stealing focus — the user opts in by clicking the
-// notification (or the bouncing dock icon), and only THEN does BTI Voice
-// come to the front to show the Accept/Decline overlay.
+// The React app fires this when Twilio reports an inbound call. We pop a
+// custom always-on-top floating banner with Accept/Decline buttons (like
+// FaceTime / Slack calls) so the user can answer without bringing the
+// whole app to the front. We also bounce the dock / flash the taskbar
+// for peripheral attention.
 ipcMain.on('incoming-call', (_, info) => {
-  const fromNumber = info?.from || 'Unknown number'
-
   // Bounce the dock icon (Mac) or flash the taskbar (Windows) for
   // peripheral attention without stealing focus.
   if (process.platform === 'darwin' && app.dock) {
@@ -313,25 +356,48 @@ ipcMain.on('incoming-call', (_, info) => {
     mainWindow.flashFrame(true)
   }
 
-  // Native OS notification — appears top-right on Mac, bottom-right on
-  // Windows. Clicking it brings BTI Voice to the front so the user can
-  // accept or decline the call.
-  if (Notification.isSupported()) {
-    const notif = new Notification({
-      title: `Incoming call from ${fromNumber}`,
-      body:  'Click to answer in BTI Voice',
-      icon:  ICON_PATH,
-      silent: false,
-    })
-    notif.on('click', () => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        if (mainWindow.isMinimized()) mainWindow.restore()
-        if (!mainWindow.isVisible())  mainWindow.show()
-        mainWindow.focus()
-      }
-    })
-    notif.show()
+  // Lazy-create the banner the first time we need it. Reuse on subsequent
+  // calls so we don't pay the BrowserWindow startup cost on every ring.
+  if (!incomingBanner || incomingBanner.isDestroyed()) {
+    createIncomingBanner()
   }
+
+  const sendShow = () => {
+    if (!incomingBanner || incomingBanner.isDestroyed()) return
+    incomingBanner.webContents.send('incoming-banner-show', info || {})
+    // showInactive() pops the window forward without stealing keyboard focus
+    // from whatever app the user is in — same trick FaceTime uses.
+    incomingBanner.showInactive()
+  }
+
+  if (incomingBanner.webContents.isLoading()) {
+    incomingBanner.webContents.once('did-finish-load', sendShow)
+  } else {
+    sendShow()
+  }
+})
+
+// Banner button (Accept / Decline) was clicked → forward the action to
+// the React app, which knows how to call incomingCall.accept() / .reject().
+ipcMain.on('incoming-banner-action', (_, data) => {
+  // Hide the banner immediately so it doesn't linger after the click
+  if (incomingBanner && !incomingBanner.isDestroyed()) {
+    incomingBanner.hide()
+  }
+  // Stop the dock bounce / taskbar flash now that the user has responded
+  if (process.platform === 'win32' && mainWindow) mainWindow.flashFrame(false)
+
+  mainWindow?.webContents.send('incoming-call-action', data)
+})
+
+// React app fires this when the call is gone for any reason (caller
+// cancelled, agent answered/declined via the in-app overlay instead, etc.)
+// so we can hide the floating banner.
+ipcMain.on('incoming-call-dismiss', () => {
+  if (incomingBanner && !incomingBanner.isDestroyed()) {
+    incomingBanner.hide()
+  }
+  if (process.platform === 'win32' && mainWindow) mainWindow.flashFrame(false)
 })
 
 // ── IPC: dock badge (Mac only — no-op elsewhere) ──────────────────

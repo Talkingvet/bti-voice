@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>BTI Voice – Incoming Call</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 340px;
+    height: 145px;
+    overflow: hidden;
+    background: transparent;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    -webkit-app-region: drag;
+    user-select: none;
+  }
+
+  .banner {
+    width: 340px;
+    height: 145px;
+    background: linear-gradient(135deg, #0f1e35 0%, #172a4a 100%);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 13px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Top row: avatar + caller info ─────────────────────────── */
+  .top {
+    display: flex;
+    align-items: center;
+    padding: 12px 14px 10px;
+    gap: 10px;
+    flex: 1;
+  }
+
+  .avatar {
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    background: rgba(79,156,249,0.2);
+    border: 1.5px solid rgba(79,156,249,0.4);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+    animation: ring 1.4s ease-in-out infinite;
+  }
+
+  @keyframes ring {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(79,156,249,0.5); }
+    50%      { box-shadow: 0 0 0 8px rgba(79,156,249,0); }
+  }
+
+  .info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .label {
+    font-size: 10px;
+    font-weight: 700;
+    color: #4f9cf9;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin-bottom: 2px;
+  }
+
+  .from {
+    font-size: 15px;
+    font-weight: 700;
+    color: #ffffff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .sub {
+    font-size: 11px;
+    color: rgba(255,255,255,0.55);
+    margin-top: 2px;
+  }
+
+  /* ── Action buttons row ────────────────────────────────────── */
+  .actions {
+    display: flex;
+    gap: 8px;
+    padding: 0 14px 14px;
+    -webkit-app-region: no-drag;
+  }
+
+  .btn {
+    flex: 1;
+    height: 38px;
+    border: none;
+    border-radius: 9px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 700;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: background 0.12s, transform 0.08s;
+    -webkit-app-region: no-drag;
+  }
+  .btn:active { transform: scale(0.97); }
+
+  .btn.decline {
+    background: #dc2626;
+    box-shadow: 0 2px 8px rgba(220,38,38,0.4);
+  }
+  .btn.decline:hover { background: #ef4444; }
+
+  .btn.accept {
+    background: #16a34a;
+    box-shadow: 0 2px 8px rgba(22,163,74,0.4);
+  }
+  .btn.accept:hover { background: #22c55e; }
+</style>
+</head>
+<body>
+
+<div class="banner">
+
+  <div class="top">
+    <div class="avatar" id="avatar">📞</div>
+    <div class="info">
+      <div class="label">Incoming Call</div>
+      <div class="from" id="from">Unknown number</div>
+      <div class="sub" id="sub">BTI Voice</div>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button class="btn decline" onclick="handleDecline()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="white" style="transform: rotate(135deg);">
+        <path d="M12 9c-1.6 0-3.1.3-4.5.7v3.4c0 .4-.2.8-.5 1a11.6 11.6 0 0 1-3 1.4c-.4.1-.8 0-1.1-.3L.4 12.7A.9.9 0 0 1 .3 12c.3-2 1.3-3.8 2.7-5.2C5.5 4.3 8.6 3 12 3s6.5 1.3 9 3.8a12 12 0 0 1 2.7 5.2c.1.4 0 .8-.3 1.1l-2.5 2.5c-.3.3-.7.4-1.1.3a11.6 11.6 0 0 1-3-1.4c-.3-.2-.5-.6-.5-1V9.7C14.9 9.2 13.5 9 12 9z"/>
+      </svg>
+      Decline
+    </button>
+    <button class="btn accept" onclick="handleAccept()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="white">
+        <path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56a.977.977 0 0 0-1.01.24l-1.57 1.97c-2.83-1.35-5.48-3.9-6.89-6.83l1.95-1.66c.27-.28.35-.67.24-1.02-.37-1.11-.56-2.3-.56-3.53 0-.54-.45-.99-.99-.99H4.19C3.65 3 3 3.24 3 3.99 3 13.28 10.73 21 20.01 21c.71 0 .99-.63.99-1.18v-3.45c0-.54-.45-.99-.99-.99z"/>
+      </svg>
+      Accept
+    </button>
+  </div>
+
+</div>
+
+<script>
+  // Make sure clicks stop propagation to drag region
+  function handleAccept() {
+    if (window.bannerAPI) window.bannerAPI.accept()
+  }
+  function handleDecline() {
+    if (window.bannerAPI) window.bannerAPI.decline()
+  }
+
+  // Format E.164 / 11-digit US into "(xxx) xxx-xxxx"
+  function fmtPhone(raw) {
+    var d = (raw || '').replace(/\D/g, '')
+    if (d.length === 11 && d[0] === '1') return '+1 (' + d.slice(1,4) + ') ' + d.slice(4,7) + '-' + d.slice(7)
+    if (d.length === 10) return '(' + d.slice(0,3) + ') ' + d.slice(3,6) + '-' + d.slice(6)
+    return raw
+  }
+
+  // Listen for the show event from main process — populate caller info
+  function registerListeners() {
+    if (!window.bannerAPI) {
+      console.warn('[incoming-banner] bannerAPI unavailable')
+      return
+    }
+    window.bannerAPI.onShow(function(info) {
+      var from = info && info.from ? info.from : 'Unknown number'
+      document.getElementById('from').textContent = fmtPhone(from)
+      // Sub-line keeps simple branding; could be extended with contact name later.
+      document.getElementById('sub').textContent = 'BTI Voice'
+    })
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', registerListeners)
+  } else {
+    registerListeners()
+  }
+</script>
+</body>
+</html>

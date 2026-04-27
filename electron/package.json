@@ -64,7 +64,9 @@
       "main.js",
       "preload.js",
       "widget-preload.js",
+      "banner-preload.js",
       "call-widget.html",
+      "incoming-banner.html",
       "assets/**"
     ]
   }
