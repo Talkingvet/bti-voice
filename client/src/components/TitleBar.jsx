@@ -81,8 +81,14 @@ export default function TitleBar({ agent, unreadCount = 0, onBellClick, agentSta
 
   return (
     <div style={{ ...S.bar, background: barBg, borderBottom: `1px solid ${borderCol}` }}>
-      {/* Left: logo + name (hidden on Mac — native menu bar shows app name) */}
-      {!isMac && (
+      {/* Left side
+          - Mac: invisible spacer that reserves room for the OS-drawn
+                 traffic lights AND keeps the flex layout balanced so
+                 the right-side controls stay right-aligned
+          - Windows/Linux: BTI Voice logo + wordmark */}
+      {isMac ? (
+        <div style={{ width: 78, flexShrink: 0 }} aria-hidden="true" />
+      ) : (
         <div style={S.left}>
           <div style={S.mark}>
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
