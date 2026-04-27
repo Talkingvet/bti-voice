@@ -298,41 +298,37 @@ function buildAppMenu() {
 }
 
 // ── IPC: incoming-call alert ──────────────────────────────────────
-// The React app fires this when Twilio reports an inbound call. We need to
-// make sure the user notices even if BTI Voice is hidden / minimized to
-// tray / on a different macOS Space.
+// The React app fires this when Twilio reports an inbound call. We notify
+// the user without stealing focus — the user opts in by clicking the
+// notification (or the bouncing dock icon), and only THEN does BTI Voice
+// come to the front to show the Accept/Decline overlay.
 ipcMain.on('incoming-call', (_, info) => {
   const fromNumber = info?.from || 'Unknown number'
 
-  // 1. Bring BTI Voice to the front so the in-app Accept/Decline overlay is
-  //    visible immediately. Without this, the user would have to manually
-  //    open the app to answer.
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    if (mainWindow.isMinimized()) mainWindow.restore()
-    if (!mainWindow.isVisible())  mainWindow.show()
-    mainWindow.focus()
-  }
-
-  // 2. Bounce the dock icon (Mac) or flash the taskbar (Windows) for
-  //    extra attention if the user is in another app.
+  // Bounce the dock icon (Mac) or flash the taskbar (Windows) for
+  // peripheral attention without stealing focus.
   if (process.platform === 'darwin' && app.dock) {
-    app.dock.bounce('critical')   // 'critical' bounces until user looks at the app
+    app.dock.bounce('critical')   // bounces until user looks at the app
   } else if (process.platform === 'win32' && mainWindow) {
     mainWindow.flashFrame(true)
   }
 
-  // 3. Native OS notification — appears top-right on Mac, bottom-right on
-  //    Windows — visible regardless of which app is in focus.
+  // Native OS notification — appears top-right on Mac, bottom-right on
+  // Windows. Clicking it brings BTI Voice to the front so the user can
+  // accept or decline the call.
   if (Notification.isSupported()) {
     const notif = new Notification({
-      title: 'Incoming call',
-      body:  fromNumber,
+      title: `Incoming call from ${fromNumber}`,
+      body:  'Click to answer in BTI Voice',
       icon:  ICON_PATH,
-      silent: false,   // play default notification sound
+      silent: false,
     })
     notif.on('click', () => {
-      mainWindow?.show()
-      mainWindow?.focus()
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        if (mainWindow.isMinimized()) mainWindow.restore()
+        if (!mainWindow.isVisible())  mainWindow.show()
+        mainWindow.focus()
+      }
     })
     notif.show()
   }
