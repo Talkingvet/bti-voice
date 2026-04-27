@@ -65,6 +65,7 @@ function AppInner() {
   const deviceRef    = useRef(null)
   const callStartRef = useRef(null)   // timestamp when call was answered
   const activeCallRef = useRef(null)  // mirrors activeCall state — accessible in IPC closures
+  const handlingEndRef = useRef(false)  // dedup flag for handleCallEnded — prevents double-fire when SDK disconnect AND onHangup both invoke it
 
   useEffect(() => {
     if (!agent) return
@@ -363,25 +364,30 @@ function AppInner() {
   // v1.4.0: After a connected call >= 15s ends, opens the PostCallScreen so
   // the agent can pick the right contact (handles shared-phone scenarios)
   // and optionally drop a Zoho note + follow-up task.
+  //
+  // Dedup: handlingEndRef ensures only the first invocation does the work when
+  // both the SDK 'disconnect' event AND ActiveCallPanel.onHangup fire.
+  // Capture duration immediately because DialpadTab's own disconnect handler
+  // calls onCallEnd which used to null callStartRef before this could read it.
   async function handleCallEnded(phone, direction, status = 'completed', callSid = null) {
-    // Guard: callStartRef is cleared on the first call — if both refs are gone,
-    // this is a duplicate fire (disconnect event + onHangup callback both trigger this).
-    if (!callStartRef.current && !activeCallRef.current) return
+    if (handlingEndRef.current) return
+    handlingEndRef.current = true
+
+    // Capture timing BEFORE any other handler (e.g. DialpadTab's onCallEnd)
+    // can null it out via state updates.
+    const startTs  = callStartRef.current
+    const duration = startTs ? Math.round((Date.now() - startTs) / 1000) : 0
+
     stopRingtone()
     playDisconnected()
-    const duration = callStartRef.current
-      ? Math.round((Date.now() - callStartRef.current) / 1000)
-      : 0
-    callStartRef.current = null
-    setActiveCall(null)
+    callStartRef.current  = null
     activeCallRef.current = null
+    setActiveCall(null)
     setCallerInfo(null)
-    // Tell the mini widget the call is done
     window.electronAPI?.callEnd?.()
 
-    if (!phone) return
-
     try {
+      if (!phone) return
       const callRecord = await api.logCallByPhone(
         phone, duration, direction,
         new Date(Date.now() - duration * 1000).toISOString(),
@@ -401,6 +407,10 @@ function AppInner() {
       }
     } catch (e) {
       console.error('[handleCallEnded]', e)
+    } finally {
+      // Reset dedup so the NEXT call can be handled. Tiny delay so any straggler
+      // disconnect event from the same call still hits the guard.
+      setTimeout(() => { handlingEndRef.current = false }, 1500)
     }
   }
 
@@ -504,10 +514,10 @@ function AppInner() {
             call.on('cancel',     () => handleCallEnded(phone, 'outbound', 'missed'))
           }}
           onCallEnd={() => {
+            // Same as DialpadTab — let handleCallEnded own the timing ref.
             setActiveCall(null)
             activeCallRef.current = null
             setCallerInfo(null)
-            callStartRef.current = null
           }}
         />}
         {activeTab === 'contacts' && <ContactsTab agent={agent} />}
@@ -531,9 +541,11 @@ function AppInner() {
               call.on('cancel',     () => handleCallEnded(phone, 'outbound', 'missed'))
             }}
             onCallEnd={() => {
+              // Note: callStartRef intentionally NOT cleared here — handleCallEnded
+              // captures the timestamp first and clears it after. Clearing here
+              // would race against handleCallEnded and zero out duration.
               setActiveCall(null)
               setCallerInfo(null)
-              callStartRef.current = null
             }}
           />
         )}
