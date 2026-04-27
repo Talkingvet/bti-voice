@@ -113,6 +113,12 @@ function AppInner() {
           })
           startRingtone()
           setIncomingCall(call)
+          // Tell Electron so it can grab the user's attention when BTI Voice
+          // is hidden / on another Space: bring window to front, bounce the
+          // dock icon, and post a native OS notification with the caller's #.
+          window.electronAPI?.notifyIncomingCall?.({
+            from: call.parameters?.From || 'Unknown number',
+          })
         })
 
         device.on('tokenWillExpire', async () => {

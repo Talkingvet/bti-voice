@@ -297,6 +297,47 @@ function buildAppMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
 
+// ── IPC: incoming-call alert ──────────────────────────────────────
+// The React app fires this when Twilio reports an inbound call. We need to
+// make sure the user notices even if BTI Voice is hidden / minimized to
+// tray / on a different macOS Space.
+ipcMain.on('incoming-call', (_, info) => {
+  const fromNumber = info?.from || 'Unknown number'
+
+  // 1. Bring BTI Voice to the front so the in-app Accept/Decline overlay is
+  //    visible immediately. Without this, the user would have to manually
+  //    open the app to answer.
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    if (!mainWindow.isVisible())  mainWindow.show()
+    mainWindow.focus()
+  }
+
+  // 2. Bounce the dock icon (Mac) or flash the taskbar (Windows) for
+  //    extra attention if the user is in another app.
+  if (process.platform === 'darwin' && app.dock) {
+    app.dock.bounce('critical')   // 'critical' bounces until user looks at the app
+  } else if (process.platform === 'win32' && mainWindow) {
+    mainWindow.flashFrame(true)
+  }
+
+  // 3. Native OS notification — appears top-right on Mac, bottom-right on
+  //    Windows — visible regardless of which app is in focus.
+  if (Notification.isSupported()) {
+    const notif = new Notification({
+      title: 'Incoming call',
+      body:  fromNumber,
+      icon:  ICON_PATH,
+      silent: false,   // play default notification sound
+    })
+    notif.on('click', () => {
+      mainWindow?.show()
+      mainWindow?.focus()
+    })
+    notif.show()
+  }
+})
+
 // ── IPC: dock badge (Mac only — no-op elsewhere) ──────────────────
 // React app calls electronAPI.setUnreadCount(n) whenever the total unread
 // count (SMS + voicemails + notifications) changes. We surface that as a

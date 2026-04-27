@@ -22,6 +22,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // ── Mini call widget IPC ─────────────────────────────────────────
   callStart: (info) => ipcRenderer.send('call-start', info),
   callEnd:   ()     => ipcRenderer.send('call-end'),
+
+  // Fired when Twilio reports an incoming call. The main process responds by
+  // bringing BTI Voice to the front, bouncing the dock icon (Mac), flashing
+  // the taskbar (Windows), and posting a native OS notification — so the user
+  // sees the call even when BTI Voice is hidden or in the background.
+  notifyIncomingCall: (info) => ipcRenderer.send('incoming-call', info),
   onCallAction: (cb) => {
     const handler = (_, data) => cb(data)
     ipcRenderer.on('call-action', handler)
