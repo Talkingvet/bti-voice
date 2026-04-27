@@ -30,12 +30,19 @@ const APP_URL = 'https://bti-voice-production.up.railway.app'
 
 // ── Main window ───────────────────────────────────────────────────
 function createWindow() {
+  // Platform-specific window chrome:
+  // - macOS: hide the title bar but keep native traffic lights (close/min/max in top-left)
+  // - Windows/Linux: fully frameless; the React app draws its own title bar + controls
+  const chrome = process.platform === 'darwin'
+    ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 12, y: 12 } }
+    : { frame: false }
+
   mainWindow = new BrowserWindow({
     width:     420,
     height:    720,
     minWidth:  380,
     minHeight: 580,
-    frame: false,
+    ...chrome,
     backgroundColor: '#0f172a',
     icon: ICON_PATH,
     show: false,

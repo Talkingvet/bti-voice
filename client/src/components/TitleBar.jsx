@@ -3,6 +3,9 @@ import { createPortal } from 'react-dom'
 import { useTheme } from '../ThemeContext'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
+// On macOS, native traffic lights are drawn by the OS in the top-left.
+// We hide our custom Windows-style window controls and reserve space for them.
+const isMac = isElectron && window.electronAPI.platform === 'darwin'
 
 // MS Teams-style statuses
 const STATUSES = [
@@ -77,7 +80,13 @@ export default function TitleBar({ agent, unreadCount = 0, onBellClick, agentSta
   const borderCol = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.10)'
 
   return (
-    <div style={{ ...S.bar, background: barBg, borderBottom: `1px solid ${borderCol}` }}>
+    <div style={{
+      ...S.bar,
+      background: barBg,
+      borderBottom: `1px solid ${borderCol}`,
+      // Reserve room for native macOS traffic lights (top-left)
+      paddingLeft: isMac ? 78 : S.bar.padding.split(' ')[3] || 10,
+    }}>
       {/* Left: logo + name */}
       <div style={S.left}>
         <div style={S.mark}>
@@ -138,7 +147,7 @@ export default function TitleBar({ agent, unreadCount = 0, onBellClick, agentSta
           )}
         </button>
 
-        {isElectron && (
+        {isElectron && !isMac && (
           <div style={S.controls}>
             <button style={S.btn} onClick={() => window.electronAPI.minimize()} title="Minimize">
               <MinimizeIcon />
