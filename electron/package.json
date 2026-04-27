@@ -1,6 +1,6 @@
 {
   "name": "bti-voice-desktop",
-  "version": "1.2.0",
+  "version": "1.4.0",
   "description": "BTI Voice – Shared SMS & VOIP Desktop App",
   "author": "Business Technology Insight",
   "main": "main.js",
@@ -31,6 +31,7 @@
     "directories": {
       "output": "../../dist-electron"
     },
+    "afterPack": "./afterPack.js",
     "win": {
       "target": [{ "target": "nsis", "arch": ["x64"] }],
       "icon":   "assets/icon.png"
@@ -44,13 +45,13 @@
     },
     "mac": {
       "target": [
-        { "target": "dmg", "arch": ["x64", "arm64"] },
-        { "target": "zip", "arch": ["x64", "arm64"] }
+        { "target": "dir", "arch": ["x64", "arm64"] }
       ],
       "icon":             "assets/icon.png",
       "category":         "public.app-category.business",
       "hardenedRuntime":  true,
-      "gatekeeperAssess": false
+      "gatekeeperAssess": false,
+      "identity":         null
     },
     "dmg": {
       "title": "BTI Voice ${version}",

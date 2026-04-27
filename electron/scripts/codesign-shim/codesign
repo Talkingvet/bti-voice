@@ -1,0 +1,24 @@
+#!/bin/bash
+# codesign wrapper.
+#
+# Strips macOS extended attributes (resource forks, Finder info, Spotlight
+# metadata) from the target file/folder, then forwards all arguments to the
+# real /usr/bin/codesign.
+#
+# Why: on Apple Silicon, electron-builder's signing pass periodically fails
+# with "resource fork, Finder information, or similar detritus not allowed"
+# because xattrs reappear on helper binaries between afterPack cleanup and
+# the real codesign call. Wrapping codesign itself eliminates that race —
+# cleanup happens in the same process, immediately before signing.
+#
+# Activated by prepending this file's directory to PATH in build-mac.sh.
+
+# The target path is conventionally the last positional argument to codesign.
+TARGET="${@: -1}"
+
+if [ -e "$TARGET" ]; then
+  xattr -cr "$TARGET" 2>/dev/null || true
+  dot_clean -m "$TARGET" 2>/dev/null || true
+fi
+
+exec /usr/bin/codesign "$@"
