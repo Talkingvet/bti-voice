@@ -33,13 +33,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // in-app overlay instead of the banner.
   dismissIncomingCall: () => ipcRenderer.send('incoming-call-dismiss'),
 
-  // Fires when the user clicks Accept or Decline on the floating banner.
-  // React responds by calling incomingCall.accept() or .reject().
-  onIncomingCallAction: (cb) => {
-    const handler = (_, data) => cb(data)
-    ipcRenderer.on('incoming-call-action', handler)
-    return () => ipcRenderer.removeListener('incoming-call-action', handler)
-  },
+  // NOTE: Banner Accept/Decline button forwarding is intentionally NOT done
+  // via IPC. Main process uses webContents.executeJavaScript(..., true) to
+  // invoke window.__btiOnIncomingCallAction directly — this preserves the
+  // user-gesture context Twilio Voice needs to unblock WebRTC audio setup.
 
   onCallAction: (cb) => {
     const handler = (_, data) => cb(data)

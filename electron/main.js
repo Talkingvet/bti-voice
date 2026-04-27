@@ -379,6 +379,15 @@ ipcMain.on('incoming-call', (_, info) => {
 
 // Banner button (Accept / Decline) was clicked → forward the action to
 // the React app, which knows how to call incomingCall.accept() / .reject().
+//
+// IMPORTANT: We use webContents.executeJavaScript with `userGesture: true`
+// rather than webContents.send. Twilio Voice's call.accept() needs to run
+// inside a user-gesture context to unblock WebRTC audio (autoplay policy).
+// IPC events (webContents.send) don't carry user-gesture context, so the
+// audio setup silently fails and the call appears to "do nothing" even
+// though .accept() was called. executeJavaScript with userGesture=true
+// makes the dispatched call equivalent to a real button click in the
+// renderer.
 ipcMain.on('incoming-banner-action', (_, data) => {
   // Hide the banner immediately so it doesn't linger after the click
   if (incomingBanner && !incomingBanner.isDestroyed()) {
@@ -387,7 +396,13 @@ ipcMain.on('incoming-banner-action', (_, data) => {
   // Stop the dock bounce / taskbar flash now that the user has responded
   if (process.platform === 'win32' && mainWindow) mainWindow.flashFrame(false)
 
-  mainWindow?.webContents.send('incoming-call-action', data)
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    const payload = JSON.stringify(data)
+    const code = `window.__btiOnIncomingCallAction && window.__btiOnIncomingCallAction(${payload})`
+    mainWindow.webContents
+      .executeJavaScript(code, true /* userGesture */)
+      .catch(err => console.error('[banner] forward action failed:', err))
+  }
 })
 
 // React app fires this when the call is gone for any reason (caller
