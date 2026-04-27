@@ -28,6 +28,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('call-action', handler)
   },
 
+  // ── Mac dock badge / menu integration ────────────────────────────
+  // Tells the main process the current total unread count. On macOS this
+  // is shown as a red badge on the dock icon (Mail-style). No-op on Windows.
+  setUnreadCount: (count) => ipcRenderer.send('set-unread-count', count),
+
+  // Fired when the user picks "Settings…" from the macOS app menu (Cmd+,)
+  // or the menu-bar status icon. The React app should switch to the
+  // settings tab in response. Returns a cleanup function to remove the listener.
+  onOpenSettings: (cb) => {
+    const handler = () => cb()
+    ipcRenderer.on('open-settings', handler)
+    return () => ipcRenderer.removeListener('open-settings', handler)
+  },
+
   // ── Updates ──────────────────────────────────────────────────────
   getAppVersion:    ()  => ipcRenderer.invoke('get-app-version'),
   checkForUpdates:  ()  => ipcRenderer.invoke('check-for-updates'),

@@ -234,6 +234,23 @@ function AppInner() {
     if (activeTab === 'calls')         setUnreadVm(0)
   }, [activeTab])
 
+  // ── Mac dock badge ───────────────────────────────────────────────
+  // Push the total unread count to the Electron main process so it can
+  // show a red badge on the dock icon (Mac) — same UX as Mail/Messages.
+  // No-op in browser; harmless on Windows (main process ignores it there).
+  useEffect(() => {
+    if (!window.electronAPI?.setUnreadCount) return
+    window.electronAPI.setUnreadCount(unreadSms + unreadVm + unreadNotifs)
+  }, [unreadSms, unreadVm, unreadNotifs])
+
+  // ── Mac app menu / tray "Settings…" entry point ──────────────────
+  // The Electron menu sends an "open-settings" IPC when the user picks
+  // Settings… (or Cmd+,) — switch the active tab to settings in response.
+  useEffect(() => {
+    if (!window.electronAPI?.onOpenSettings) return
+    return window.electronAPI.onOpenSettings(() => setActiveTab('settings'))
+  }, [])
+
   // Track app open + tab navigation (fire-and-forget, only when logged in)
   const trackedOpen = useRef(false)
   useEffect(() => {

@@ -28,6 +28,45 @@ const TRAY_PATH = path.join(__dirname, 'assets', 'tray.png')
 // ── Your Railway URL ──────────────────────────────────────────────
 const APP_URL = 'https://bti-voice-production.up.railway.app'
 
+// ── Window-state persistence ──────────────────────────────────────
+// Remember the window position and size between launches (Mac convention,
+// also nice to have on Windows). We store a small JSON file in the user's
+// app-data directory and apply it on createWindow if the saved bounds
+// still fit on the user's currently-attached displays.
+const WINDOW_STATE_FILE = () => path.join(app.getPath('userData'), 'window-state.json')
+const DEFAULT_BOUNDS = { width: 420, height: 720 }
+
+function loadWindowState() {
+  try {
+    const raw = fs.readFileSync(WINDOW_STATE_FILE(), 'utf8')
+    const saved = JSON.parse(raw)
+    // Sanity-check that the saved position is on a currently-attached display,
+    // otherwise the window could open offscreen if the user unplugged a monitor.
+    const onScreen = screen.getAllDisplays().some(d => {
+      const b = d.bounds
+      return saved.x >= b.x && saved.y >= b.y &&
+             saved.x + saved.width  <= b.x + b.width &&
+             saved.y + saved.height <= b.y + b.height
+    })
+    if (!onScreen) return DEFAULT_BOUNDS
+    return saved
+  } catch {
+    return DEFAULT_BOUNDS
+  }
+}
+
+function saveWindowState() {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  try {
+    // getNormalBounds gives the un-maximized, un-fullscreen bounds — we
+    // don't want to restore as fullscreen if user closed in fullscreen.
+    const bounds = mainWindow.getNormalBounds
+      ? mainWindow.getNormalBounds()
+      : mainWindow.getBounds()
+    fs.writeFileSync(WINDOW_STATE_FILE(), JSON.stringify(bounds))
+  } catch (_) { /* swallow — disk full / permission, not worth crashing */ }
+}
+
 // ── Main window ───────────────────────────────────────────────────
 function createWindow() {
   // Platform-specific window chrome:
@@ -37,9 +76,14 @@ function createWindow() {
     ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 12, y: 12 } }
     : { frame: false }
 
+  // Restore previous window position/size if we have one on disk
+  const savedBounds = loadWindowState()
+
   mainWindow = new BrowserWindow({
-    width:     420,
-    height:    720,
+    width:     savedBounds.width  || 420,
+    height:    savedBounds.height || 720,
+    x:         savedBounds.x,   // undefined falls back to OS default centering
+    y:         savedBounds.y,
     minWidth:  380,
     minHeight: 580,
     ...chrome,
@@ -59,8 +103,13 @@ function createWindow() {
   mainWindow.on('close', (e) => {
     if (!app.isQuitting) {
       e.preventDefault()
+      saveWindowState()   // persist position before hiding
       mainWindow.hide()
-      if (Notification.isSupported()) {
+      // On macOS, hiding the window when its close button is clicked is the
+      // expected behavior (Mail, Messages, Slack all do this). The notification
+      // would just be noise. Show it on Windows where users expect close-to-X
+      // to actually close the app.
+      if (process.platform !== 'darwin' && Notification.isSupported()) {
         new Notification({
           title: 'BTI Voice',
           body:  'Running in the background. Click the tray icon to reopen.',
@@ -70,8 +119,30 @@ function createWindow() {
     }
   })
 
+  // Persist position/size as the user moves or resizes (debounced via resize-end on most OSes)
+  mainWindow.on('resize', saveWindowState)
+  mainWindow.on('move',   saveWindowState)
+
   mainWindow.on('maximize',   () => mainWindow.webContents.send('window-state', { maximized: true  }))
   mainWindow.on('unmaximize', () => mainWindow.webContents.send('window-state', { maximized: false }))
+
+  // Native right-click context menu on text selections + editable fields
+  // so Mac users get Cut/Copy/Paste/Select All in input boxes.
+  mainWindow.webContents.on('context-menu', (_, params) => {
+    const items = []
+    if (params.selectionText) {
+      items.push({ role: 'copy' })
+    }
+    if (params.isEditable) {
+      if (params.selectionText) items.push({ role: 'cut' })
+      items.push({ role: 'paste' })
+      items.push({ type: 'separator' })
+      items.push({ role: 'selectAll' })
+    }
+    if (items.length) {
+      Menu.buildFromTemplate(items).popup({ window: mainWindow })
+    }
+  })
 }
 
 // ── Mini call widget ──────────────────────────────────────────────
@@ -103,10 +174,20 @@ function createCallWidget() {
 
   callWidget.loadFile(path.join(__dirname, 'call-widget.html'))
 
+  // ── macOS: keep the widget visible over fullscreen apps and all Spaces ──
+  // On Mac, the default "alwaysOnTop" level only beats other normal app
+  // windows. To stay visible while the user is in a fullscreen app
+  // (e.g. Zoom, Keynote, full-screen Safari) or on a different Space, we
+  // need to bump the level and explicitly opt into all-workspaces visibility.
+  if (process.platform === 'darwin') {
+    callWidget.setAlwaysOnTop(true, 'screen-saver')
+    callWidget.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  }
+
   callWidget.on('closed', () => { callWidget = null })
 }
 
-// ── Tray ──────────────────────────────────────────────────────────
+// ── Tray (Mac: menu-bar status icon. Windows: system tray icon) ───
 function createTray() {
   const img  = nativeImage.createFromPath(TRAY_PATH)
   const icon = img.isEmpty() ? nativeImage.createEmpty() : img.resize({ width: 16, height: 16 })
@@ -114,8 +195,20 @@ function createTray() {
   tray = new Tray(icon)
   tray.setToolTip('BTI Voice')
 
+  // "Settings…" reuses the same IPC the app menu uses, so picking it from
+  // any entry point (menu, status icon, Cmd+,) drops the user on the
+  // Settings tab.
+  const openSettings = () => {
+    if (!mainWindow) return
+    mainWindow.show()
+    mainWindow.focus()
+    mainWindow.webContents.send('open-settings')
+  }
+
   const menu = Menu.buildFromTemplate([
     { label: 'Open BTI Voice', click: () => { mainWindow.show(); mainWindow.focus() } },
+    { label: 'Settings…',      click: openSettings,
+      accelerator: process.platform === 'darwin' ? 'Cmd+,' : undefined },
     { type: 'separator' },
     { label: 'Quit',           click: () => { app.isQuitting = true; app.quit() } },
   ])
@@ -124,6 +217,95 @@ function createTray() {
   tray.on('click',        () => { mainWindow.isVisible() ? mainWindow.focus() : mainWindow.show() })
   tray.on('double-click', () => { mainWindow.show(); mainWindow.focus() })
 }
+
+// ── Application menu (top-of-screen on macOS) ─────────────────────
+// On Windows, our custom React title bar replaces the menu — set it to null.
+// On macOS, build the standard set Mac users expect: app/File/Edit/View/Window.
+// Without an Edit menu, Cmd+C / Cmd+V / Cmd+A in text fields stop working in
+// Electron because there's no global accelerator wired to them.
+function buildAppMenu() {
+  if (process.platform !== 'darwin') {
+    Menu.setApplicationMenu(null)
+    return
+  }
+
+  const openSettings = () => {
+    if (!mainWindow) return
+    mainWindow.show()
+    mainWindow.focus()
+    mainWindow.webContents.send('open-settings')
+  }
+
+  const template = [
+    {
+      label: app.name,                            // "BTI Voice"
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        { label: 'Settings…', accelerator: 'Cmd+,', click: openSettings },
+        { type: 'separator' },
+        { role: 'hide' },                         // Cmd+H
+        { role: 'hideOthers' },                   // Opt+Cmd+H
+        { role: 'unhide' },
+        { type: 'separator' },
+        {
+          label: `Quit ${app.name}`,
+          accelerator: 'Cmd+Q',
+          click: () => { app.isQuitting = true; app.quit() },
+        },
+      ],
+    },
+    {
+      label: 'File',
+      submenu: [
+        // Mac convention: Cmd+W closes the active window. We still hide-to-tray.
+        { label: 'Close Window', accelerator: 'Cmd+W', click: () => mainWindow?.hide() },
+      ],
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'pasteAndMatchStyle' },
+        { role: 'delete' },
+        { role: 'selectAll' },
+      ],
+    },
+    {
+      label: 'View',
+      submenu: [
+        { label: 'Reload', accelerator: 'Cmd+R', click: () => mainWindow?.reload() },
+        { role: 'togglefullscreen' },
+      ],
+    },
+    {
+      label: 'Window',
+      submenu: [
+        { role: 'minimize' },                     // Cmd+M
+        { role: 'zoom' },
+        { type: 'separator' },
+        { role: 'front' },
+      ],
+    },
+  ]
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+}
+
+// ── IPC: dock badge (Mac only — no-op elsewhere) ──────────────────
+// React app calls electronAPI.setUnreadCount(n) whenever the total unread
+// count (SMS + voicemails + notifications) changes. We surface that as a
+// red badge on the dock icon, matching how Mail and Messages work.
+ipcMain.on('set-unread-count', (_, count) => {
+  if (process.platform !== 'darwin' || !app.dock) return
+  const n = Number(count) || 0
+  app.dock.setBadge(n > 0 ? String(n) : '')
+})
 
 // ── IPC: window controls ──────────────────────────────────────────
 ipcMain.on('win-minimize', () => mainWindow?.minimize())
@@ -291,6 +473,7 @@ app.whenReady().then(() => {
 
   createWindow()
   createTray()
+  buildAppMenu()
 
   // Block native Ctrl+/- keyboard zoom — app uses its own density setting
   mainWindow.webContents.on('before-input-event', (event, input) => {
