@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useColors } from '../../useColors'
 import { playDTMF } from '../../dtmf'
 import { api } from '../../api'
@@ -23,6 +23,10 @@ export default function DialpadTab({ agent, device, activeCall, onCallStart, onC
   const [qdName,       setQdName]       = useState('')
   const [qdPhone,      setQdPhone]      = useState('')
   const [savingQD,     setSavingQD]     = useState(false)
+
+  // Hidden input that captures typing & paste so the window grabs keyboard focus
+  // automatically without the user having to click anywhere first.
+  const inputRef = useRef(null)
 
   useEffect(() => {
     api.quickDial().then(setQuickDials).catch(console.error)
@@ -58,6 +62,46 @@ export default function DialpadTab({ agent, device, activeCall, onCallStart, onC
     setNumber(digits)
     setStatus('')
   }
+
+  // ── Auto-focus the hidden input when the dialpad becomes idle ─────────────────
+  // Ensures keystrokes & paste land here without needing to click in the field
+  // first (especially noticeable after the BTI Voice window first opens).
+  useEffect(() => {
+    if (callState === 'idle' && inputRef.current) {
+      // microtask delay so any focus-stealing state updates settle first
+      const t = setTimeout(() => {
+        try { inputRef.current && inputRef.current.focus() } catch (e) {}
+      }, 30)
+      return () => clearTimeout(t)
+    }
+  }, [callState])
+
+  // ── Window-level paste fallback ───────────────────────────────────────────────
+  // If focus has drifted to a button or elsewhere, still let the user paste a
+  // number from anywhere in the dialpad area. Skips if focus is in any other
+  // input/textarea so SMS compose etc. aren't affected.
+  useEffect(() => {
+    function onPaste(e) {
+      if (callState === 'active' || callState === 'connecting') return
+      const tag = e.target && e.target.tagName
+      if (tag === 'TEXTAREA') return
+      // If they're already pasting INTO our hidden input, it'll handle it.
+      if (tag === 'INPUT' && e.target === inputRef.current) return
+      // If they're pasting into some OTHER input (e.g. quick-dial form), don't hijack
+      if (tag === 'INPUT') return
+      const txt = (e.clipboardData && e.clipboardData.getData('text')) || ''
+      const cleaned = txt.replace(/[^0-9+*#]/g, '').replace(/^\+/, '+').slice(0, 16)
+      const digits  = cleaned.replace(/\D/g, '').slice(0, 11)
+      if (digits) {
+        e.preventDefault()
+        setNumber(digits)
+        setStatus('')
+        try { inputRef.current && inputRef.current.focus() } catch (e2) {}
+      }
+    }
+    window.addEventListener('paste', onPaste)
+    return () => window.removeEventListener('paste', onPaste)
+  }, [callState])
 
   // ── Keyboard input ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -157,13 +201,64 @@ export default function DialpadTab({ agent, device, activeCall, onCallStart, onC
         </div>
       </div>
 
-      {/* Number display */}
-      <div style={S.display}>
-        <div style={{ ...S.numberText, color: C.text }}>
+      {/* Number display — clicking anywhere on it focuses the hidden input */}
+      <div
+        style={{ ...S.display, cursor: isActive ? 'default' : 'text' }}
+        onClick={() => { try { inputRef.current && inputRef.current.focus() } catch (e) {} }}
+      >
+        {/* Hidden input — receives typing & paste, makes the window grab focus on mount */}
+        <input
+          ref={inputRef}
+          type="text"
+          inputMode="tel"
+          autoComplete="off"
+          autoFocus
+          aria-label="Phone number"
+          tabIndex={isActive ? -1 : 0}
+          readOnly={isActive}
+          value={number}
+          onChange={e => {
+            // Allow only digits + the dialpad-relevant special chars
+            const cleaned = e.target.value.replace(/[^0-9+*#]/g, '').slice(0, 16)
+            const digits  = cleaned.replace(/\D/g, '').slice(0, 11)
+            setNumber(digits)
+            setStatus('')
+          }}
+          onPaste={e => {
+            e.preventDefault()
+            const txt = (e.clipboardData && e.clipboardData.getData('text')) || ''
+            const digits = txt.replace(/\D/g, '').slice(0, 11)
+            if (digits) {
+              setNumber(digits)
+              setStatus('')
+            }
+          }}
+          onKeyDown={e => {
+            // Pressing Enter while a number is staged → start the call.
+            if (e.key === 'Enter' && !isActive && number && device) {
+              e.preventDefault()
+              startCall()
+            }
+          }}
+          style={{
+            position: 'absolute', inset: 0,
+            opacity: 0, border: 'none', background: 'transparent',
+            color: 'transparent', caretColor: 'transparent',
+            outline: 'none', padding: 0, margin: 0,
+            cursor: isActive ? 'default' : 'text',
+            // Z-index above the number text so paste/click target it directly
+            zIndex: 1,
+          }}
+        />
+        <div style={{ ...S.numberText, color: C.text, position: 'relative', zIndex: 0 }}>
           {formatted || <span style={{ color: C.emptyText, fontSize: 18, fontWeight: 400 }}>Enter number</span>}
         </div>
         {number && !isActive && (
-          <button style={{ ...S.backBtn, color: C.textSec }} onClick={backspace} title="Backspace">
+          <button
+            style={{ ...S.backBtn, color: C.textSec, zIndex: 2 }}
+            onClick={e => { e.stopPropagation(); backspace(); try { inputRef.current && inputRef.current.focus() } catch (er) {} }}
+            title="Backspace"
+          >
             <BackspaceIcon />
           </button>
         )}
