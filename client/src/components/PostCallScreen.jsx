@@ -87,6 +87,19 @@ export default function PostCallScreen({ call, onClose, onSaved }) {
       .finally(() => setLoadingContacts(false))
   }, [call])
 
+  // Esc key dismisses the screen (same as Skip).
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === 'Escape') {
+        e.stopPropagation()
+        handleSkip()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // Load Zoho users lazily — only when the task panel opens
   useEffect(() => {
     if (!taskOpen || usersLoaded) return
@@ -238,8 +251,10 @@ export default function PostCallScreen({ call, onClose, onSaved }) {
                   value={chosenId}
                   onChange={e => setChosenId(e.target.value)}
                 >
-                  {contacts.map(c => (
-                    <option key={c.id} value={c.id}>{describeContact(c)}</option>
+                  {contacts.map((c, i) => (
+                    <option key={c.id} value={c.id}>
+                      {describeContact(c)}{i === 0 ? '  (auto-matched)' : ''}
+                    </option>
                   ))}
                 </select>
                 {contacts.length > 1 && (
