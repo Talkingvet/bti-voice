@@ -119,12 +119,17 @@ export default function PostCallScreen({ call, onClose, onSaved }) {
   function describeContact(c) {
     if (!c) return ''
     const name = c.Full_Name || '(unnamed)'
-    const acct = c.Account_Name && c.Account_Name.name
+    // Contacts have Account_Name (object with .name), Leads have Company (string).
+    const acct = (c.Account_Name && c.Account_Name.name) || c.Company || null
     const email = c.Email
+    // v1.4.1: prefix tag so the agent can tell at a glance whether each row is a
+    // Zoho Contact or a Zoho Lead. Contacts come first (sorted server-side) so
+    // existing customers win the default selection.
+    const tag = c.module === 'Leads' ? '[Lead] ' : c.module === 'Contacts' ? '[Contact] ' : ''
     let extra = ''
     if (acct)  extra += ' · ' + acct
     if (email) extra += ' · ' + email
-    return name + extra
+    return tag + name + extra
   }
 
   async function handleCreateContact() {
@@ -150,6 +155,7 @@ export default function PostCallScreen({ call, onClose, onSaved }) {
           Full_Name:    [newFirst.trim(), newLast.trim()].filter(Boolean).join(' '),
           Email:        newEmail.trim() || null,
           Account_Name: newAccount.trim() ? { name: newAccount.trim(), id: null } : null,
+          module:       'Contacts',  // v1.4.1: Create-in-Zoho always creates a Contact (not a Lead)
         }
         setContacts(prev => [newRow, ...prev])
         setChosenId(created.id)
@@ -165,8 +171,14 @@ export default function PostCallScreen({ call, onClose, onSaved }) {
   async function handleSave() {
     setSubmitting(true)
     setSubmitError('')
+    // v1.4.1: derive chosen module from the selected contact (Contact OR Lead).
+    // Defaults to 'Contacts' for entries that don't have a module tag (shouldn't
+    // happen for new selections, but provides backwards compatibility).
+    const chosenRecord = contacts.find(c => c.id === chosenId)
+    const chosenModule = (chosenRecord && chosenRecord.module === 'Leads') ? 'Leads' : 'Contacts'
     const payload = {
       chosen_zoho_contact_id: chosenId || null,
+      chosen_zoho_module:     chosenId ? chosenModule : null,
       disposition: disposition || null,
       note:        note.trim() || null,
     }
@@ -259,7 +271,7 @@ export default function PostCallScreen({ call, onClose, onSaved }) {
                 </select>
                 {contacts.length > 1 && (
                   <div style={{ ...S.helper, color: C.textMuted }}>
-                    {contacts.length} contacts share this number — pick the one you actually spoke with.
+                    {contacts.length} records share this number — pick the one you actually spoke with.
                   </div>
                 )}
                 {!showCreate && (

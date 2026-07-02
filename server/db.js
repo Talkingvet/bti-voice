@@ -210,6 +210,8 @@ async function migrate() {
     ALTER TABLE calls ADD COLUMN IF NOT EXISTS wrap_up_completed_at   TIMESTAMPTZ;
     ALTER TABLE calls ADD COLUMN IF NOT EXISTS zoho_logged_at         TIMESTAMPTZ;
     ALTER TABLE calls ADD COLUMN IF NOT EXISTS zoho_call_id           VARCHAR(50);
+    -- v1.4.1: Lead support — module is 'Contacts' or 'Leads' (null = pre-v1.4.1 = treat as Contacts)
+    ALTER TABLE calls ADD COLUMN IF NOT EXISTS chosen_zoho_module     VARCHAR(20);
   `);
 
   console.log('[db] Migrations complete.');

@@ -128,6 +128,83 @@ async function findAllContactsByPhone(phone) {
   return Array.from(seen.values());
 }
 
+// ── ALL Leads at a phone number ────────────────────────────────────────────────
+// v1.4.1: Leads module is separate from Contacts in Zoho. Sales teams often call
+// leads who haven't yet been converted to contacts; we need to surface them in
+// the wrap-up dropdown too. Lead schema is similar to Contact but with `Company`
+// instead of `Account_Name`.
+async function findAllLeadsByPhone(phone) {
+  const candidates = phoneCandidates(phone);
+  if (!candidates.length) return [];
+
+  const seen = new Map();
+  for (const candidate of candidates) {
+    try {
+      const result = await zohoAPI('GET',
+        '/Leads/search?phone=' + encodeURIComponent(candidate) +
+        '&fields=id,Full_Name,Company,Email,Phone,Mobile,Lead_Status'
+      );
+      if (result && result.data) {
+        for (const c of result.data) {
+          if (c && c.id && !seen.has(c.id)) seen.set(c.id, c);
+        }
+      }
+    } catch (e) {
+      if (e.status === 204 || (e.message && e.message.includes('204'))) continue;
+      throw e;
+    }
+  }
+  return Array.from(seen.values());
+}
+
+// ── Unified record lookup: Contacts + Leads ────────────────────────────────────
+// v1.4.1: returns every Zoho record (Contact or Lead) at the given phone number,
+// each tagged with `module: 'Contacts' | 'Leads'`. Used by the post-call wrap-up
+// dropdown so the agent can pick the correct entity even when the prospect lives
+// in the Leads module (not yet converted).
+// Order: Contacts first (existing customers), then Leads.
+async function findAllRecordsByPhone(phone) {
+  const [contacts, leads] = await Promise.all([
+    findAllContactsByPhone(phone).catch(function(e) {
+      console.warn('[Zoho] findAllContactsByPhone failed:', e.message);
+      return [];
+    }),
+    findAllLeadsByPhone(phone).catch(function(e) {
+      console.warn('[Zoho] findAllLeadsByPhone failed:', e.message);
+      return [];
+    }),
+  ]);
+  const tagged = [];
+  for (const c of contacts) tagged.push(Object.assign({}, c, { module: 'Contacts' }));
+  for (const l of leads)    tagged.push(Object.assign({}, l, { module: 'Leads' }));
+  return tagged;
+}
+
+// ── Single auto-match across Contacts + Leads ──────────────────────────────────
+// v1.4.1: Used by the 60-second wrap-up sweep when no agent input is available.
+// Prefers a Contact match over a Lead match (existing customers win ties).
+// Returns { id, Full_Name, module, ... } or null.
+async function findRecordByPhone(phone) {
+  const contact = await findContactByPhone(phone).catch(function() { return null; });
+  if (contact) return Object.assign({}, contact, { module: 'Contacts' });
+  const candidates = phoneCandidates(phone);
+  for (const candidate of candidates) {
+    try {
+      const result = await zohoAPI('GET',
+        '/Leads/search?phone=' + encodeURIComponent(candidate) +
+        '&fields=id,Full_Name,Company,Email,Phone,Mobile'
+      );
+      if (result && result.data && result.data.length > 0) {
+        return Object.assign({}, result.data[0], { module: 'Leads' });
+      }
+    } catch (e) {
+      if (e.status === 204 || (e.message && e.message.includes('204'))) continue;
+      throw e;
+    }
+  }
+  return null;
+}
+
 // ── Zoho users (cached) ────────────────────────────────────────────────────────
 // v1.4.0: powers the task assignee dropdown. Zoho user list rarely changes, so
 // we cache it for an hour to avoid hammering the API on every post-call screen.
@@ -186,12 +263,14 @@ async function createZohoTask(opts) {
   const due_date    = opts.due_date;
   const owner_id    = opts.owner_id;
   const contact_id  = opts.contact_id;
+  // v1.4.1: 'Contacts' (default) or 'Leads'. Determines $se_module + Who_Id semantics.
+  const seModule    = opts.module === 'Leads' ? 'Leads' : 'Contacts';
   if (!subject)    throw new Error('subject is required for a Zoho task');
   if (!contact_id) throw new Error('contact_id is required for a Zoho task');
   const data = {
     Subject:    subject,
     Who_Id:     { id: contact_id },
-    $se_module: 'Contacts',
+    $se_module: seModule,
   };
   if (description) data.Description = description;
   if (due_date)    data.Due_Date    = due_date; // ISO date 'YYYY-MM-DD'
@@ -210,15 +289,17 @@ async function createZohoTask(opts) {
 // auto-matched contact, but the agent later picks a different contact, we
 // re-attach the existing Zoho Call record to the chosen contact so reporting
 // stays clean.
-async function updateZohoCallContact(zohoCallId, newZohoContactId) {
+async function updateZohoCallContact(zohoCallId, newZohoContactId, opts) {
   if (!zohoCallId || !newZohoContactId) {
     throw new Error('zohoCallId and newZohoContactId are required');
   }
+  // v1.4.1: module is 'Contacts' (default) or 'Leads'.
+  const seModule = (opts && opts.module === 'Leads') ? 'Leads' : 'Contacts';
   const result = await zohoAPI('PUT', '/Calls/' + zohoCallId, {
     data: [{
       id:         zohoCallId,
       Who_Id:     { id: newZohoContactId },
-      $se_module: 'Contacts',
+      $se_module: seModule,
     }]
   });
   const record = result && result.data && result.data[0];
@@ -258,6 +339,9 @@ module.exports = {
   zohoAPI,
   findContactByPhone,
   findAllContactsByPhone,
+  findAllLeadsByPhone,
+  findAllRecordsByPhone,
+  findRecordByPhone,
   listZohoUsers,
   createZohoContact,
   createZohoTask,

@@ -70,6 +70,8 @@ function fireZohoLogCall(callId, opts) {
   const port = (opts && opts.port) || process.env.PORT || 3000;
   const body = { call_id: callId };
   if (opts && opts.zoho_contact_id) body.zoho_contact_id = opts.zoho_contact_id;
+  // v1.4.1: optional module override ('Contacts' or 'Leads')
+  if (opts && opts.zoho_module)     body.zoho_module     = opts.zoho_module;
 
   setImmediate(async function() {
     try {

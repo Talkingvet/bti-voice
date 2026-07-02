@@ -15,7 +15,7 @@ router.get('/', requireAuth, async (req, res) => {
         ca.id, ca.direction, ca.duration, ca.status,
         ca.started_at, ca.ended_at,
         ca.recording_url, ca.transcription, ca.ai_summary,
-        ca.needs_wrap_up, ca.chosen_zoho_contact_id,
+        ca.needs_wrap_up, ca.chosen_zoho_contact_id, ca.chosen_zoho_module,
         ca.disposition, ca.wrap_up_completed_at,
         a.name     AS agent_name,
         a.color    AS agent_color,
@@ -372,15 +372,19 @@ router.post('/transfer', requireAuth, async (req, res) => {
 //         the sweep already synced it to a different one.
 //   - Fires add-note + create-task in the background if those fields are set.
 router.post('/:id/wrap-up', requireAuth, async (req, res) => {
-  const callId  = parseInt(req.params.id, 10);
-  const body    = req.body || {};
-  const choseId = body.chosen_zoho_contact_id || null;
-  const skip    = !!body.skip;
+  const callId      = parseInt(req.params.id, 10);
+  const body        = req.body || {};
+  const choseId     = body.chosen_zoho_contact_id || null;
+  // v1.4.1: 'Contacts' (default) or 'Leads'
+  const choseModule = body.chosen_zoho_module === 'Leads' ? 'Leads'
+                    : body.chosen_zoho_module === 'Contacts' ? 'Contacts'
+                    : null;
+  const skip        = !!body.skip;
   if (Number.isNaN(callId)) return res.status(400).json({ error: 'invalid call id' });
 
   try {
     const lookup = await pool.query(
-      'SELECT id, zoho_logged_at, zoho_call_id, chosen_zoho_contact_id ' +
+      'SELECT id, zoho_logged_at, zoho_call_id, chosen_zoho_contact_id, chosen_zoho_module ' +
       'FROM calls WHERE id = $1',
       [callId]
     );
@@ -397,15 +401,17 @@ router.post('/:id/wrap-up', requireAuth, async (req, res) => {
     await pool.query(
       'UPDATE calls SET ' +
       '  chosen_zoho_contact_id = COALESCE($2, chosen_zoho_contact_id), ' +
-      '  disposition            = COALESCE($3, disposition), ' +
-      '  wrap_up_note           = COALESCE($4, wrap_up_note), ' +
+      '  chosen_zoho_module     = COALESCE($3, chosen_zoho_module), ' +
+      '  disposition            = COALESCE($4, disposition), ' +
+      '  wrap_up_note           = COALESCE($5, wrap_up_note), ' +
       '  wrap_up_completed_at   = NOW(), ' +
       '  needs_wrap_up          = FALSE ' +
       'WHERE id = $1',
-      [callId, choseId, body.disposition || null, body.note || null]
+      [callId, choseId, choseModule, body.disposition || null, body.note || null]
     );
 
-    const targetZohoId = choseId || call.chosen_zoho_contact_id || null;
+    const targetZohoId     = choseId     || call.chosen_zoho_contact_id || null;
+    const targetZohoModule = choseModule || call.chosen_zoho_module     || 'Contacts';
 
     // Decide what to do for the Zoho Call record itself
     if (call.zoho_logged_at) {
@@ -413,19 +419,19 @@ router.post('/:id/wrap-up', requireAuth, async (req, res) => {
       // a different contact from whatever the sweep used.
       if (targetZohoId && call.zoho_call_id) {
         try {
-          await updateZohoCallContact(call.zoho_call_id, targetZohoId);
+          await updateZohoCallContact(call.zoho_call_id, targetZohoId, { module: targetZohoModule });
         } catch (e) {
           console.error('[wrap-up] Zoho call re-attach failed:', e.message);
         }
       }
     } else {
-      // Not yet synced — fire to chosen contact (or auto-match if null)
-      fireZohoLogCall(callId, { zoho_contact_id: targetZohoId });
+      // Not yet synced — fire to chosen record (or auto-match if null)
+      fireZohoLogCall(callId, { zoho_contact_id: targetZohoId, zoho_module: targetZohoModule });
     }
 
     const port = process.env.PORT || 3000;
 
-    // Post the agent's note (if any) as a Zoho Note on the chosen contact
+    // Post the agent's note (if any) as a Zoho Note on the chosen record
     if (body.note && targetZohoId) {
       setImmediate(async function() {
         try {
@@ -434,6 +440,7 @@ router.post('/:id/wrap-up', requireAuth, async (req, res) => {
             headers: { 'Content-Type': 'application/json' },
             body:    JSON.stringify({
               zoho_contact_id: targetZohoId,
+              zoho_module:     targetZohoModule,
               note:            body.note,
               title:           'Call note - ' + new Date().toLocaleDateString(),
             }),
@@ -444,7 +451,7 @@ router.post('/:id/wrap-up', requireAuth, async (req, res) => {
       });
     }
 
-    // Create the follow-up task (if provided) on the chosen contact
+    // Create the follow-up task (if provided) on the chosen record
     if (body.task && body.task.subject && targetZohoId) {
       setImmediate(async function() {
         try {
@@ -457,6 +464,7 @@ router.post('/:id/wrap-up', requireAuth, async (req, res) => {
               due_date:    body.task.due_date    || null,
               owner_id:    body.task.owner_id    || null,
               contact_id:  targetZohoId,
+              zoho_module: targetZohoModule,
             }),
           });
         } catch (e) {
@@ -478,7 +486,8 @@ router.get('/:id', requireAuth, async (req, res) => {
   try {
     const result = await pool.query(
       'SELECT ca.id, ca.direction, ca.duration, ca.status, ca.started_at, ca.ended_at, ' +
-      '       ca.needs_wrap_up, ca.chosen_zoho_contact_id, ca.disposition, ca.wrap_up_note, ' +
+      '       ca.needs_wrap_up, ca.chosen_zoho_contact_id, ca.chosen_zoho_module, ' +
+      '       ca.disposition, ca.wrap_up_note, ' +
       '       ca.wrap_up_completed_at, ca.zoho_logged_at, ca.zoho_call_id, ' +
       '       co.id AS contact_id, co.name AS contact_name, co.phone_number ' +
       'FROM   calls ca ' +

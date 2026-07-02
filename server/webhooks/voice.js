@@ -697,15 +697,18 @@ Keep it tight — this is for a CRM note, not a report.`,
       if (process.env.ZOHO_REFRESH_TOKEN && callRecord.contact_id) {
         try {
           const fresh = await pool.query(
-            'SELECT chosen_zoho_contact_id FROM calls WHERE id = $1',
+            'SELECT chosen_zoho_contact_id, chosen_zoho_module FROM calls WHERE id = $1',
             [callRecord.id]
           );
-          const chosenZohoId = fresh.rows[0] && fresh.rows[0].chosen_zoho_contact_id;
+          const chosenZohoId     = fresh.rows[0] && fresh.rows[0].chosen_zoho_contact_id;
+          const chosenZohoModule = fresh.rows[0] && fresh.rows[0].chosen_zoho_module;
           const noteBody = {
             contact_id: callRecord.contact_id,
             note:       'Call Summary (' + new Date().toLocaleDateString() + '):\n\n' + aiSummary,
           };
-          if (chosenZohoId) noteBody.zoho_contact_id = chosenZohoId;
+          if (chosenZohoId)     noteBody.zoho_contact_id = chosenZohoId;
+          // v1.4.1: pass module so note lands on the right type (Contact OR Lead)
+          if (chosenZohoModule) noteBody.zoho_module     = chosenZohoModule;
           await fetch('http://localhost:' + (process.env.PORT || 3000) + '/api/zoho/add-note', {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },

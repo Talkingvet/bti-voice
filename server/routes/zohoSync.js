@@ -9,6 +9,8 @@ const {
   zohoAPI,
   findContactByPhone,
   findAllContactsByPhone,
+  findAllRecordsByPhone,
+  findRecordByPhone,
   listZohoUsers,
   createZohoContact,
   createZohoTask,
@@ -44,6 +46,15 @@ async function resolveZohoId(contactId, phoneNumber) {
   return contact.id;
 }
 
+// ── v1.4.1: Module-aware resolver — Contacts OR Leads ─────────────────────────
+// Returns { id, module } or null. Used by /log-call / /add-note when no chosen
+// contact is on the row (auto-match path).
+async function resolveZohoRecord(phoneNumber) {
+  const rec = await findRecordByPhone(phoneNumber);
+  if (!rec) return null;
+  return { id: rec.id, module: rec.module };
+}
+
 // ── POST /api/zoho/log-call ────────────────────────────────────────────────────
 // v1.4.0 changes:
 //   - Accepts optional `zoho_contact_id` override in the body. If provided,
@@ -54,15 +65,18 @@ async function resolveZohoId(contactId, phoneNumber) {
 //     wrap-up sweep can avoid double-syncing and so the wrap-up endpoint can
 //     re-attach the record later if the agent picks a different contact.
 router.post('/log-call', async (req, res) => {
-  const callId          = req.body.call_id;
-  const overrideZohoId  = req.body.zoho_contact_id || null;
+  const callId         = req.body.call_id;
+  const overrideZohoId = req.body.zoho_contact_id || null;
+  // v1.4.1: optional module override. 'Contacts' (default) or 'Leads'.
+  const overrideModule = req.body.zoho_module || null;
   if (!callId) return res.status(400).json({ error: 'call_id required' });
 
   try {
     // Fetch call details from BTI Voice DB
     const queryResult = await pool.query(
       'SELECT ca.id, ca.direction, ca.status, ca.duration, ca.started_at, ' +
-      '       ca.chosen_zoho_contact_id, ca.zoho_call_id, ca.zoho_logged_at, ' +
+      '       ca.chosen_zoho_contact_id, ca.chosen_zoho_module, ' +
+      '       ca.zoho_call_id, ca.zoho_logged_at, ' +
       '       c.contact_id, ' +
       '       co.phone_number, co.name AS contact_name, ' +
       '       a.name AS agent_name ' +
@@ -86,15 +100,19 @@ router.post('/log-call', async (req, res) => {
       return res.json({ skipped: true, reason: 'Already logged to Zoho', zoho_call_id: call.zoho_call_id });
     }
 
-    // Decide which Zoho contact to attach the call to.
-    // Priority: explicit override > chosen_zoho_contact_id (from wrap-up) > auto-match.
-    let zohoId = overrideZohoId || call.chosen_zoho_contact_id || null;
+    // v1.4.1: Decide which Zoho record (Contact or Lead) to attach the call to.
+    // Priority: explicit override > chosen_zoho_contact_id+module (from wrap-up) > auto-match.
+    let zohoId     = overrideZohoId || call.chosen_zoho_contact_id || null;
+    let zohoModule = overrideModule || call.chosen_zoho_module     || null;
     if (!zohoId) {
-      zohoId = await resolveZohoId(call.contact_id, call.phone_number);
+      const rec = await resolveZohoRecord(call.phone_number);
+      if (rec) { zohoId = rec.id; zohoModule = rec.module; }
     }
     if (!zohoId) {
       return res.json({ skipped: true, reason: 'Phone number not found in Zoho CRM' });
     }
+    // Default to Contacts when module is unknown (pre-v1.4.1 rows).
+    if (zohoModule !== 'Leads') zohoModule = 'Contacts';
 
     // Zoho Call_Type must be 'Inbound', 'Outbound', or 'Missed'
     const callType = call.status === 'missed' ? 'Missed'
@@ -122,7 +140,7 @@ router.post('/log-call', async (req, res) => {
         Call_Result:     call.status === 'missed' ? 'No answer' : 'Completed',
         Description:     description,
         Who_Id:          { id: zohoId },
-        $se_module:      'Contacts',
+        $se_module:      zohoModule,
       }]
     };
 
@@ -143,8 +161,8 @@ router.post('/log-call', async (req, res) => {
       [callId, zohoCallId || null]
     );
 
-    console.log('[Zoho] Call ' + callId + ' logged on contact ' + zohoId + ' (Zoho record: ' + zohoCallId + ')');
-    res.json({ success: true, zoho_contact_id: zohoId, zoho_call_id: zohoCallId });
+    console.log('[Zoho] Call ' + callId + ' logged on ' + zohoModule + ' ' + zohoId + ' (Zoho record: ' + zohoCallId + ')');
+    res.json({ success: true, zoho_contact_id: zohoId, zoho_module: zohoModule, zoho_call_id: zohoCallId });
 
   } catch (e) {
     console.error('[Zoho log-call]', e.message, e.body || '');
@@ -174,12 +192,15 @@ router.post('/log-sms', async (req, res) => {
     if (!queryResult.rows[0]) return res.status(404).json({ error: 'Message not found' });
     const msg = queryResult.rows[0];
 
-    const zohoId = await resolveZohoId(msg.contact_id, msg.phone_number);
-    if (!zohoId) {
+    // v1.4.1: resolve Contact OR Lead so SMS notes attach to whichever record exists.
+    const rec = await resolveZohoRecord(msg.phone_number);
+    if (!rec) {
       return res.json({ skipped: true, reason: 'Phone number not found in Zoho CRM' });
     }
+    const zohoId     = rec.id;
+    const zohoModule = rec.module === 'Leads' ? 'Leads' : 'Contacts';
 
-    // Log as a Note on the contact record.
+    // Log as a Note on the record.
     // If you identify the SMS extension API later, swap this out.
     const direction = msg.direction === 'inbound' ? 'Received from' : 'Sent to';
     const preview   = (msg.body || '').substring(0, 80);
@@ -200,12 +221,12 @@ router.post('/log-sms', async (req, res) => {
         Note_Title:   noteTitle,
         Note_Content: noteBody,
         Parent_Id:    { id: zohoId },
-        $se_module:   'Contacts',
+        $se_module:   zohoModule,
       }]
     });
 
-    console.log('[Zoho] SMS ' + messageId + ' logged on contact ' + zohoId);
-    res.json({ success: true, zoho_contact_id: zohoId });
+    console.log('[Zoho] SMS ' + messageId + ' logged on ' + zohoModule + ' ' + zohoId);
+    res.json({ success: true, zoho_contact_id: zohoId, zoho_module: zohoModule });
 
   } catch (e) {
     console.error('[Zoho log-sms]', e.message, e.body || '');
@@ -223,30 +244,36 @@ router.post('/add-note', async (req, res) => {
   const note            = req.body.note;
   const title           = req.body.title;
   const overrideZohoId  = req.body.zoho_contact_id || null;
+  // v1.4.1: optional module override. 'Contacts' (default) or 'Leads'.
+  const overrideModule  = req.body.zoho_module || null;
   if ((!contactId && !overrideZohoId) || !note) {
     return res.status(400).json({ error: 'note required, plus either contact_id or zoho_contact_id' });
   }
 
   try {
-    let zohoId = overrideZohoId;
+    let zohoId     = overrideZohoId;
+    let zohoModule = overrideModule;
     if (!zohoId) {
       const contactQuery = await pool.query('SELECT * FROM contacts WHERE id = $1', [contactId]);
       const contact      = contactQuery.rows[0];
       if (!contact) return res.status(404).json({ error: 'Contact not found' });
-      zohoId = await resolveZohoId(contactId, contact.phone_number);
+      // v1.4.1: auto-detect module (Contact OR Lead) when no override given.
+      const rec = await resolveZohoRecord(contact.phone_number);
+      if (rec) { zohoId = rec.id; zohoModule = rec.module; }
     }
     if (!zohoId) return res.json({ skipped: true, reason: 'Contact not found in Zoho CRM' });
+    if (zohoModule !== 'Leads') zohoModule = 'Contacts';
 
     await zohoAPI('POST', '/Notes', {
       data: [{
         Note_Title:   title || ('Call Summary - ' + new Date().toLocaleDateString()),
         Note_Content: note,
         Parent_Id:    { id: zohoId },
-        $se_module:   'Contacts',
+        $se_module:   zohoModule,
       }]
     });
 
-    res.json({ success: true, zoho_contact_id: zohoId });
+    res.json({ success: true, zoho_contact_id: zohoId, zoho_module: zohoModule });
   } catch (e) {
     console.error('[Zoho add-note]', e.message);
     res.status(500).json({ error: e.message });
@@ -261,8 +288,11 @@ router.post('/find-contacts-by-phone', async (req, res) => {
   const phone = req.body.phone;
   if (!phone) return res.status(400).json({ error: 'phone required' });
   try {
-    const contacts = await findAllContactsByPhone(phone);
-    res.json({ contacts: contacts });
+    // v1.4.1: search both Contacts and Leads. Each record has a `module` tag.
+    // Returns under `contacts` key for backwards compat with older clients,
+    // but the array now contains both Contacts and Leads.
+    const records = await findAllRecordsByPhone(phone);
+    res.json({ contacts: records, records: records });
   } catch (e) {
     console.error('[Zoho find-contacts-by-phone]', e.message);
     res.status(500).json({ error: e.message });
@@ -313,6 +343,8 @@ router.post('/create-task', async (req, res) => {
       due_date:    req.body.due_date,
       owner_id:    req.body.owner_id,
       contact_id:  req.body.contact_id,
+      // v1.4.1: 'Contacts' (default) or 'Leads'
+      module:      req.body.zoho_module || req.body.module || 'Contacts',
     });
     res.json({ success: true, zoho_task: created });
   } catch (e) {
