@@ -129,4 +129,73 @@ router.post('/send', requireAuth, async (req, res) => {
   }
 });
 
+
+// ── Scheduled SMS ─────────────────────────────────────────────────────────────
+
+// POST /api/messages/schedule — queue a message for later
+router.post('/schedule', requireAuth, async (req, res) => {
+  const { conversation_id, body, send_at } = req.body;
+  if (!body?.trim()) return res.status(400).json({ error: 'Message body required' });
+  const when = new Date(send_at);
+  if (isNaN(when.getTime())) return res.status(400).json({ error: 'Invalid send_at' });
+  if (when.getTime() < Date.now() + 60 * 1000) {
+    return res.status(400).json({ error: 'Scheduled time must be at least 1 minute in the future' });
+  }
+  try {
+    const { rows: [conv] } = await pool.query(`
+      SELECT c.id, co.id AS contact_id, co.phone_number AS to_number, co.opted_out
+      FROM conversations c
+      JOIN contacts co ON co.id = c.contact_id
+      WHERE c.id = $1
+    `, [conversation_id]);
+    if (!conv) return res.status(404).json({ error: 'Conversation not found' });
+    if (conv.opted_out) {
+      return res.status(403).json({ error: 'This contact has opted out of SMS (replied STOP). They must text START to resume messaging.' });
+    }
+    const { rows: [agent] } = await pool.query('SELECT * FROM agents WHERE id = $1', [req.agent.id]);
+    if (!agent?.phone_number || agent.phone_number === 'TBD') {
+      return res.status(400).json({ error: 'Your agent profile has no phone number assigned' });
+    }
+    const { rows: [sm] } = await pool.query(`
+      INSERT INTO scheduled_messages (conversation_id, agent_id, body, from_number, to_number, send_at)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING *
+    `, [conversation_id, agent.id, body.trim(), agent.phone_number, conv.to_number, when.toISOString()]);
+    res.json(sm);
+  } catch (e) {
+    console.error('[messages/schedule]', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/messages/scheduled?conversation_id=N — pending sends for a conversation
+router.get('/scheduled', requireAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT sm.*, a.name AS agent_name
+      FROM scheduled_messages sm
+      LEFT JOIN agents a ON a.id = sm.agent_id
+      WHERE sm.conversation_id = $1 AND sm.status IN ('pending', 'failed')
+      ORDER BY sm.send_at ASC
+    `, [req.query.conversation_id]);
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/messages/scheduled/:id — cancel a pending send
+router.delete('/scheduled/:id', requireAuth, async (req, res) => {
+  try {
+    const { rowCount } = await pool.query(
+      "DELETE FROM scheduled_messages WHERE id = $1 AND status IN ('pending', 'failed')",
+      [req.params.id]
+    );
+    if (!rowCount) return res.status(404).json({ error: 'Not found or already sent' });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;

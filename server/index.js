@@ -7,6 +7,7 @@ const { migrate } = require('./db');
 const { init: initSocket } = require('./socket');
 const { seed }   = require('./seed');
 const { startWrapUpSweep } = require('./jobs/wrapUpSweep');
+const { startScheduledSmsSweep } = require('./jobs/scheduledSmsSweep');
 
 const app    = express();
 const server = http.createServer(app);
@@ -54,6 +55,7 @@ const PORT = process.env.PORT || 3000;
     await migrate();
     await seed();
     startWrapUpSweep(); // v1.4.0: catches calls the agent skipped wrap-up on
+    startScheduledSmsSweep(); // v1.5.x: sends due scheduled SMS
     server.listen(PORT, () => {
       console.log(`\n🚀 BTI Voice running on port ${PORT}`);
       console.log(`   Local:   http://localhost:${PORT}`);

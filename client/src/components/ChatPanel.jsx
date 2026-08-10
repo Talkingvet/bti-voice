@@ -43,6 +43,12 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
   const [cannedQuery,  setCannedQuery] = useState('')
   const [showAssign,   setShowAssign]  = useState(false)
 
+  // Scheduled SMS state
+  const [scheduled,    setScheduled]    = useState([])
+  const [showSchedule, setShowSchedule] = useState(false)
+  const [scheduleAt,   setScheduleAt]   = useState('')
+  const [scheduling,   setScheduling]   = useState(false)
+
   // Zoho profile state
   const [zohoProfile,   setZohoProfile]  = useState(null)
   const [zohoLoading,   setZohoLoading]  = useState(false)
@@ -140,6 +146,46 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
     } catch (e) {
       console.error('[ChatPanel] device.connect failed', e)
       setCallStatus(null)
+    }
+  }
+
+  // ── Scheduled SMS
+  useEffect(() => {
+    if (!conv?.id) { setScheduled([]); return }
+    api.scheduledMessages(conv.id).then(setScheduled).catch(() => {})
+  }, [conv?.id, messages.length])
+
+  function openSchedule() {
+    // Default: one hour from now, rounded to next 15 min, in datetime-local format
+    const d = new Date(Date.now() + 60 * 60 * 1000)
+    d.setMinutes(Math.ceil(d.getMinutes() / 15) * 15, 0, 0)
+    const pad = n => String(n).padStart(2, '0')
+    setScheduleAt(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`)
+    setShowSchedule(true)
+  }
+
+  async function handleSchedule() {
+    if (!body.trim() || !scheduleAt || scheduling) return
+    setScheduling(true)
+    try {
+      await api.scheduleMessage(conv.id, body.trim(), new Date(scheduleAt).toISOString())
+      setBody('')
+      setShowSchedule(false)
+      const list = await api.scheduledMessages(conv.id)
+      setScheduled(list)
+      toast.success('Message scheduled')
+    } catch (e) {
+      toast.error('Schedule failed: ' + e.message)
+    }
+    setScheduling(false)
+  }
+
+  async function cancelScheduled(id) {
+    try {
+      await api.cancelScheduledMessage(id)
+      setScheduled(s => s.filter(x => x.id !== id))
+    } catch (e) {
+      toast.error('Cancel failed: ' + e.message)
     }
   }
 
@@ -376,7 +422,46 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
               <div style={{ ...styles.composeRow, justifyContent: 'center', alignItems: 'center', padding: '12px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: 10, color: '#ef4444', fontSize: 12.5, fontWeight: 600, textAlign: 'center' }}>
                 This contact opted out of SMS (replied STOP). Messaging is blocked until they text START.
               </div>
-            ) : (
+            ) : (<>
+            {scheduled.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6 }}>
+                {scheduled.map(sm => (
+                  <div key={sm.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, padding: '5px 10px', borderRadius: 8, background: sm.status === 'failed' ? 'rgba(239,68,68,0.10)' : 'rgba(79,156,249,0.10)', border: `1px solid ${sm.status === 'failed' ? 'rgba(239,68,68,0.4)' : 'rgba(79,156,249,0.4)'}`, color: C.text }}>
+                    <ClockIcon size={13} />
+                    <span style={{ fontWeight: 600, flexShrink: 0, color: sm.status === 'failed' ? '#ef4444' : '#4f9cf9' }}>
+                      {sm.status === 'failed' ? `Failed: ${sm.error || 'unknown error'}` : new Date(sm.send_at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                    </span>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: C.textMuted }}>{sm.body}</span>
+                    <button
+                      onClick={() => cancelScheduled(sm.id)}
+                      title="Cancel scheduled message"
+                      style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: C.textMuted, fontSize: 14, lineHeight: 1, padding: 2 }}
+                    >✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {showSchedule && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, padding: '8px 10px', borderRadius: 8, background: C.inputBg, border: `1px solid ${C.inputBorder}` }}>
+                <span style={{ fontSize: 12, color: C.textMuted, flexShrink: 0 }}>Send at</span>
+                <input
+                  type="datetime-local"
+                  value={scheduleAt}
+                  onChange={e => setScheduleAt(e.target.value)}
+                  style={{ background: C.inputBg, border: `1px solid ${C.inputBorder}`, color: C.text, borderRadius: 6, padding: '4px 8px', fontSize: 12, fontFamily: 'inherit' }}
+                />
+                <button
+                  onClick={handleSchedule}
+                  disabled={scheduling || !body.trim()}
+                  style={{ background: '#4f9cf9', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: scheduling || !body.trim() ? 0.4 : 1 }}
+                >{scheduling ? 'Scheduling…' : 'Schedule'}</button>
+                <button
+                  onClick={() => setShowSchedule(false)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textMuted, fontSize: 12 }}
+                >Cancel</button>
+                {!body.trim() && <span style={{ fontSize: 11, color: C.textMuted }}>Type the message first</span>}
+              </div>
+            )}
             <div style={styles.composeRow}>
               <textarea
                 ref={textareaRef}
@@ -388,6 +473,13 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
                 rows={1}
               />
               <button
+                style={{ ...styles.sendBtn, background: 'transparent', border: `1px solid ${C.inputBorder}`, opacity: showSchedule ? 1 : 0.7 }}
+                onClick={() => showSchedule ? setShowSchedule(false) : openSchedule()}
+                title="Schedule for later"
+              >
+                <ClockIcon size={17} />
+              </button>
+              <button
                 style={{ ...styles.sendBtn, opacity: sending || !body.trim() ? 0.4 : 1 }}
                 onClick={handleSend}
                 disabled={sending || !body.trim()}
@@ -396,7 +488,7 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
                 <SendIcon />
               </button>
             </div>
-            )}
+            </>)}
           </div>
         </>
       )}
@@ -672,6 +764,15 @@ function PhoneIcon() {
     </svg>
   )
 }
+function ClockIcon({ size = 16 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#4f9cf9" strokeWidth="2" strokeLinecap="round">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 3" />
+    </svg>
+  )
+}
+
 function SendIcon() {
   return (
     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">

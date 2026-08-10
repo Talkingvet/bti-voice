@@ -144,6 +144,25 @@ async function migrate() {
     ALTER TABLE conversations ADD COLUMN IF NOT EXISTS last_auto_reply_at TIMESTAMPTZ;
   `);
 
+  // Scheduled SMS (send later)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS scheduled_messages (
+      id              SERIAL PRIMARY KEY,
+      conversation_id INTEGER REFERENCES conversations(id) ON DELETE CASCADE,
+      agent_id        INTEGER REFERENCES agents(id),
+      body            TEXT NOT NULL,
+      from_number     VARCHAR(20) NOT NULL,
+      to_number       VARCHAR(20) NOT NULL,
+      send_at         TIMESTAMPTZ NOT NULL,
+      status          VARCHAR(20) DEFAULT 'pending',
+      error           TEXT,
+      twilio_sid      VARCHAR(50),
+      created_at      TIMESTAMPTZ DEFAULT NOW(),
+      sent_at         TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS idx_sched_pending ON scheduled_messages (status, send_at);
+  `);
+
   // Phase 2: Internal notes, canned responses, quick dial
   await pool.query(`
     CREATE TABLE IF NOT EXISTS conversation_notes (
