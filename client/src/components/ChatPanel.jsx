@@ -662,27 +662,72 @@ function MsgMedia({ media }) {
     }
   }
 
-  async function copyImage(mm) {
+  function toPngBlob(blob) {
+    return new Promise((resolve, reject) => {
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        canvas.width = img.naturalWidth
+        canvas.height = img.naturalHeight
+        canvas.getContext('2d').drawImage(img, 0, 0)
+        URL.revokeObjectURL(img.src)
+        canvas.toBlob(b => (b ? resolve(b) : reject(new Error('Conversion failed'))), 'image/png')
+      }
+      img.onerror = () => reject(new Error('Could not decode image'))
+      img.src = URL.createObjectURL(blob)
+    })
+  }
+
+  // Fallback: select the rendered image and use the legacy copy command.
+  // Works in Electron even when the async Clipboard API permission is denied.
+  async function copyViaSelection(mm) {
+    const div = document.createElement('div')
+    div.contentEditable = 'true'
+    Object.assign(div.style, { position: 'fixed', left: '-9999px', top: '0', opacity: '0' })
+    const img = document.createElement('img')
+    img.src = api.mediaUrl(mm.id)
+    await new Promise((res, rej) => {
+      img.onload = res
+      img.onerror = () => rej(new Error('Could not load image'))
+    })
+    div.appendChild(img)
+    document.body.appendChild(div)
     try {
-      const blob = await fetchBlob(mm)
-      // Clipboard API only accepts PNG for images — convert via canvas
-      const pngBlob = await new Promise((resolve, reject) => {
-        const img = new Image()
-        img.onload = () => {
-          const canvas = document.createElement('canvas')
-          canvas.width = img.naturalWidth
-          canvas.height = img.naturalHeight
-          canvas.getContext('2d').drawImage(img, 0, 0)
-          URL.revokeObjectURL(img.src)
-          canvas.toBlob(b => (b ? resolve(b) : reject(new Error('Conversion failed'))), 'image/png')
+      const range = document.createRange()
+      range.selectNode(img)
+      const sel = window.getSelection()
+      sel.removeAllRanges()
+      sel.addRange(range)
+      const ok = document.execCommand('copy')
+      sel.removeAllRanges()
+      if (!ok) throw new Error('Clipboard blocked')
+    } finally {
+      div.remove()
+    }
+  }
+
+  function copyImage(mm) {
+    // Call clipboard.write synchronously within the click gesture, passing a
+    // Promise payload — waiting for the fetch first loses the gesture and
+    // triggers "Write permission denied" in the Electron shell.
+    try {
+      const pngPromise = fetchBlob(mm).then(toPngBlob)
+      const item = new ClipboardItem({ 'image/png': pngPromise })
+      navigator.clipboard.write([item]).then(
+        () => toast.success('Image copied to clipboard'),
+        async () => {
+          try {
+            await copyViaSelection(mm)
+            toast.success('Image copied to clipboard')
+          } catch (e2) {
+            toast.error('Copy failed: ' + e2.message)
+          }
         }
-        img.onerror = () => reject(new Error('Could not decode image'))
-        img.src = URL.createObjectURL(blob)
-      })
-      await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })])
-      toast.success('Image copied to clipboard')
-    } catch (e) {
-      toast.error('Copy failed: ' + e.message)
+      )
+    } catch {
+      copyViaSelection(mm)
+        .then(() => toast.success('Image copied to clipboard'))
+        .catch(e2 => toast.error('Copy failed: ' + e2.message))
     }
   }
 
