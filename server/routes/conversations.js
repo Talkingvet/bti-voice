@@ -108,6 +108,10 @@ router.get('/:id/messages', requireAuth, async (req, res) => {
       SELECT
         m.id, m.direction, m.body, m.sent_at, m.status,
         m.from_number, m.to_number,
+        (
+          SELECT json_agg(json_build_object('id', mm.id, 'content_type', mm.content_type))
+          FROM message_media mm WHERE mm.message_id = m.id
+        ) AS media,
         a.id       AS agent_id,
         a.name     AS agent_name,
         a.color    AS agent_color,

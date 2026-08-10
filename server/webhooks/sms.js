@@ -173,7 +173,21 @@ router.post('/', async (req, res) => {
         (conversation_id, direction, body, from_number, to_number, twilio_sid)
       VALUES ($1, 'inbound', $2, $3, $4, $5)
       RETURNING *
-    `, [conv.id, Body, From, To, MessageSid]);
+    `, [conv.id, Body || '', From, To, MessageSid]);
+
+    // Capture MMS media (images etc.) — stored as Twilio URLs, proxied to the app
+    const numMedia = parseInt(req.body.NumMedia || '0', 10);
+    const media = [];
+    for (let i = 0; i < numMedia; i++) {
+      const url = req.body[`MediaUrl${i}`];
+      if (!url) continue;
+      const ct = req.body[`MediaContentType${i}`] || 'application/octet-stream';
+      const { rows: [mm] } = await pool.query(
+        'INSERT INTO message_media (message_id, content_type, twilio_url) VALUES ($1, $2, $3) RETURNING id, content_type',
+        [message.id, ct, url]
+      );
+      media.push(mm);
+    }
 
     // Update conversation timestamp
     await pool.query(
@@ -189,10 +203,11 @@ router.post('/', async (req, res) => {
 
     // Create notification for inbound message
     const contactLabel = contact.name || From;
+    const notifBody = (Body && Body.trim()) ? Body : (media.length ? '📷 Image' : '');
     createNotification({
       type:  'sms',
       title: `New message from ${contactLabel}`,
-      body:  Body.length > 100 ? Body.slice(0, 100) + '…' : Body,
+      body:  notifBody.length > 100 ? notifBody.slice(0, 100) + '…' : notifBody,
       meta:  { conversation_id: conv.id, from_number: From },
     });
 
@@ -201,6 +216,7 @@ router.post('/', async (req, res) => {
     if (io) {
       io.to(`conv_${conv.id}`).emit('new_message', {
         ...message,
+        media,
         direction: 'inbound',
         agent_id: null,
         agent_name: null,

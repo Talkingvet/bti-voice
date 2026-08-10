@@ -43,6 +43,11 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
   const [cannedQuery,  setCannedQuery] = useState('')
   const [showAssign,   setShowAssign]  = useState(false)
 
+  // MMS attachments state — [{ id, content_type, previewUrl, name }]
+  const [attachments, setAttachments] = useState([])
+  const [uploading,   setUploading]   = useState(false)
+  const fileInputRef = useRef(null)
+
   // Scheduled SMS state
   const [scheduled,    setScheduled]    = useState([])
   const [showSchedule, setShowSchedule] = useState(false)
@@ -189,13 +194,36 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
     }
   }
 
+  // ── MMS attachments
+  async function handleFilePicked(e) {
+    const files = Array.from(e.target.files || [])
+    e.target.value = '' // allow re-picking the same file
+    for (const file of files) {
+      if (!file.type.startsWith('image/')) { toast.error('Only images are supported'); continue }
+      if (file.size > 5 * 1024 * 1024) { toast.error(`${file.name} is over the 5 MB MMS limit`); continue }
+      setUploading(true)
+      try {
+        const mm = await api.uploadMedia(file)
+        setAttachments(a => [...a, { ...mm, previewUrl: URL.createObjectURL(file), name: file.name }])
+      } catch (err) {
+        toast.error('Upload failed: ' + err.message)
+      }
+      setUploading(false)
+    }
+  }
+
+  function removeAttachment(id) {
+    setAttachments(a => a.filter(x => x.id !== id))
+  }
+
   // ── SMS send
   async function handleSend(e) {
     e?.preventDefault()
-    if (!body.trim() || sending) return
+    if ((!body.trim() && attachments.length === 0) || sending) return
     setSending(true)
-    await onSend(body.trim())
+    await onSend(body.trim(), attachments.map(a => a.id))
     setBody('')
+    setAttachments([])
     setSending(false)
     setShowCanned(false)
     textareaRef.current?.focus()
@@ -462,7 +490,37 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
                 {!body.trim() && <span style={{ fontSize: 11, color: C.textMuted }}>Type the message first</span>}
               </div>
             )}
+            {attachments.length > 0 && (
+              <div style={{ display: 'flex', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+                {attachments.map(a => (
+                  <div key={a.id} style={{ position: 'relative' }}>
+                    <img src={a.previewUrl} alt={a.name} style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 8, border: `1px solid ${C.inputBorder}` }} />
+                    <button
+                      onClick={() => removeAttachment(a.id)}
+                      title="Remove attachment"
+                      style={{ position: 'absolute', top: -6, right: -6, width: 18, height: 18, borderRadius: 9, background: '#ef4444', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 11, lineHeight: 1, padding: 0 }}
+                    >✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
             <div style={styles.composeRow}>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handleFilePicked}
+                style={{ display: 'none' }}
+              />
+              <button
+                style={{ ...styles.sendBtn, background: 'transparent', border: `1px solid ${C.inputBorder}`, opacity: uploading ? 0.4 : 0.7 }}
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                title="Attach image"
+              >
+                <PaperclipIcon size={16} />
+              </button>
               <textarea
                 ref={textareaRef}
                 style={{ ...styles.textarea, background: C.inputBg, border: `1px solid ${C.inputBorder}`, color: C.text }}
@@ -480,9 +538,9 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
                 <ClockIcon size={17} />
               </button>
               <button
-                style={{ ...styles.sendBtn, opacity: sending || !body.trim() ? 0.4 : 1 }}
+                style={{ ...styles.sendBtn, opacity: sending || (!body.trim() && attachments.length === 0) ? 0.4 : 1 }}
                 onClick={handleSend}
-                disabled={sending || !body.trim()}
+                disabled={sending || (!body.trim() && attachments.length === 0)}
                 title="Send"
               >
                 <SendIcon />
@@ -558,10 +616,32 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
 }
 
 /* ── Sub-components ─────────────────────────────────────────────── */
+function MsgMedia({ media }) {
+  if (!media?.length) return null
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: msgMediaGap(media) }}>
+      {media.filter(mm => (mm.content_type || '').startsWith('image/')).map(mm => (
+        <a key={mm.id} href={api.mediaUrl(mm.id)} target="_blank" rel="noreferrer">
+          <img
+            src={api.mediaUrl(mm.id)}
+            alt="attachment"
+            style={{ maxWidth: 220, maxHeight: 220, borderRadius: 10, display: 'block', cursor: 'pointer' }}
+            loading="lazy"
+          />
+        </a>
+      ))}
+    </div>
+  )
+}
+function msgMediaGap(media) {
+  return media?.length ? 4 : 0
+}
+
 function InboundMsg({ msg, conv, C }) {
   return (
     <div style={styles.msgGroup}>
       <div style={{ ...styles.bubbleIn, background: C.bubbleIn, border: `1px solid ${C.bubbleInBorder}`, color: C.text }}>
+        <MsgMedia media={msg.media} />
         <div>{msg.body}</div>
         <div style={{ ...styles.bubbleMeta, color: C.textMuted }}>
           {conv.contact_name || msg.from_number} · {formatTime(msg.sent_at)}
@@ -575,6 +655,7 @@ function OutboundMsg({ msg, currentAgentId, C }) {
   return (
     <div style={{ ...styles.msgGroup, alignItems: 'flex-end' }}>
       <div style={{ ...styles.bubbleOut, background: msg.agent_color || '#4f9cf9' }}>
+        <MsgMedia media={msg.media} />
         <div>{msg.body}</div>
         <div style={styles.bubbleMetaOut}>
           Sent By {msg.agent_name}{isMe ? ' (you)' : ''} · {formatTime(msg.sent_at)}
@@ -764,6 +845,14 @@ function PhoneIcon() {
     </svg>
   )
 }
+function PaperclipIcon({ size = 16 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#4f9cf9" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+    </svg>
+  )
+}
+
 function ClockIcon({ size = 16 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#4f9cf9" strokeWidth="2" strokeLinecap="round">

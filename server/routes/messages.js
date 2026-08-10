@@ -22,8 +22,10 @@ function syncSMSToZoho(messageId) {
 const router = express.Router();
 
 router.post('/send', requireAuth, async (req, res) => {
-  const { conversation_id, body } = req.body;
-  if (!body || !body.trim()) return res.status(400).json({ error: 'Message body required' });
+  const { conversation_id, body, media_ids } = req.body;
+  const text = (body || '').trim();
+  const mediaIds = Array.isArray(media_ids) ? media_ids.filter(Number.isInteger) : [];
+  if (!text && !mediaIds.length) return res.status(400).json({ error: 'Message body or attachment required' });
 
   try {
     // Get conversation contact number
@@ -45,6 +47,19 @@ router.post('/send', requireAuth, async (req, res) => {
       'SELECT * FROM agents WHERE id = $1', [req.agent.id]
     );
 
+    // Look up uploaded-but-unattached media for this send
+    let mediaRows = [];
+    if (mediaIds.length) {
+      const { rows } = await pool.query(
+        'SELECT id, content_type, public_token FROM message_media WHERE id = ANY($1) AND message_id IS NULL AND data IS NOT NULL',
+        [mediaIds]
+      );
+      mediaRows = rows;
+      if (mediaRows.length !== mediaIds.length) {
+        return res.status(400).json({ error: 'One or more attachments were not found' });
+      }
+    }
+
     let twilioSid = null;
 
     // Send via Twilio if credentials and a real number are configured
@@ -57,10 +72,15 @@ router.post('/send', requireAuth, async (req, res) => {
         process.env.TWILIO_AUTH_TOKEN
       );
       const params = {
-        body: body.trim(),
+        body: text,
         from: agent.phone_number,
         to: conv.to_number,
       };
+      if (mediaRows.length) {
+        // Twilio fetches media from these public (unguessable-token) URLs
+        const base = (process.env.SERVER_URL || '').replace(/\/+$/, '');
+        params.mediaUrl = mediaRows.map(m => `${base}/api/messages/public-media/${m.public_token}`);
+      }
       // Route through the A2P-registered Messaging Service when configured.
       // `from` is kept so the message still sends from the agent's own number.
       if (process.env.TWILIO_MESSAGING_SERVICE_SID) {
@@ -88,7 +108,15 @@ router.post('/send', requireAuth, async (req, res) => {
         (conversation_id, agent_id, direction, body, from_number, to_number, twilio_sid)
       VALUES ($1, $2, 'outbound', $3, $4, $5, $6)
       RETURNING *
-    `, [conversation_id, agent.id, body.trim(), agent.phone_number, conv.to_number, twilioSid]);
+    `, [conversation_id, agent.id, text, agent.phone_number, conv.to_number, twilioSid]);
+
+    // Attach uploaded media to the saved message
+    if (mediaRows.length) {
+      await pool.query(
+        'UPDATE message_media SET message_id = $1 WHERE id = ANY($2)',
+        [message.id, mediaRows.map(m => m.id)]
+      );
+    }
 
     // Update conversation's last activity
     await pool.query(
@@ -105,6 +133,7 @@ router.post('/send', requireAuth, async (req, res) => {
     // Build the enriched message object for broadcast
     const enriched = {
       ...message,
+      media: mediaRows.map(m => ({ id: m.id, content_type: m.content_type })),
       agent_id: agent.id,
       agent_name: agent.name,
       agent_color: agent.color,
@@ -129,6 +158,83 @@ router.post('/send', requireAuth, async (req, res) => {
   }
 });
 
+
+// ── MMS media ─────────────────────────────────────────────────────────────────
+
+// POST /api/messages/upload-media — raw image body, returns media id
+router.post('/upload-media', requireAuth,
+  express.raw({ type: ['image/*'], limit: '5mb' }),
+  async (req, res) => {
+    try {
+      if (!req.body || !req.body.length) return res.status(400).json({ error: 'No image data received' });
+      const contentType = req.headers['content-type'] || 'application/octet-stream';
+      if (!contentType.startsWith('image/')) {
+        return res.status(400).json({ error: 'Only images are supported' });
+      }
+      const token = require('crypto').randomBytes(24).toString('hex');
+      const { rows: [mm] } = await pool.query(
+        'INSERT INTO message_media (content_type, data, public_token) VALUES ($1, $2, $3) RETURNING id, content_type',
+        [contentType, req.body, token]
+      );
+      res.json(mm);
+    } catch (e) {
+      console.error('[messages/upload-media]', e);
+      res.status(500).json({ error: e.message });
+    }
+  }
+);
+
+// GET /api/messages/media/:id — serve media to the app.
+// Auth: Bearer header OR ?token= query param (img tags can't send headers).
+router.get('/media/:id', async (req, res) => {
+  const jwt    = require('jsonwebtoken');
+  const SECRET = process.env.JWT_SECRET || 'bti-voice-dev-secret';
+  const raw    = req.headers.authorization?.replace('Bearer ', '') || req.query.token;
+  if (!raw) return res.status(401).json({ error: 'Unauthorized' });
+  try { jwt.verify(raw, SECRET); } catch { return res.status(401).json({ error: 'Invalid token' }); }
+
+  try {
+    const { rows: [mm] } = await pool.query(
+      'SELECT content_type, twilio_url, data FROM message_media WHERE id = $1', [req.params.id]
+    );
+    if (!mm) return res.status(404).json({ error: 'Not found' });
+
+    res.set('Content-Type', mm.content_type);
+    res.set('Cache-Control', 'private, max-age=86400');
+
+    if (mm.data) return res.send(mm.data);
+
+    // Inbound media: proxy from Twilio with account credentials
+    const sid = process.env.TWILIO_ACCOUNT_SID, token = process.env.TWILIO_AUTH_TOKEN;
+    if (!sid || !token || !mm.twilio_url) return res.status(503).json({ error: 'Media unavailable' });
+    const twilioAuth = Buffer.from(`${sid}:${token}`).toString('base64');
+    const mediaRes = await fetch(mm.twilio_url, { headers: { Authorization: `Basic ${twilioAuth}` } });
+    if (!mediaRes.ok) return res.status(502).json({ error: 'Failed to fetch media' });
+    const buf = Buffer.from(await mediaRes.arrayBuffer());
+    res.send(buf);
+  } catch (e) {
+    console.error('[messages/media]', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/messages/public-media/:token — unauthenticated, unguessable-token URL.
+// Only serves locally-stored uploads (never proxies Twilio). Used by Twilio to
+// fetch outbound MMS attachments.
+router.get('/public-media/:token', async (req, res) => {
+  try {
+    const { rows: [mm] } = await pool.query(
+      'SELECT content_type, data FROM message_media WHERE public_token = $1 AND data IS NOT NULL',
+      [req.params.token]
+    );
+    if (!mm) return res.status(404).json({ error: 'Not found' });
+    res.set('Content-Type', mm.content_type);
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.send(mm.data);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
 // ── Scheduled SMS ─────────────────────────────────────────────────────────────
 

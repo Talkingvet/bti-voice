@@ -163,6 +163,20 @@ async function migrate() {
     CREATE INDEX IF NOT EXISTS idx_sched_pending ON scheduled_messages (status, send_at);
   `);
 
+  // MMS media attachments
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS message_media (
+      id           SERIAL PRIMARY KEY,
+      message_id   INTEGER REFERENCES messages(id) ON DELETE CASCADE,
+      content_type VARCHAR(100) NOT NULL,
+      twilio_url   TEXT,
+      data         BYTEA,
+      public_token VARCHAR(64) UNIQUE,
+      created_at   TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_media_message ON message_media (message_id);
+  `);
+
   // Phase 2: Internal notes, canned responses, quick dial
   await pool.query(`
     CREATE TABLE IF NOT EXISTS conversation_notes (

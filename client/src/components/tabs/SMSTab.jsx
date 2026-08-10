@@ -72,10 +72,10 @@ export default function SMSTab({ agent, navConvId, onNavConvConsumed, device, on
     }
   }, [selectedId])
 
-  const handleSend = useCallback(async (body) => {
-    if (!selectedId || !body.trim()) return
+  const handleSend = useCallback(async (body, mediaIds) => {
+    if (!selectedId || (!body.trim() && !mediaIds?.length)) return
     try {
-      await api.sendMessage(selectedId, body)
+      await api.sendMessage(selectedId, body, mediaIds)
     } catch (e) {
       toast.error('Send failed: ' + e.message)
     }

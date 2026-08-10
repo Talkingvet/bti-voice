@@ -30,7 +30,20 @@ export const api = {
   agents:        ()                    => request('/agents'),
   conversations: ()                    => request('/conversations'),
   messages:      (convId)              => request(`/conversations/${convId}/messages`),
-  sendMessage:   (conversation_id, body) => request('/messages/send', { method: 'POST', body: { conversation_id, body } }),
+  sendMessage:   (conversation_id, body, media_ids) => request('/messages/send', { method: 'POST', body: { conversation_id, body, media_ids } }),
+  uploadMedia: async (file) => {
+    const res = await fetch(`${BASE}/messages/upload-media`, {
+      method: 'POST',
+      headers: { 'Content-Type': file.type, Authorization: `Bearer ${getToken()}` },
+      body: file,
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }))
+      throw new Error(err.error || 'Upload failed')
+    }
+    return res.json()
+  },
+  mediaUrl: (id) => `${BASE}/messages/media/${id}?token=${getToken()}`,
   scheduleMessage: (conversation_id, body, send_at) => request('/messages/schedule', { method: 'POST', body: { conversation_id, body, send_at } }),
   scheduledMessages: (conversation_id) => request(`/messages/scheduled?conversation_id=${conversation_id}`),
   cancelScheduledMessage: (id) => request(`/messages/scheduled/${id}`, { method: 'DELETE' }),
