@@ -46,6 +46,26 @@ router.post('/', async (req, res) => {
       contact = result.rows[0];
     }
 
+    // ── A2P opt-out / opt-in keyword handling ────────────────────────────
+    // Twilio's Messaging Service auto-replies to STOP/HELP at the carrier
+    // level; we mirror the state locally so the app blocks further sends.
+    const keyword = (Body || '').trim().toLowerCase();
+    const OPT_OUT_WORDS = ['stop', 'stopall', 'unsubscribe', 'cancel', 'end', 'quit'];
+    const OPT_IN_WORDS  = ['start', 'unstop', 'yes'];
+    if (OPT_OUT_WORDS.includes(keyword)) {
+      await pool.query(
+        'UPDATE contacts SET opted_out = true, opted_out_at = NOW() WHERE id = $1',
+        [contact.id]
+      );
+      console.log(`[webhook/sms] ${From} opted OUT (keyword: ${keyword})`);
+    } else if (OPT_IN_WORDS.includes(keyword) && contact.opted_out) {
+      await pool.query(
+        'UPDATE contacts SET opted_out = false, opted_out_at = NULL WHERE id = $1',
+        [contact.id]
+      );
+      console.log(`[webhook/sms] ${From} opted back IN (keyword: ${keyword})`);
+    }
+
     // Find open conversation for this contact, or create one
     let { rows: [conv] } = await pool.query(
       `SELECT * FROM conversations

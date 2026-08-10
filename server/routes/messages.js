@@ -28,12 +28,17 @@ router.post('/send', requireAuth, async (req, res) => {
   try {
     // Get conversation contact number
     const { rows: [conv] } = await pool.query(`
-      SELECT c.id, co.phone_number AS to_number
+      SELECT c.id, co.id AS contact_id, co.phone_number AS to_number, co.opted_out
       FROM conversations c
       JOIN contacts co ON co.id = c.contact_id
       WHERE c.id = $1
     `, [conversation_id]);
     if (!conv) return res.status(404).json({ error: 'Conversation not found' });
+
+    // A2P compliance: never send to a contact who replied STOP
+    if (conv.opted_out) {
+      return res.status(403).json({ error: 'This contact has opted out of SMS (replied STOP). They must text START to resume messaging.' });
+    }
 
     // Get sending agent's details
     const { rows: [agent] } = await pool.query(
@@ -51,12 +56,30 @@ router.post('/send', requireAuth, async (req, res) => {
         process.env.TWILIO_ACCOUNT_SID,
         process.env.TWILIO_AUTH_TOKEN
       );
-      const msg = await twilio.messages.create({
+      const params = {
         body: body.trim(),
         from: agent.phone_number,
         to: conv.to_number,
-      });
-      twilioSid = msg.sid;
+      };
+      // Route through the A2P-registered Messaging Service when configured.
+      // `from` is kept so the message still sends from the agent's own number.
+      if (process.env.TWILIO_MESSAGING_SERVICE_SID) {
+        params.messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
+      }
+      try {
+        const msg = await twilio.messages.create(params);
+        twilioSid = msg.sid;
+      } catch (twErr) {
+        if (twErr.code === 21610) {
+          // Recipient opted out at the Twilio/carrier level — mirror it locally
+          await pool.query(
+            'UPDATE contacts SET opted_out = true, opted_out_at = NOW() WHERE id = $1',
+            [conv.contact_id]
+          );
+          return res.status(403).json({ error: 'This contact has opted out of SMS (replied STOP). They must text START to resume messaging.' });
+        }
+        throw twErr;
+      }
     }
 
     // Save to database

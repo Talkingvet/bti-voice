@@ -372,6 +372,11 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
                 ))}
               </div>
             )}
+            {conv?.opted_out ? (
+              <div style={{ ...styles.composeRow, justifyContent: 'center', alignItems: 'center', padding: '12px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: 10, color: '#ef4444', fontSize: 12.5, fontWeight: 600, textAlign: 'center' }}>
+                This contact opted out of SMS (replied STOP). Messaging is blocked until they text START.
+              </div>
+            ) : (
             <div style={styles.composeRow}>
               <textarea
                 ref={textareaRef}
@@ -391,6 +396,7 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
                 <SendIcon />
               </button>
             </div>
+            )}
           </div>
         </>
       )}

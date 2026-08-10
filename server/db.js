@@ -75,6 +75,12 @@ async function migrate() {
     ALTER TABLE contacts ADD COLUMN IF NOT EXISTS zoho_synced_at  TIMESTAMPTZ;
   `);
 
+  // SMS opt-out tracking (A2P 10DLC compliance — v1.5.0)
+  await pool.query(`
+    ALTER TABLE contacts ADD COLUMN IF NOT EXISTS opted_out    BOOLEAN DEFAULT false;
+    ALTER TABLE contacts ADD COLUMN IF NOT EXISTS opted_out_at TIMESTAMPTZ;
+  `);
+
   // IVR / phone tree tables
   await pool.query(`
     CREATE TABLE IF NOT EXISTS ivr_settings (

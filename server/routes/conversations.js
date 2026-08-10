@@ -17,6 +17,7 @@ router.get('/', requireAuth, async (req, res) => {
         co.id   AS contact_id,
         co.name AS contact_name,
         co.phone_number AS contact_number,
+        co.opted_out,
         a.id    AS last_agent_id,
         a.name  AS last_agent_name,
         a.color AS last_agent_color,
@@ -144,6 +145,10 @@ router.post('/new-message', requireAuth, async (req, res) => {
       )
       conv = r.rows[0]
     }
+    // A2P compliance: never send to a contact who replied STOP
+    if (contact.opted_out) {
+      return res.status(403).json({ error: 'This contact has opted out of SMS (replied STOP). They must text START to resume messaging.' })
+    }
     const agentId = from_agent_id || req.agent.id
     const { rows: [agent] } = await pool.query('SELECT * FROM agents WHERE id = $1', [agentId])
     if (!agent) return res.status(404).json({ error: 'Agent not found' })
@@ -151,8 +156,21 @@ router.post('/new-message', requireAuth, async (req, res) => {
     const hasTwilio = process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && agent.phone_number !== 'TBD'
     if (hasTwilio) {
       const twilio = require('twilio')(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
-      const msg = await twilio.messages.create({ body, from: agent.phone_number, to: to_number })
-      twilioSid = msg.sid
+      const params = { body, from: agent.phone_number, to: to_number }
+      // Route through the A2P-registered Messaging Service when configured
+      if (process.env.TWILIO_MESSAGING_SERVICE_SID) {
+        params.messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID
+      }
+      try {
+        const msg = await twilio.messages.create(params)
+        twilioSid = msg.sid
+      } catch (twErr) {
+        if (twErr.code === 21610) {
+          await pool.query('UPDATE contacts SET opted_out = true, opted_out_at = NOW() WHERE id = $1', [contact.id])
+          return res.status(403).json({ error: 'This contact has opted out of SMS (replied STOP). They must text START to resume messaging.' })
+        }
+        throw twErr
+      }
     }
     await pool.query(
       'INSERT INTO messages (conversation_id, agent_id, direction, body, from_number, to_number, twilio_sid) VALUES ($1,$2,$3,$4,$5,$6,$7)',

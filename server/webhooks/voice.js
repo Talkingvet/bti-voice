@@ -745,12 +745,26 @@ async function sendMissedCallAutoText(fromPhone) {
       return;
     }
 
+    // A2P compliance: never auto-text a contact who has opted out
+    const { rows: optRows } = await pool.query(
+      'SELECT opted_out FROM contacts WHERE phone_number = $1', [fromPhone]
+    );
+    if (optRows[0]?.opted_out) {
+      console.log(`[autoText] ${fromPhone} has opted out — skipping auto-text`);
+      return;
+    }
+
     const twilioClient = require('twilio')(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-    await twilioClient.messages.create({
+    const params = {
       body: message,
       from: process.env.TWILIO_PHONE_NUMBER,
       to:   fromPhone,
-    });
+    };
+    // Route through the A2P-registered Messaging Service when configured
+    if (process.env.TWILIO_MESSAGING_SERVICE_SID) {
+      params.messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
+    }
+    await twilioClient.messages.create(params);
     console.log(`[autoText] ✓ Sent auto-text to ${fromPhone}`);
   } catch (e) {
     console.error('[autoText] Failed:', e.message);
