@@ -617,11 +617,95 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
 
 /* ── Sub-components ─────────────────────────────────────────────── */
 function MsgMedia({ media }) {
+  const C = useColors()
+  const { toast } = useToast()
+  const [menu, setMenu] = useState(null) // { x, y, mm }
+
+  useEffect(() => {
+    if (!menu) return
+    const close = () => setMenu(null)
+    const onKey = (e) => { if (e.key === 'Escape') setMenu(null) }
+    window.addEventListener('click', close)
+    window.addEventListener('contextmenu', close)
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('scroll', close, true)
+    return () => {
+      window.removeEventListener('click', close)
+      window.removeEventListener('contextmenu', close)
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('scroll', close, true)
+    }
+  }, [menu])
+
   if (!media?.length) return null
+
+  async function fetchBlob(mm) {
+    const res = await fetch(api.mediaUrl(mm.id))
+    if (!res.ok) throw new Error('Failed to load image')
+    return res.blob()
+  }
+
+  async function saveImage(mm) {
+    try {
+      const blob = await fetchBlob(mm)
+      const rawExt = (mm.content_type || 'image/jpeg').split('/')[1]?.split('+')[0] || 'jpg'
+      const ext = rawExt === 'jpeg' ? 'jpg' : rawExt
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = `bti-voice-image-${mm.id}.${ext}`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      setTimeout(() => URL.revokeObjectURL(a.href), 10000)
+    } catch (e) {
+      toast.error('Save failed: ' + e.message)
+    }
+  }
+
+  async function copyImage(mm) {
+    try {
+      const blob = await fetchBlob(mm)
+      // Clipboard API only accepts PNG for images — convert via canvas
+      const pngBlob = await new Promise((resolve, reject) => {
+        const img = new Image()
+        img.onload = () => {
+          const canvas = document.createElement('canvas')
+          canvas.width = img.naturalWidth
+          canvas.height = img.naturalHeight
+          canvas.getContext('2d').drawImage(img, 0, 0)
+          URL.revokeObjectURL(img.src)
+          canvas.toBlob(b => (b ? resolve(b) : reject(new Error('Conversion failed'))), 'image/png')
+        }
+        img.onerror = () => reject(new Error('Could not decode image'))
+        img.src = URL.createObjectURL(blob)
+      })
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })])
+      toast.success('Image copied to clipboard')
+    } catch (e) {
+      toast.error('Copy failed: ' + e.message)
+    }
+  }
+
+  function openMenu(e, mm) {
+    e.preventDefault()
+    e.stopPropagation()
+    setMenu({
+      x: Math.min(e.clientX, window.innerWidth - 170),
+      y: Math.min(e.clientY, window.innerHeight - 96),
+      mm,
+    })
+  }
+
+  const menuItem = {
+    display: 'block', width: '100%', textAlign: 'left', background: 'none',
+    border: 'none', cursor: 'pointer', padding: '7px 12px', fontSize: 12.5,
+    color: C.text, borderRadius: 6, fontFamily: 'inherit',
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: msgMediaGap(media) }}>
       {media.filter(mm => (mm.content_type || '').startsWith('image/')).map(mm => (
-        <a key={mm.id} href={api.mediaUrl(mm.id)} target="_blank" rel="noreferrer">
+        <a key={mm.id} href={api.mediaUrl(mm.id)} target="_blank" rel="noreferrer" onContextMenu={e => openMenu(e, mm)}>
           <img
             src={api.mediaUrl(mm.id)}
             alt="attachment"
@@ -630,6 +714,29 @@ function MsgMedia({ media }) {
           />
         </a>
       ))}
+      {menu && (
+        <div
+          style={{
+            position: 'fixed', top: menu.y, left: menu.x, zIndex: 2000,
+            background: C.panel, border: `1px solid ${C.border}`, borderRadius: 8,
+            padding: 4, minWidth: 150, boxShadow: '0 6px 24px rgba(0,0,0,0.35)',
+          }}
+          onClick={e => e.stopPropagation()}
+        >
+          <button
+            style={menuItem}
+            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(79,156,249,0.15)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+            onClick={() => { copyImage(menu.mm); setMenu(null) }}
+          >Copy image</button>
+          <button
+            style={menuItem}
+            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(79,156,249,0.15)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+            onClick={() => { saveImage(menu.mm); setMenu(null) }}
+          >Save image…</button>
+        </div>
+      )}
     </div>
   )
 }
