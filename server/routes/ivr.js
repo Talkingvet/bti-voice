@@ -16,7 +16,12 @@ router.get('/settings', requireAuth, async (req, res) => {
 
 // ── PUT settings ──────────────────────────────────────────────────────────────
 router.put('/settings', requireAuth, async (req, res) => {
-  const { enabled, greeting, timeout, default_agent_id, voice } = req.body;
+  const {
+    enabled, greeting, timeout, default_agent_id, voice,
+    auto_text_enabled, auto_text_message,
+    after_hours_sms_enabled, after_hours_sms_message,
+    business_hours_start, business_hours_end, business_days, business_timezone,
+  } = req.body;
   try {
     const { rows } = await pool.query(`
       INSERT INTO ivr_settings (id, enabled, greeting, timeout, default_agent_id, voice, updated_at)
@@ -27,9 +32,27 @@ router.put('/settings', requireAuth, async (req, res) => {
             timeout          = $3,
             default_agent_id = $4,
             voice            = $5,
+            auto_text_enabled       = COALESCE($6,  ivr_settings.auto_text_enabled),
+            auto_text_message       = COALESCE($7,  ivr_settings.auto_text_message),
+            after_hours_sms_enabled = COALESCE($8,  ivr_settings.after_hours_sms_enabled),
+            after_hours_sms_message = COALESCE($9,  ivr_settings.after_hours_sms_message),
+            business_hours_start    = COALESCE($10, ivr_settings.business_hours_start),
+            business_hours_end      = COALESCE($11, ivr_settings.business_hours_end),
+            business_days           = COALESCE($12, ivr_settings.business_days),
+            business_timezone       = COALESCE($13, ivr_settings.business_timezone),
             updated_at       = NOW()
       RETURNING *
-    `, [!!enabled, greeting || '', timeout || 10, default_agent_id || null, voice || 'Polly.Joanna-Neural']);
+    `, [
+      !!enabled, greeting || '', timeout || 10, default_agent_id || null, voice || 'Polly.Joanna-Neural',
+      auto_text_enabled === undefined ? null : !!auto_text_enabled,
+      auto_text_message ?? null,
+      after_hours_sms_enabled === undefined ? null : !!after_hours_sms_enabled,
+      after_hours_sms_message ?? null,
+      business_hours_start ?? null,
+      business_hours_end ?? null,
+      business_days ?? null,
+      business_timezone ?? null,
+    ]);
     res.json(rows[0]);
   } catch (e) {
     res.status(500).json({ error: e.message });

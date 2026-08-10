@@ -68,6 +68,7 @@ export default function SettingsTab({ agent, onLogout }) {
           <>
             <IVRSection C={C} />
             <MissedCallAutoTextSection C={C} />
+            <AfterHoursSMSSection C={C} />
             <CannedResponsesSection C={C} />
           </>
         )}
@@ -1142,6 +1143,136 @@ function MissedCallAutoTextSection({ C }) {
             />
             <div style={{ ...S.rowDesc, color: C.textMuted, marginTop: 4 }}>
               Sent from your Twilio number. Standard SMS rates apply.
+            </div>
+          </div>
+        )}
+        <div style={{ padding: '8px 14px 12px', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button style={S.primaryBtn} onClick={save} disabled={saving}>
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+          {msg && <span style={{ fontSize: 12, color: msg.err ? '#ef4444' : '#22c55e' }}>{msg.text}</span>}
+        </div>
+      </Card>
+    </div>
+  )
+}
+
+/* ── After-Hours SMS Auto-Responder section ─────────────────────────────────── */
+const TZ_OPTIONS = [
+  ['America/New_York',    'Eastern'],
+  ['America/Chicago',     'Central'],
+  ['America/Denver',      'Mountain'],
+  ['America/Phoenix',     'Arizona (no DST)'],
+  ['America/Los_Angeles', 'Pacific'],
+]
+const DAY_OPTIONS = [[1, 'Mon'], [2, 'Tue'], [3, 'Wed'], [4, 'Thu'], [5, 'Fri'], [6, 'Sat'], [7, 'Sun']]
+
+function AfterHoursSMSSection({ C }) {
+  const [settings, setSettings] = useState(null)
+  const [saving,   setSaving]   = useState(false)
+  const [msg,      setMsg]      = useState('')
+
+  useEffect(() => {
+    api.ivrSettings().then(setSettings).catch(console.error)
+  }, [])
+
+  async function save() {
+    setSaving(true)
+    try {
+      const updated = await api.ivrSaveSettings(settings)
+      setSettings(updated)
+      setMsg({ text: 'Saved ✓', err: false })
+    } catch {
+      setMsg({ text: 'Save failed', err: true })
+    }
+    setSaving(false)
+    setTimeout(() => setMsg(''), 3000)
+  }
+
+  if (!settings) return null
+
+  const days = String(settings.business_days || '1,2,3,4,5').split(',').filter(Boolean).map(Number)
+  const toggleDay = (d) => {
+    const next = days.includes(d) ? days.filter(x => x !== d) : [...days, d].sort((a, b) => a - b)
+    setSettings(s => ({ ...s, business_days: next.join(',') }))
+  }
+
+  const inputStyle = {
+    background: C.inputBg, border: `1px solid ${C.inputBorder}`, color: C.text,
+    borderRadius: 6, padding: '6px 9px', fontSize: 12, fontFamily: 'inherit',
+  }
+
+  return (
+    <div style={S.section}>
+      <SectionHeader title="AFTER-HOURS SMS AUTO-REPLY" C={C} />
+      <Card C={C}>
+        <ToggleRow
+          label="Auto-reply to texts outside business hours"
+          desc="Sends one automatic reply per conversation (max every 4 hours). Skips STOP/HELP keywords and opted-out contacts."
+          value={!!settings.after_hours_sms_enabled}
+          onChange={v => setSettings(s => ({ ...s, after_hours_sms_enabled: v }))}
+          C={C}
+        />
+        {settings.after_hours_sms_enabled && (
+          <div style={{ padding: '10px 14px', borderTop: `1px solid ${C.borderSoft}` }}>
+            <div style={{ ...S.rowDesc, color: C.textMuted, marginBottom: 6 }}>Auto-reply message</div>
+            <textarea
+              value={settings.after_hours_sms_message || ''}
+              onChange={e => setSettings(s => ({ ...s, after_hours_sms_message: e.target.value }))}
+              rows={3}
+              style={{ ...inputStyle, width: '100%', boxSizing: 'border-box', resize: 'vertical' }}
+            />
+            <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap', marginTop: 12 }}>
+              <div>
+                <div style={{ ...S.rowDesc, color: C.textMuted, marginBottom: 4 }}>Business hours</div>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <input
+                    type="time"
+                    value={settings.business_hours_start || '09:00'}
+                    onChange={e => setSettings(s => ({ ...s, business_hours_start: e.target.value }))}
+                    style={inputStyle}
+                  />
+                  <span style={{ color: C.textMuted, fontSize: 12 }}>to</span>
+                  <input
+                    type="time"
+                    value={settings.business_hours_end || '17:00'}
+                    onChange={e => setSettings(s => ({ ...s, business_hours_end: e.target.value }))}
+                    style={inputStyle}
+                  />
+                </div>
+              </div>
+              <div>
+                <div style={{ ...S.rowDesc, color: C.textMuted, marginBottom: 4 }}>Timezone</div>
+                <select
+                  value={settings.business_timezone || 'America/New_York'}
+                  onChange={e => setSettings(s => ({ ...s, business_timezone: e.target.value }))}
+                  style={inputStyle}
+                >
+                  {TZ_OPTIONS.map(([val, label]) => (
+                    <option key={val} value={val}>{label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div style={{ marginTop: 12 }}>
+              <div style={{ ...S.rowDesc, color: C.textMuted, marginBottom: 4 }}>Business days</div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {DAY_OPTIONS.map(([d, label]) => (
+                  <button
+                    key={d}
+                    onClick={() => toggleDay(d)}
+                    style={{
+                      ...inputStyle,
+                      cursor: 'pointer', fontWeight: 600,
+                      background: days.includes(d) ? '#4f9cf9' : C.inputBg,
+                      color: days.includes(d) ? '#fff' : C.textMuted,
+                      border: `1px solid ${days.includes(d) ? '#4f9cf9' : C.inputBorder}`,
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         )}
