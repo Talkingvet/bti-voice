@@ -191,6 +191,39 @@ router.post('/new-message', requireAuth, async (req, res) => {
   }
 })
 
+// Find-or-create a conversation for a number WITHOUT sending anything.
+// Used by the New Message modal so scheduled sends and MMS can reuse the
+// standard /messages/schedule and /messages/send endpoints.
+router.post('/ensure', requireAuth, async (req, res) => {
+  const { to_number } = req.body
+  if (!to_number) return res.status(400).json({ error: 'to_number is required' })
+  try {
+    let { rows: [contact] } = await pool.query('SELECT * FROM contacts WHERE phone_number = $1', [to_number])
+    if (!contact) {
+      const r = await pool.query('INSERT INTO contacts (phone_number) VALUES ($1) RETURNING *', [to_number])
+      contact = r.rows[0]
+    }
+    // A2P compliance: surface opt-out before the caller schedules anything
+    if (contact.opted_out) {
+      return res.status(403).json({ error: 'This contact has opted out of SMS (replied STOP). They must text START to resume messaging.' })
+    }
+    let { rows: [conv] } = await pool.query(
+      'SELECT * FROM conversations WHERE contact_id = $1 ORDER BY created_at DESC LIMIT 1',
+      [contact.id]
+    )
+    if (!conv) {
+      const r = await pool.query(
+        'INSERT INTO conversations (contact_id, last_message_at) VALUES ($1, NOW()) RETURNING *', [contact.id]
+      )
+      conv = r.rows[0]
+    }
+    res.json({ conversation_id: conv.id })
+  } catch (e) {
+    console.error('[conversations/ensure]', e)
+    res.status(500).json({ error: e.message })
+  }
+})
+
 // Mark conversation as read by the current agent
 router.post('/:id/read', requireAuth, async (req, res) => {
   try {

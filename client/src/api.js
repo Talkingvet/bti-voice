@@ -53,6 +53,7 @@ export const api = {
   voiceToken:    ()                    => request('/calls/token', { method: 'POST' }),
   logCallByPhone: (phone, duration, direction, startedAt, callSid) =>
     request('/calls/log-by-phone', { method: 'POST', body: { phone, duration, direction, started_at: startedAt, call_sid: callSid } }),
+  ensureConversation: (to_number) => request('/conversations/ensure', { method: 'POST', body: { to_number } }),
   newMessage:    ({ to_number, from_agent_id, body }) =>
     request('/conversations/new-message', { method: 'POST', body: { to_number, from_agent_id, body } }),
   activity:      () => request('/activity'),
