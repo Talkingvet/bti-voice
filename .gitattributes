@@ -1,0 +1,10 @@
+# Normalize line endings: store LF in git, checkout native per-OS
+* text=auto
+
+# Binaries — never touch
+*.png binary
+*.ico binary
+*.icns binary
+*.exe binary
+*.dmg binary
+*.zip binary
