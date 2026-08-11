@@ -177,6 +177,12 @@ async function migrate() {
     CREATE INDEX IF NOT EXISTS idx_media_message ON message_media (message_id);
   `);
 
+  // Zoho sync retry tracking (fix for runaway wrap-up sweep retries)
+  await pool.query(`
+    ALTER TABLE calls ADD COLUMN IF NOT EXISTS zoho_sync_attempts     INTEGER DEFAULT 0;
+    ALTER TABLE calls ADD COLUMN IF NOT EXISTS zoho_sync_last_attempt TIMESTAMPTZ;
+  `);
+
   // Phase 2: Internal notes, canned responses, quick dial
   await pool.query(`
     CREATE TABLE IF NOT EXISTS conversation_notes (

@@ -23,15 +23,37 @@ function startWrapUpSweep() {
   if (timer) return;
   timer = setInterval(async function() {
     try {
+      // Exponential backoff: attempt N waits 30s * 2^N since the last attempt
+      // (30s, 1m, 2m, 4m, 8m, 16m, 32m). After MAX_ATTEMPTS we stamp
+      // zoho_logged_at to permanently stop retrying — without this cap, a call
+      // whose number has no Zoho match is retried every 30s forever (this
+      // burned ~50K Zoho API credits/day in Aug 2026).
+      const MAX_ATTEMPTS = 8;
       const result = await pool.query(
-        'SELECT id FROM calls ' +
+        'SELECT id, zoho_sync_attempts FROM calls ' +
         'WHERE needs_wrap_up = TRUE ' +
         '  AND zoho_logged_at IS NULL ' +
         '  AND ended_at IS NOT NULL ' +
-        "  AND ended_at < NOW() - INTERVAL '" + TIMEOUT_THRESHOLD_S + " seconds'"
+        "  AND ended_at < NOW() - INTERVAL '" + TIMEOUT_THRESHOLD_S + " seconds'" +
+        '  AND COALESCE(zoho_sync_attempts, 0) < ' + MAX_ATTEMPTS + ' ' +
+        "  AND (zoho_sync_last_attempt IS NULL OR zoho_sync_last_attempt < NOW() - (INTERVAL '30 seconds' * POWER(2, COALESCE(zoho_sync_attempts, 0))))"
       );
       for (const row of result.rows) {
-        console.log('[wrap-up sweep] Auto-syncing un-wrapped call', row.id);
+        const attempt = (row.zoho_sync_attempts || 0) + 1;
+        await pool.query(
+          'UPDATE calls SET zoho_sync_attempts = $2, zoho_sync_last_attempt = NOW() WHERE id = $1',
+          [row.id, attempt]
+        );
+        if (attempt >= MAX_ATTEMPTS) {
+          // Final attempt: stamp so this row can never re-enter the sweep,
+          // regardless of whether the attempt below succeeds.
+          await pool.query(
+            'UPDATE calls SET zoho_logged_at = NOW() WHERE id = $1 AND zoho_logged_at IS NULL',
+            [row.id]
+          );
+          console.warn('[wrap-up sweep] Call', row.id, 'reached max Zoho sync attempts — giving up');
+        }
+        console.log('[wrap-up sweep] Auto-syncing un-wrapped call', row.id, '(attempt ' + attempt + ')');
         fireZohoLogCall(row.id);
       }
     } catch (e) {
