@@ -1,6 +1,7 @@
 /* Conversation list — full-width single-pane, Zoho-style compact */
 import { useState, useRef, useEffect } from 'react'
 import { useColors } from '../useColors'
+import { displayName, contactInitials } from '../utils/phone'
 
 function fmtDate(dateStr) {
   if (!dateStr) return ''
@@ -174,7 +175,7 @@ const DD = {
 }
 
 function ConvItem({ conv, active, onClick, currentAgent, C }) {
-  const name       = conv.contact_name || conv.contact_number || 'Unknown'
+  const name       = displayName(conv.contact_name, conv.contact_number)
   const preview    = conv.last_message ? truncate(conv.last_message, 42) : '—'
   const agents     = conv.agents_involved || []
   const hasDoubleText = parseInt(conv.recent_outbound_count) >= 2
@@ -204,7 +205,7 @@ function ConvItem({ conv, active, onClick, currentAgent, C }) {
       {/* Avatar with unread indicator */}
       <div style={{ position: 'relative', flexShrink: 0 }}>
         <div style={{ ...S.avatar, background: avatarColor(name) }}>
-          {initials(name)}
+          {contactInitials(conv.contact_name, conv.contact_number)}
         </div>
         {isUnread && !active && (
           <div style={S.unreadDot} title="Unread message" />
@@ -288,7 +289,7 @@ const S = {
     cursor: 'pointer', fontSize: 15, lineHeight: 1,
     color: '#8b96ab', padding: 0,
   },
-  list: { flex: 1, overflowY: 'auto', minHeight: 0 },
+  list: { flex: 1, overflowY: 'auto', minHeight: 0, paddingBottom: 76 },
   empty: { padding: '28px 16px', textAlign: 'center', fontSize: 12 },
 
   item: {

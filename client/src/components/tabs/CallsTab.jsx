@@ -456,7 +456,7 @@ const S = {
   page:      { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 },
   filterRow: { display: 'flex', gap: 4, padding: '7px 10px', flexShrink: 0 },
   filterBtn: { padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer' },
-  list:      { flex: 1, overflowY: 'auto', minHeight: 0 },
+  list:      { flex: 1, overflowY: 'auto', minHeight: 0, paddingBottom: 76 },
   empty:     { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 200, fontSize: 13, color: '#8b96ab' },
 
   dateHeader: {

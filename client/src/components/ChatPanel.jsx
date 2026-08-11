@@ -1,6 +1,7 @@
 /* Chat thread panel — compact Zoho-style, with Notes tab + Canned Responses */
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { api } from '../api'
+import { displayName } from '../utils/phone'
 import { useColors } from '../useColors'
 import { useToast } from './Toast'
 
@@ -429,7 +430,6 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
               {currentAgent.phone_number !== 'TBD' && (
                 <span style={{ marginLeft: 4, opacity: 0.7 }}>{currentAgent.phone_number}</span>
               )}
-              <span style={{ ...styles.cannedHint, color: C.textMuted }}>· type / for quick replies</span>
             </div>
             {/* Canned responses dropdown */}
             {showCanned && filteredCanned.length > 0 && (
@@ -524,7 +524,7 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
               <textarea
                 ref={textareaRef}
                 style={{ ...styles.textarea, background: C.inputBg, border: `1px solid ${C.inputBorder}`, color: C.text }}
-                placeholder="Enter a message…"
+                placeholder="Enter a message — type / for quick replies"
                 value={body}
                 onChange={handleBodyChange}
                 onKeyDown={handleKeyDown}
@@ -796,7 +796,7 @@ function InboundMsg({ msg, conv, C }) {
         <MsgMedia media={msg.media} />
         <div>{msg.body}</div>
         <div style={{ ...styles.bubbleMeta, color: C.textMuted }}>
-          {conv.contact_name || msg.from_number} · {formatTime(msg.sent_at)}
+          {displayName(conv.contact_name, msg.from_number)} · {formatTime(msg.sent_at)}
         </div>
       </div>
     </div>
@@ -810,7 +810,7 @@ function OutboundMsg({ msg, currentAgentId, C }) {
         <MsgMedia media={msg.media} />
         <div>{msg.body}</div>
         <div style={styles.bubbleMetaOut}>
-          Sent By {msg.agent_name}{isMe ? ' (you)' : ''} · {formatTime(msg.sent_at)}
+          {msg.agent_name ? <>Sent By {msg.agent_name}{isMe ? ' (you)' : ''}</> : 'Automated'} · {formatTime(msg.sent_at)}
         </div>
       </div>
     </div>
@@ -1075,8 +1075,8 @@ const styles = {
   loadingMsg: { textAlign: 'center', fontSize: 12 },
   datePill: { alignSelf: 'center', padding: '3px 12px', borderRadius: 12, fontSize: 11, fontWeight: 600, margin: '4px 0' },
   msgGroup:  { display: 'flex', flexDirection: 'column' },
-  bubbleIn: { alignSelf: 'flex-start', maxWidth: '85%', padding: '9px 12px', borderRadius: '4px 14px 14px 14px', fontSize: 13, lineHeight: 1.45 },
-  bubbleOut: { alignSelf: 'flex-end', maxWidth: '85%', padding: '9px 12px', borderRadius: '14px 4px 14px 14px', color: 'white', fontSize: 13, lineHeight: 1.45 },
+  bubbleIn: { alignSelf: 'flex-start', maxWidth: 'min(85%, 520px)', padding: '9px 12px', borderRadius: '4px 14px 14px 14px', fontSize: 13, lineHeight: 1.45 },
+  bubbleOut: { alignSelf: 'flex-end', maxWidth: 'min(85%, 520px)', padding: '9px 12px', borderRadius: '14px 4px 14px 14px', color: 'white', fontSize: 13, lineHeight: 1.45 },
   bubbleMeta:    { fontSize: 10, marginTop: 4 },
   bubbleMetaOut: { fontSize: 10, color: 'rgba(255,255,255,0.75)', marginTop: 4 },
 

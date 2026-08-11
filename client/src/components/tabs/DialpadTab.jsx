@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { formatPhone, displayName } from '../../utils/phone'
 import { useColors } from '../../useColors'
 import { playDTMF } from '../../dtmf'
 import { api } from '../../api'
@@ -348,8 +349,8 @@ export default function DialpadTab({ agent, device, activeCall, onCallStart, onC
         {quickDials.map(qd => (
           <div key={qd.id} style={{ ...S.qdRow, borderBottom: `1px solid ${C.border}` }}>
             <button style={{ ...S.qdDialBtn }} onClick={() => dialQuickDial(qd.phone_number)} title={`Dial ${qd.phone_number}`}>
-              <div style={{ ...S.qdName, color: C.text }}>{qd.name}</div>
-              <div style={{ ...S.qdNum, color: C.textMuted }}>{qd.phone_number}</div>
+              <div style={{ ...S.qdName, color: C.text }}>{displayName(qd.name, qd.phone_number)}</div>
+              <div style={{ ...S.qdNum, color: C.textMuted }}>{formatPhone(qd.phone_number)}</div>
             </button>
             <button style={{ ...S.qdDeleteBtn, color: C.textMuted }} onClick={() => handleDeleteQD(qd.id)} title="Remove">✕</button>
           </div>

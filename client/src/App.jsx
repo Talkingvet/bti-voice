@@ -590,7 +590,7 @@ function AppInner() {
         )}
       </div>
 
-      {!smsOpenChat && <button style={S.composeBtn} onClick={() => setCompose(true)} title="New message">
+      {!smsOpenChat && activeTab !== 'settings' && activeTab !== 'notifications' && <button style={S.composeBtn} onClick={() => setCompose(true)} title="New message">
         <ComposePenIcon />
       </button>}
 

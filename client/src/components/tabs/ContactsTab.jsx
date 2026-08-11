@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { api } from '../../api'
 import { useColors } from '../../useColors'
 import { useToast } from '../Toast'
+import { formatPhone, isPhoneLike, displayName, contactInitials } from '../../utils/phone'
 
 function initials(str) {
   if (!str) return '?'
@@ -21,15 +22,7 @@ function fmtDate(d) {
   return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 function fmtPhone(p) {
-  if (!p) return ''
-  const d = p.replace(/\D/g, '')
-  if (d.length === 11 && d.startsWith('1')) {
-    return `+1 (${d.slice(1,4)}) ${d.slice(4,7)}-${d.slice(7)}`
-  }
-  if (d.length === 10) {
-    return `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`
-  }
-  return p
+  return formatPhone(p)
 }
 
 export default function ContactsTab({ agent }) {
@@ -129,12 +122,12 @@ export default function ContactsTab({ agent }) {
             onClick={() => setSelected(c)}
           >
             <div style={{ ...S.avatar, background: avatarColor(c.name || c.phone_number) }}>
-              {initials(c.name || c.phone_number)}
+              {contactInitials(c.name, c.phone_number)}
             </div>
             <div style={S.itemInfo}>
-              <div style={{ ...S.itemName, color: C.text }}>{c.name || fmtPhone(c.phone_number)}</div>
+              <div style={{ ...S.itemName, color: C.text }}>{displayName(c.name, c.phone_number)}</div>
               <div style={{ ...S.itemPhone, color: C.textSec }}>
-                {c.name ? fmtPhone(c.phone_number) : ''}
+                {c.name && !isPhoneLike(c.name) ? fmtPhone(c.phone_number) : ''}
               </div>
             </div>
             <ChevronIcon color={C.textMuted} />
@@ -215,7 +208,7 @@ function ContactDetail({ contact, onBack, onUpdate, C }) {
       {/* Hero */}
       <div style={{ ...D.hero, borderBottom: `1px solid ${C.borderSoft}`, background: C.panel }}>
         <div style={{ ...D.avatar, background: avatarColor(contact.name || contact.phone_number) }}>
-          {initials(contact.name || contact.phone_number)}
+          {contactInitials(contact.name, contact.phone_number)}
         </div>
         <div style={{ ...D.heroName, color: C.text }}>{contact.name || fmtPhone(contact.phone_number)}</div>
         {contact.name && (
@@ -308,7 +301,7 @@ function ContactForm({ C, initial, onSave, onCancel }) {
         {/* Avatar preview */}
         <div style={{ ...F.avatarWrap }}>
           <div style={{ ...F.avatar, background: avatarColor(name || phone) }}>
-            {initials(name || phone)}
+            {contactInitials(name, phone)}
           </div>
         </div>
 
@@ -407,7 +400,7 @@ const S = {
   searchInput:{ border: 'none', outline: 'none', fontSize: 13, background: 'transparent', flex: 1 },
   clearBtn:   { border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 16, color: '#8b96ab', padding: 0 },
   newBtn:     { width: 32, height: 32, borderRadius: 8, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  list:       { flex: 1, overflowY: 'auto', minHeight: 0 },
+  list:       { flex: 1, overflowY: 'auto', minHeight: 0, paddingBottom: 76 },
   empty:      { padding: '24px 16px', textAlign: 'center', fontSize: 12, lineHeight: 1.5 },
   item: {
     display: 'flex', alignItems: 'center',
