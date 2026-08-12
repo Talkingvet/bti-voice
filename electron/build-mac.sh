@@ -22,6 +22,26 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DIST_DIR="$SCRIPT_DIR/../../dist-electron"
 VERSION="$(node -p "require('./package.json').version")"
 
+# ── Code-signing setup ──────────────────────────────────────────
+# If a "Developer ID Application" certificate is installed in the
+# keychain, sign with it (hardened runtime + entitlements) and then
+# notarize the DMGs with the keychain profile below. Otherwise fall
+# back to ad-hoc signing (app works locally; downloads get blocked
+# by Gatekeeper).
+#
+# One-time setup for full signing:
+#   1. Xcode → Settings → Accounts → company Apple ID →
+#      Manage Certificates → + → "Developer ID Application"
+#   2. xcrun notarytool store-credentials bti-voice-notary \
+#        --apple-id <appleID> --team-id <TEAMID> --password <app-specific pw>
+IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null | grep -o '"Developer ID Application: [^"]*"' | head -1 | tr -d '"')"
+NOTARY_PROFILE="${NOTARY_PROFILE:-bti-voice-notary}"
+if [ -n "$IDENTITY" ]; then
+    echo " Signing identity: $IDENTITY"
+else
+    echo " No Developer ID certificate found — using ad-hoc signing (Gatekeeper will block downloads)."
+fi
+
 echo ""
 echo " Building BTI Voice Desktop App for macOS..."
 echo ""
@@ -83,11 +103,15 @@ sign_and_package() {
     # Belt and suspenders — explicitly clear xattrs on every entry.
     find "$tmp_app" -exec xattr -c {} \; 2>/dev/null || true
 
-    echo "  [$arch_label] Ad-hoc signing (deep)..."
-    # --deep walks into all nested helper bundles and signs them.
-    # --force replaces any pre-existing signatures.
-    # --sign -  is "ad-hoc" signing (no Developer ID needed yet).
-    codesign --deep --force --sign - "$tmp_app"
+    if [ -n "$IDENTITY" ]; then
+        echo "  [$arch_label] Signing with Developer ID (hardened runtime)..."
+        codesign --deep --force --options runtime --timestamp \
+            --entitlements "$SCRIPT_DIR/entitlements.mac.plist" \
+            --sign "$IDENTITY" "$tmp_app"
+    else
+        echo "  [$arch_label] Ad-hoc signing (deep)..."
+        codesign --deep --force --sign - "$tmp_app"
+    fi
 
     echo "  [$arch_label] Verifying signature..."
     codesign --verify --deep --strict "$tmp_app"
@@ -103,8 +127,19 @@ sign_and_package() {
         -volname "BTI Voice" \
         -srcfolder "$app_path" \
         -ov \
-        -format UDZO \
+        -format ULMO \
         "$dmg_path"
+
+    if [ -n "$IDENTITY" ]; then
+        echo "  [$arch_label] Notarizing (this takes a few minutes)..."
+        if xcrun notarytool submit "$dmg_path" --keychain-profile "$NOTARY_PROFILE" --wait; then
+            xcrun stapler staple "$dmg_path"
+            echo "  [$arch_label] Notarized and stapled."
+        else
+            echo "  [$arch_label] WARNING: notarization failed or credentials missing."
+            echo "  [$arch_label] Run: xcrun notarytool store-credentials $NOTARY_PROFILE --apple-id <appleID> --team-id <TEAMID> --password <app-specific pw>"
+        fi
+    fi
 
     echo "  [$arch_label] Done: $dmg_path"
 }
