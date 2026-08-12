@@ -104,10 +104,33 @@ sign_and_package() {
     find "$tmp_app" -exec xattr -c {} \; 2>/dev/null || true
 
     if [ -n "$IDENTITY" ]; then
-        echo "  [$arch_label] Signing with Developer ID (hardened runtime)..."
-        codesign --deep --force --options runtime --timestamp \
-            --entitlements "$SCRIPT_DIR/entitlements.mac.plist" \
-            --sign "$IDENTITY" "$tmp_app"
+        local ENT="$SCRIPT_DIR/entitlements.mac.plist"
+        echo "  [$arch_label] Signing nested code inside-out (hardened runtime)..."
+        # Apple's notary service rejects the app if ANY nested Mach-O binary
+        # lacks a hardened-runtime + secure-timestamp signature. A single
+        # `codesign --deep` pass misses some (libffmpeg.dylib, Squirrel ShipIt),
+        # so we sign every nested binary individually, deepest path first, then
+        # the helper apps, then the frameworks, then the outer app last.
+
+        # 1. Every nested Mach-O binary (dylibs, .node addons, framework/helper
+        #    executables), deepest first.
+        while IFS= read -r bin; do
+            codesign --force --options runtime --timestamp --sign "$IDENTITY" "$bin"
+        done < <(find "$tmp_app" -type f -exec sh -c 'file "$1" | grep -q "Mach-O" && echo "$1"' _ {} \; | awk '{print length"\t"$0}' | sort -rn | cut -f2-)
+
+        # 2. Nested helper .app bundles — same entitlements (JIT etc.)
+        find "$tmp_app/Contents/Frameworks" -maxdepth 1 -name "*.app" -print0 | while IFS= read -r -d '' helper; do
+            codesign --force --options runtime --timestamp --entitlements "$ENT" --sign "$IDENTITY" "$helper"
+        done
+
+        # 3. Frameworks (bundle level)
+        for fw in "$tmp_app/Contents/Frameworks/"*.framework; do
+            [ -e "$fw" ] && codesign --force --options runtime --timestamp --sign "$IDENTITY" "$fw"
+        done
+
+        # 4. Outer app last, with entitlements
+        echo "  [$arch_label] Signing app bundle..."
+        codesign --force --options runtime --timestamp --entitlements "$ENT" --sign "$IDENTITY" "$tmp_app"
     else
         echo "  [$arch_label] Ad-hoc signing (deep)..."
         codesign --deep --force --sign - "$tmp_app"
