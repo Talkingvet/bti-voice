@@ -133,10 +133,15 @@ router.post('/new-message', requireAuth, async (req, res) => {
   const { to_number, from_agent_id, body } = req.body
   if (!to_number || !body) return res.status(400).json({ error: 'to_number and body are required' })
   const { getIO } = require('../socket')
+  const { phoneVariants } = require('../helpers/phone')
+  const { e164, variants } = phoneVariants(to_number)
   try {
-    let { rows: [contact] } = await pool.query('SELECT * FROM contacts WHERE phone_number = $1', [to_number])
+    let { rows: [contact] } = await pool.query(
+      'SELECT * FROM contacts WHERE phone_number = ANY($1::text[]) ORDER BY (phone_number = $2) DESC LIMIT 1',
+      [variants, e164]
+    )
     if (!contact) {
-      const r = await pool.query('INSERT INTO contacts (phone_number) VALUES ($1) RETURNING *', [to_number])
+      const r = await pool.query('INSERT INTO contacts (phone_number) VALUES ($1) RETURNING *', [e164])
       contact = r.rows[0]
     }
     let { rows: [conv] } = await pool.query(
@@ -160,7 +165,7 @@ router.post('/new-message', requireAuth, async (req, res) => {
     const hasTwilio = process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && agent.phone_number !== 'TBD'
     if (hasTwilio) {
       const twilio = require('twilio')(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
-      const params = { body, from: agent.phone_number, to: to_number }
+      const params = { body, from: agent.phone_number, to: contact.phone_number }
       // Route through the A2P-registered Messaging Service when configured
       if (process.env.TWILIO_MESSAGING_SERVICE_SID) {
         params.messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID
@@ -178,7 +183,7 @@ router.post('/new-message', requireAuth, async (req, res) => {
     }
     await pool.query(
       'INSERT INTO messages (conversation_id, agent_id, direction, body, from_number, to_number, twilio_sid) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-      [conv.id, agent.id, 'outbound', body, agent.phone_number, to_number, twilioSid]
+      [conv.id, agent.id, 'outbound', body, agent.phone_number, contact.phone_number, twilioSid]
     )
     await pool.query('UPDATE conversations SET last_message_at = NOW(), last_agent_id = $1 WHERE id = $2', [agent.id, conv.id])
     await pool.query('INSERT INTO conversation_agents (conversation_id, agent_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [conv.id, agent.id])
@@ -197,10 +202,15 @@ router.post('/new-message', requireAuth, async (req, res) => {
 router.post('/ensure', requireAuth, async (req, res) => {
   const { to_number } = req.body
   if (!to_number) return res.status(400).json({ error: 'to_number is required' })
+  const { phoneVariants } = require('../helpers/phone')
+  const { e164, variants } = phoneVariants(to_number)
   try {
-    let { rows: [contact] } = await pool.query('SELECT * FROM contacts WHERE phone_number = $1', [to_number])
+    let { rows: [contact] } = await pool.query(
+      'SELECT * FROM contacts WHERE phone_number = ANY($1::text[]) ORDER BY (phone_number = $2) DESC LIMIT 1',
+      [variants, e164]
+    )
     if (!contact) {
-      const r = await pool.query('INSERT INTO contacts (phone_number) VALUES ($1) RETURNING *', [to_number])
+      const r = await pool.query('INSERT INTO contacts (phone_number) VALUES ($1) RETURNING *', [e164])
       contact = r.rows[0]
     }
     // A2P compliance: surface opt-out before the caller schedules anything
