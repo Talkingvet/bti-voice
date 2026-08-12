@@ -3,7 +3,7 @@ import { Device } from '@twilio/voice-sdk'
 import { ThemeProvider, useTheme } from './ThemeContext'
 import { ToastProvider } from './components/Toast'
 import { useColors }               from './useColors'
-import { getSocket }               from './socket'
+import { getSocket, disconnectSocket } from './socket'
 import { startRingtone, stopRingtone, playConnected, playDisconnected, getSoundPrefs } from './dtmf'
 import Login                       from './pages/Login'
 import TitleBar                    from './components/TitleBar'
@@ -50,9 +50,15 @@ function AppInner() {
   const [unreadVm,     setUnreadVm]     = useState(0)  // badge on Calls tab (voicemails)
 
   // Per-item read tracking (individual) + base timestamp (everything before this is auto-old)
-  const [baseAt,    setBaseAt]    = useState(
-    () => localStorage.getItem(BASE_AT_KEY) ? new Date(localStorage.getItem(BASE_AT_KEY)) : new Date(0)
-  )
+  const [baseAt,    setBaseAt]    = useState(() => {
+    const stored = localStorage.getItem(BASE_AT_KEY)
+    if (stored) return new Date(stored)
+    // First run: treat everything up to now as already seen so the bell doesn't
+    // show the entire message history (that's the "63 unread" bug).
+    const now = new Date()
+    localStorage.setItem(BASE_AT_KEY, now.toISOString())
+    return now
+  })
   const [readKeys,  setReadKeys]  = useState(() => loadReadKeys())
 
   // ── Twilio Device (app-level — stays registered on any tab) ──────────────────
@@ -357,7 +363,10 @@ function AppInner() {
   }
 
   function handleLogout() {
+    disconnectSocket()
     localStorage.removeItem('bti_token')
+    setActivity([])
+    setUnreadSms(0); setUnreadVm(0); setUnreadNotifs(0)
     setAgent(null)
   }
 

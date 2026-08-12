@@ -99,20 +99,20 @@ export default function CallsTab({ agent, onWrapUpClick }) {
     loadCalls()
     loadVoicemails()
     const socket = getSocket()
-    socket.on('call_logged', loadCalls)
-    socket.on('new_voicemail', (vm) => {
-      setVoicemails(prev => [vm, ...prev])
-      setUnreadVm(n => n + 1)
-    })
-    socket.on('call_transcribed', ({ call_id, transcription, ai_summary }) => {
+    const onNewVm = (vm) => { setVoicemails(prev => [vm, ...prev]); setUnreadVm(n => n + 1) }
+    const onTranscribed = ({ call_id, transcription, ai_summary }) => {
       setCalls(prev => prev.map(c =>
         c.id === call_id ? { ...c, transcription, ai_summary } : c
       ))
-    })
+    }
+    socket.on('call_logged', loadCalls)
+    socket.on('new_voicemail', onNewVm)
+    socket.on('call_transcribed', onTranscribed)
     return () => {
+      // Pass the specific handler so we don't remove App-level listeners too.
       socket.off('call_logged', loadCalls)
-      socket.off('new_voicemail')
-      socket.off('call_transcribed')
+      socket.off('new_voicemail', onNewVm)
+      socket.off('call_transcribed', onTranscribed)
     }
   }, [loadCalls, loadVoicemails])
 

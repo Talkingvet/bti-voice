@@ -45,6 +45,7 @@ export default function SMSTab({ agent, navConvId, onNavConvConsumed, device, on
   // Load messages when a conversation is selected
   useEffect(() => {
     if (!selectedId) { setMessages([]); return }
+    let cancelled = false
     setLoadingMsgs(true)
     const socket = getSocket()
     socket.emit('join_conversation', selectedId)
@@ -54,21 +55,28 @@ export default function SMSTab({ agent, navConvId, onNavConvConsumed, device, on
 
     api.messages(selectedId)
       .then(msgs => {
+        if (cancelled) return // a newer conversation was opened; ignore stale result
         setMessages(msgs)
-        // Refresh convo list so unread badge clears
         loadConversations()
       })
       .catch(console.error)
-      .finally(() => setLoadingMsgs(false))
+      .finally(() => { if (!cancelled) setLoadingMsgs(false) })
 
-    socket.on('new_message', (msg) => {
-      setMessages(prev => [...prev, msg])
-      // Mark as read since we're actively viewing the conversation
+    const onNewMessage = (msg) => {
+      // Dedupe by id so a double-emit can't render the bubble twice.
+      setMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg])
       api.markConvRead(selectedId).catch(() => {})
-    })
+    }
+    // socket.io re-connects after a network blip but does NOT auto re-join
+    // rooms — without this an open thread silently stops receiving messages.
+    const onReconnect = () => socket.emit('join_conversation', selectedId)
+    socket.on('new_message', onNewMessage)
+    socket.on('connect', onReconnect)
     return () => {
+      cancelled = true
       socket.emit('leave_conversation', selectedId)
-      socket.off('new_message')
+      socket.off('new_message', onNewMessage)
+      socket.off('connect', onReconnect)
     }
   }, [selectedId])
 
@@ -78,6 +86,7 @@ export default function SMSTab({ agent, navConvId, onNavConvConsumed, device, on
       await api.sendMessage(selectedId, body, mediaIds)
     } catch (e) {
       toast.error('Send failed: ' + e.message)
+      throw e // let the composer keep the text instead of clearing it
     }
   }, [selectedId, toast])
 

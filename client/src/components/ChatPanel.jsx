@@ -222,12 +222,19 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
     e?.preventDefault()
     if ((!body.trim() && attachments.length === 0) || sending) return
     setSending(true)
-    await onSend(body.trim(), attachments.map(a => a.id))
-    setBody('')
-    setAttachments([])
-    setSending(false)
-    setShowCanned(false)
-    textareaRef.current?.focus()
+    try {
+      await onSend(body.trim(), attachments.map(a => a.id))
+      // Clear only after a confirmed send so a failure keeps the user's text.
+      attachments.forEach(a => a.previewUrl && URL.revokeObjectURL(a.previewUrl))
+      setBody('')
+      setAttachments([])
+      setShowCanned(false)
+    } catch {
+      /* onSend already surfaced a toast; keep body + attachments */
+    } finally {
+      setSending(false)
+      textareaRef.current?.focus()
+    }
   }
   function handleKeyDown(e) {
     if (showCanned) {

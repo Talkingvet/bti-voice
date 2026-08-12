@@ -69,8 +69,13 @@ export default function TitleBar({ agent, unreadCount = 0, onBellClick, agentSta
         setShowDropdown(false)
       }
     }
+    function onKey(e) { if (e.key === 'Escape') setShowDropdown(false) }
     document.addEventListener('mousedown', handle)
-    return () => document.removeEventListener('mousedown', handle)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', handle)
+      document.removeEventListener('keydown', onKey)
+    }
   }, [showDropdown])
 
   const status  = normalizeStatus(agentStatus)

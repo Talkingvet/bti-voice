@@ -23,15 +23,16 @@ export default function NotificationsTab({ agent }) {
     load()
     const socket = getSocket()
     // Real-time: new notification pushed from server
-    socket.on('notification', (notif) => {
-      setNotifications(prev => [notif, ...prev])
-    })
-    return () => socket.off('notification')
+    const onNotif = (notif) => setNotifications(prev => [notif, ...prev])
+    socket.on('notification', onNotif)
+    return () => socket.off('notification', onNotif)
   }, [load])
 
   // Auto-mark all as read when the tab is opened
   useEffect(() => {
-    api.markAllNotifsRead().catch(() => {})
+    api.markAllNotifsRead()
+      .then(() => setNotifications(prev => prev.map(n => ({ ...n, read: true }))))
+      .catch(() => {})
   }, [])
 
   const unread = notifications.filter(n => !n.read).length
