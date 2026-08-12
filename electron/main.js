@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, Notification, screen } = require('electron')
+const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, Notification, screen, shell } = require('electron')
 const path = require('path')
 const fs   = require('fs')
 const os   = require('os')
@@ -28,6 +28,11 @@ const TRAY_PATH = path.join(__dirname, 'assets', 'tray.png')
 
 // ── Your Railway URL ──────────────────────────────────────────────
 const APP_URL = 'https://bti-voice-production.up.railway.app'
+
+// Crash safety: the app lives in the tray all day taking calls — a stray
+// error in the main process shouldn't kill it with a raw dialog.
+process.on('uncaughtException',  (err)    => console.error('[uncaughtException]', err))
+process.on('unhandledRejection', (reason) => console.error('[unhandledRejection]', reason))
 
 // ── Window-state persistence ──────────────────────────────────────
 // Remember the window position and size between launches (Mac convention,
@@ -100,6 +105,38 @@ function createWindow() {
 
   mainWindow.loadURL(APP_URL)
   mainWindow.once('ready-to-show', () => mainWindow.show())
+
+  // Security: never let a link inside the remote page open a new Electron
+  // window (which would inherit the preload + full electronAPI) or navigate
+  // the main window off our own origin. External links open in the real browser.
+  const APP_ORIGIN = new URL(APP_URL).origin
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    try { shell.openExternal(url) } catch { /* ignore */ }
+    return { action: 'deny' }
+  })
+  mainWindow.webContents.on('will-navigate', (e, url) => {
+    let origin = ''
+    try { origin = new URL(url).origin } catch { /* ignore */ }
+    if (origin !== APP_ORIGIN) {
+      e.preventDefault()
+      try { shell.openExternal(url) } catch { /* ignore */ }
+    }
+  })
+
+  // Offline / failed-load recovery: the UI is remote, so a launch with no
+  // network otherwise leaves a dead Chromium error page with no way back.
+  mainWindow.webContents.on('did-fail-load', (e, code, desc, validatedURL, isMainFrame) => {
+    if (!isMainFrame || code === -3 /* aborted */) return
+    console.error('[load] failed:', code, desc)
+    const retryHtml = 'data:text/html,' + encodeURIComponent(
+      '<body style="background:#161b24;color:#e6eaf1;font-family:-apple-system,sans-serif;' +
+      'display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;margin:0">' +
+      '<h2>Can\u2019t reach BTI Voice</h2><p>Check your internet connection.</p>' +
+      '<button onclick="location.href=\'' + APP_URL + '\'" ' +
+      'style="padding:10px 22px;border:none;border-radius:8px;background:#4f9cf9;color:#fff;' +
+      'font-size:14px;cursor:pointer">Retry</button></body>')
+    setTimeout(() => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(retryHtml) }, 800)
+  })
 
   mainWindow.on('close', (e) => {
     if (!app.isQuitting) {
@@ -451,6 +488,9 @@ ipcMain.handle('set-auto-launch', (_, enabled) => {
 
 // ── IPC: updates (Railway proxy — no GitHub token needed in installer) ────────
 ipcMain.handle('check-for-updates', async () => {
+  // Updates are Windows-only: the update feed serves a Windows .exe. On macOS
+  // this would download an installer that can't run, so report up-to-date.
+  if (process.platform !== 'win32') return { status: 'up-to-date' }
   try {
     const res = await fetch(`${APP_URL}/api/updates/latest`)
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -477,6 +517,7 @@ ipcMain.handle('check-for-updates', async () => {
 })
 
 ipcMain.handle('download-update', async () => {
+  if (process.platform !== 'win32') return { status: 'error', message: 'Updates are Windows-only' }
   const tempPath = path.join(os.tmpdir(), 'BTI-Voice-Setup.exe')
 
   try {
@@ -520,6 +561,7 @@ ipcMain.handle('download-update', async () => {
 })
 
 ipcMain.handle('install-update', () => {
+  if (process.platform !== 'win32') return false
   const tempPath = path.join(os.tmpdir(), 'BTI-Voice-Setup.exe')
   if (!fs.existsSync(tempPath)) return false
   const { exec } = require('child_process')
@@ -580,13 +622,18 @@ app.whenReady().then(() => {
   // Grant microphone + camera permissions automatically so Twilio Voice
   // (WebRTC) can register and receive/make calls without a browser prompt.
   const { session } = require('electron')
+  const APP_ORIGIN = new URL(APP_URL).origin
+  const isAppOrigin = (wc) => {
+    try { return wc && new URL(wc.getURL()).origin === APP_ORIGIN } catch { return false }
+  }
   session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
     const allowed = ['media', 'microphone', 'audioCapture', 'notifications']
-    callback(allowed.includes(permission))
+    // Only our own remote origin may use the mic — a phished/injected page can't.
+    callback(allowed.includes(permission) && isAppOrigin(webContents))
   })
-  session.defaultSession.setPermissionCheckHandler((webContents, permission) => {
+  session.defaultSession.setPermissionCheckHandler((webContents, permission, requestingOrigin) => {
     const allowed = ['media', 'microphone', 'audioCapture', 'notifications']
-    return allowed.includes(permission)
+    return allowed.includes(permission) && requestingOrigin === APP_ORIGIN
   })
 
   createWindow()

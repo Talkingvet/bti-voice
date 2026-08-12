@@ -116,6 +116,7 @@ function AppInner() {
           call.on('cancel', () => {
             stopRingtone()
             setIncomingCall(null)
+            window.electronAPI?.dismissIncomingCall?.()
           })
           startRingtone()
           setIncomingCall(call)
@@ -370,6 +371,17 @@ function AppInner() {
     setAgent(null)
   }
 
+  // ── Electron incoming-call banner (Accept/Decline) ───────────────────────────
+  useEffect(() => {
+    if (!window.electronAPI) return
+    window.__btiOnIncomingCallAction = (data) => {
+      const action = data && data.action
+      if (action === 'accept') acceptIncoming()
+      else rejectIncoming()
+    }
+    return () => { try { delete window.__btiOnIncomingCallAction } catch { /* noop */ } }
+  }, [incomingCall])
+
   // ── Electron mini widget — notify when call starts / ends ────────────────────
   // window.electronAPI is injected by preload.js only in the Electron desktop app;
   // it's undefined in the browser, so all calls are safely guarded with ?.
@@ -453,6 +465,7 @@ function AppInner() {
     const from  = incomingCall.parameters?.From
     const callSid = incomingCall.parameters?.CallSid
     incomingCall.accept()
+    window.electronAPI?.dismissIncomingCall?.()
     const info = { phone: from || 'Unknown', name: null }
     setActiveCall(incomingCall)
     activeCallRef.current = incomingCall
@@ -475,6 +488,7 @@ function AppInner() {
       incomingCall.reject()
       stopRingtone()
       setIncomingCall(null)
+      window.electronAPI?.dismissIncomingCall?.()
       // Twilio status webhook handles logging the missed call — no frontend log needed
     }
   }

@@ -1441,6 +1441,9 @@ function CannedResponsesSection({ C }) {
 
 function AboutSection({ C }) {
   const isElectron = !!window.electronAPI
+  // Updates are Windows-only for now (the update feed serves a Windows .exe);
+  // showing the button on Mac would download an installer it can't run.
+  const canUpdate = isElectron && window.electronAPI?.platform === 'win32'
   const [version,    setVersion]    = useState('1.0.0')
   const [updateStatus, setUpdateStatus] = useState(null) // null | 'checking' | 'up-to-date' | 'available' | 'downloading' | 'ready' | 'error'
   const [updateVersion, setUpdateVersion] = useState(null)
@@ -1512,7 +1515,7 @@ function AboutSection({ C }) {
             Need Help? →
           </a>
 
-          {isElectron && (
+          {canUpdate && (
             <button
               onClick={updateStatus === 'checking' || updateStatus === 'downloading' ? undefined : updateAction}
               style={{
