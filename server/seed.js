@@ -27,7 +27,7 @@ async function seed() {
         'INSERT INTO agents (name, username, password_hash, color, initials) VALUES ($1,$2,$3,$4,$5)',
         [a.name, a.username, hash, a.color, a.initials]
       );
-      console.log(`[seed] Created agent: ${a.name}  (login: ${a.username} / ${a.password})`);
+      console.log(`[seed] Created agent: ${a.name} (login: ${a.username})`);
     } else {
       // Existing agent — keep password, just sync name/initials/color
       await pool.query(

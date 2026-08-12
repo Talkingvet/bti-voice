@@ -711,7 +711,7 @@ Keep it tight — this is for a CRM note, not a report.`,
           if (chosenZohoModule) noteBody.zoho_module     = chosenZohoModule;
           await fetch('http://localhost:' + (process.env.PORT || 3000) + '/api/zoho/add-note', {
             method:  'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'x-internal-token': require('../secret').INTERNAL_TOKEN },
             body:    JSON.stringify(noteBody),
           });
         } catch (e) {

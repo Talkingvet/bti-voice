@@ -10,7 +10,7 @@ function syncSMSToZoho(messageId) {
     try {
       await fetch(`http://localhost:${process.env.PORT || 3000}/api/zoho/log-sms`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-internal-token': require('../secret').INTERNAL_TOKEN },
         body: JSON.stringify({ message_id: messageId }),
       });
     } catch (e) {
@@ -181,7 +181,10 @@ router.post('/', async (req, res) => {
     for (let i = 0; i < numMedia; i++) {
       const url = req.body[`MediaUrl${i}`];
       if (!url) continue;
-      const ct = req.body[`MediaContentType${i}`] || 'application/octet-stream';
+      let ct = req.body[`MediaContentType${i}`] || 'application/octet-stream';
+      // Security: only trust known image types; anything else (e.g. text/html)
+      // is stored as a generic binary so it can never execute in the app.
+      if (!/^image\/(png|jpe?g|gif|webp)$/i.test(ct)) ct = 'application/octet-stream';
       const { rows: [mm] } = await pool.query(
         'INSERT INTO message_media (message_id, content_type, twilio_url) VALUES ($1, $2, $3) RETURNING id, content_type',
         [message.id, ct, url]

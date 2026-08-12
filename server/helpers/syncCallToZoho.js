@@ -78,7 +78,7 @@ function fireZohoLogCall(callId, opts) {
       const url = 'http://localhost:' + port + '/api/zoho/log-call';
       await fetch(url, {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-internal-token': require('../secret').INTERNAL_TOKEN },
         body:    JSON.stringify(body),
       });
     } catch (e) {

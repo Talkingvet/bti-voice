@@ -4,7 +4,12 @@
 
 const express = require('express');
 const router  = express.Router();
+const { internalOrAuth } = require('../auth');
 const { pool } = require('../db');
+
+// Lock down every Zoho endpoint: either a logged-in agent or an internal
+// server-to-server self-call (which carries the x-internal-token header).
+router.use(internalOrAuth);
 const {
   zohoAPI,
   findContactByPhone,

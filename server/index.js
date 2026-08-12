@@ -14,6 +14,7 @@ const server = http.createServer(app);
 initSocket(server);
 
 // ── Middleware ────────────────────────────────────────────────
+app.set('trust proxy', true); // Railway terminates TLS; trust X-Forwarded-* 
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: false })); // needed for Twilio webhooks
@@ -37,14 +38,36 @@ app.use('/api/track',         require('./routes/track'));
 app.use('/admin/activity',    require('./routes/adminActivity'));
 
 // ── Twilio Webhooks ───────────────────────────────────────────
-app.use('/webhooks/sms',       require('./webhooks/sms'));
-app.use('/webhooks/voice',     require('./webhooks/voice'));
+const { validateTwilio } = require('./webhooks/validateTwilio');
+app.use('/webhooks/sms',       validateTwilio, require('./webhooks/sms'));
+app.use('/webhooks/voice',     validateTwilio, require('./webhooks/voice'));
 
 // ── Serve React Frontend ──────────────────────────────────────
 const PUBLIC = path.join(__dirname, 'public');
 app.use(express.static(PUBLIC));
+// Unmatched API/webhook routes should 404 as JSON, not return index.html.
+app.use(['/api', '/webhooks'], (req, res) => res.status(404).json({ error: 'Not found' }));
 app.get('*', (req, res) => {
   res.sendFile(path.join(PUBLIC, 'index.html'));
+});
+
+// Central error handler — catches errors passed via next(err) so a thrown
+// async handler returns 500 JSON instead of hanging the request.
+app.use((err, req, res, next) => {
+  console.error('[express error]', req.method, req.originalUrl, err && err.message);
+  if (res.headersSent) return next(err);
+  res.status(500).json({ error: 'Internal server error' });
+});
+
+// ── Crash safety ──────────────────────────────────────────────
+// Express 4 doesn't catch rejected promises from async handlers, and Node
+// defaults to crashing on unhandled rejections. Log instead of dying — a
+// single bad request shouldn't drop every active call.
+process.on('unhandledRejection', (reason) => {
+  console.error('[unhandledRejection]', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[uncaughtException]', err);
 });
 
 // ── Start ─────────────────────────────────────────────────────

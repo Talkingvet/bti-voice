@@ -8,7 +8,11 @@ let socket = null
 
 export function getSocket() {
   if (!socket) {
-    socket = io(SERVER, { transports: ['websocket', 'polling'] })
+    socket = io(SERVER, {
+      transports: ['websocket', 'polling'],
+      // Auth handshake — server rejects sockets without a valid agent token.
+      auth: { token: localStorage.getItem('bti_token') },
+    })
   }
   return socket
 }

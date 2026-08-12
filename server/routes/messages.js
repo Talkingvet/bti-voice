@@ -10,7 +10,7 @@ function syncSMSToZoho(messageId) {
     try {
       await fetch(`http://localhost:${process.env.PORT || 3000}/api/zoho/log-sms`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-internal-token': require('../secret').INTERNAL_TOKEN },
         body: JSON.stringify({ message_id: messageId }),
       });
     } catch (e) {
@@ -188,10 +188,10 @@ router.post('/upload-media', requireAuth,
 // Auth: Bearer header OR ?token= query param (img tags can't send headers).
 router.get('/media/:id', async (req, res) => {
   const jwt    = require('jsonwebtoken');
-  const SECRET = process.env.JWT_SECRET || 'bti-voice-dev-secret';
+  const { JWT_SECRET } = require('../secret');
   const raw    = req.headers.authorization?.replace('Bearer ', '') || req.query.token;
   if (!raw) return res.status(401).json({ error: 'Unauthorized' });
-  try { jwt.verify(raw, SECRET); } catch { return res.status(401).json({ error: 'Invalid token' }); }
+  try { jwt.verify(raw, JWT_SECRET); } catch { return res.status(401).json({ error: 'Invalid token' }); }
 
   try {
     const { rows: [mm] } = await pool.query(
@@ -200,6 +200,8 @@ router.get('/media/:id', async (req, res) => {
     if (!mm) return res.status(404).json({ error: 'Not found' });
 
     res.set('Content-Type', mm.content_type);
+    res.set('X-Content-Type-Options', 'nosniff');
+    res.set('Content-Disposition', 'inline; filename="media"');
     res.set('Cache-Control', 'private, max-age=86400');
 
     if (mm.data) return res.send(mm.data);
@@ -229,6 +231,7 @@ router.get('/public-media/:token', async (req, res) => {
     );
     if (!mm) return res.status(404).json({ error: 'Not found' });
     res.set('Content-Type', mm.content_type);
+    res.set('X-Content-Type-Options', 'nosniff');
     res.set('Cache-Control', 'public, max-age=86400');
     res.send(mm.data);
   } catch (e) {

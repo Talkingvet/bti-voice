@@ -437,7 +437,7 @@ router.post('/:id/wrap-up', requireAuth, async (req, res) => {
         try {
           await fetch('http://localhost:' + port + '/api/zoho/add-note', {
             method:  'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'x-internal-token': require('../secret').INTERNAL_TOKEN },
             body:    JSON.stringify({
               zoho_contact_id: targetZohoId,
               zoho_module:     targetZohoModule,
@@ -457,7 +457,7 @@ router.post('/:id/wrap-up', requireAuth, async (req, res) => {
         try {
           await fetch('http://localhost:' + port + '/api/zoho/create-task', {
             method:  'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'x-internal-token': require('../secret').INTERNAL_TOKEN },
             body:    JSON.stringify({
               subject:     body.task.subject,
               description: body.task.description || null,
