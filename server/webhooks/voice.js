@@ -127,6 +127,7 @@ router.post('/outbound', async (req, res) => {
   }
 
   if (To) {
+    maybeRecordingNotice(twiml);
     const dial = twiml.dial({ callerId, ...recordingOpts() });
     dial.number(To);
     console.log(`[outbound] TwiML: dial ${To} from ${callerId}`);
@@ -745,12 +746,22 @@ async function sendMissedCallAutoText(fromPhone) {
       return;
     }
 
-    // A2P compliance: never auto-text a contact who has opted out
+    // A2P compliance: never auto-text an opted-out contact. Match every stored
+    // number format, and throttle to one auto-text per 4h so a repeat caller
+    // (or a doubled webhook) can't be texted repeatedly.
+    const { phoneVariants } = require('../helpers/phone');
+    const { e164: fpE164, variants: fpVariants } = phoneVariants(fromPhone);
     const { rows: optRows } = await pool.query(
-      'SELECT opted_out FROM contacts WHERE phone_number = $1', [fromPhone]
+      'SELECT id, opted_out, last_auto_text_at FROM contacts WHERE phone_number = ANY($1::text[]) ORDER BY (phone_number = $2) DESC LIMIT 1',
+      [fpVariants, fpE164]
     );
     if (optRows[0]?.opted_out) {
       console.log(`[autoText] ${fromPhone} has opted out — skipping auto-text`);
+      return;
+    }
+    const lastAt = optRows[0]?.last_auto_text_at;
+    if (lastAt && (Date.now() - new Date(lastAt).getTime()) < 4 * 60 * 60 * 1000) {
+      console.log(`[autoText] ${fromPhone} texted within the last 4h — skipping`);
       return;
     }
 
@@ -765,6 +776,9 @@ async function sendMissedCallAutoText(fromPhone) {
       params.messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
     }
     await twilioClient.messages.create(params);
+    if (optRows[0]?.id) {
+      await pool.query('UPDATE contacts SET last_auto_text_at = NOW() WHERE id = $1', [optRows[0].id]);
+    }
     console.log(`[autoText] ✓ Sent auto-text to ${fromPhone}`);
   } catch (e) {
     console.error('[autoText] Failed:', e.message);
@@ -774,6 +788,15 @@ async function sendMissedCallAutoText(fromPhone) {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 // Recording requires ENABLE_RECORDING=true in addition to SERVER_URL + OPENAI_API_KEY.
+// Adds a spoken recording disclosure — only when recording is actually active
+// (same gate as recordingOpts). Two-party-consent states require it. No-op
+// when recording is off, so normal call flow is unchanged.
+function maybeRecordingNotice(twiml) {
+  if (process.env.ENABLE_RECORDING !== 'true') return;
+  if (!process.env.SERVER_URL || !process.env.OPENAI_API_KEY) return;
+  twiml.say('This call may be recorded for quality and training purposes.');
+}
+
 function recordingOpts() {
   if (process.env.ENABLE_RECORDING !== 'true') return {};
   if (!process.env.SERVER_URL || !process.env.OPENAI_API_KEY) return {};
@@ -800,6 +823,7 @@ async function dialAgent(twiml, agentId, timeout = 30) {
 
   // action="/webhooks/voice/no-answer" ensures Twilio calls us back instead of
   // silently dropping the call when the client doesn't answer.
+  maybeRecordingNotice(twiml);
   const dial = twiml.dial({
     timeout,
     action: '/webhooks/voice/no-answer',
@@ -819,6 +843,7 @@ async function ringAllAgents(twiml) {
     return;
   }
   console.log(`[ringAllAgents] Ringing ${rows.length} agents: ${rows.map(r => r.id).join(', ')}`);
+  maybeRecordingNotice(twiml);
   const dial = twiml.dial({
     timeout: 30,
     action:  '/webhooks/voice/no-answer',

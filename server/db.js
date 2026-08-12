@@ -142,6 +142,7 @@ async function migrate() {
     ALTER TABLE ivr_settings ADD COLUMN IF NOT EXISTS business_days        VARCHAR(20) DEFAULT '1,2,3,4,5';
     ALTER TABLE ivr_settings ADD COLUMN IF NOT EXISTS business_timezone    VARCHAR(50) DEFAULT 'America/New_York';
     ALTER TABLE conversations ADD COLUMN IF NOT EXISTS last_auto_reply_at TIMESTAMPTZ;
+    ALTER TABLE contacts ADD COLUMN IF NOT EXISTS last_auto_text_at TIMESTAMPTZ;
   `);
 
   // Scheduled SMS (send later)

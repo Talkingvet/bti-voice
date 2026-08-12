@@ -123,13 +123,17 @@ router.post('/', async (req, res) => {
   res.send('<Response></Response>');
 
   try {
-    // Find or create contact
+    // Find or create contact — match ALL stored formats so an opt-out can't be
+    // defeated by a duplicate row saved as e.g. 10-digit vs +1 (A2P/TCPA).
+    const { phoneVariants } = require('../helpers/phone');
+    const { e164: fromE164, variants: fromVariants } = phoneVariants(From);
     let { rows: [contact] } = await pool.query(
-      'SELECT * FROM contacts WHERE phone_number = $1', [From]
+      'SELECT * FROM contacts WHERE phone_number = ANY($1::text[]) ORDER BY (phone_number = $2) DESC LIMIT 1',
+      [fromVariants, fromE164]
     );
     if (!contact) {
       const result = await pool.query(
-        'INSERT INTO contacts (phone_number) VALUES ($1) RETURNING *', [From]
+        'INSERT INTO contacts (phone_number) VALUES ($1) RETURNING *', [fromE164]
       );
       contact = result.rows[0];
     }

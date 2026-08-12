@@ -14,9 +14,13 @@ const SWEEP_INTERVAL_MS = 30 * 1000;
 let timer = null;
 
 async function sendDueMessage(sm) {
-  // Re-check opt-out at send time (may have changed since scheduling)
+  // Re-check opt-out at send time (may have changed since scheduling). Match
+  // every stored format so a duplicate row can't slip an opted-out contact through.
+  const { phoneVariants } = require('../helpers/phone');
+  const { variants: toVariants } = phoneVariants(sm.to_number);
   const { rows: [contact] } = await pool.query(
-    'SELECT id, opted_out FROM contacts WHERE phone_number = $1', [sm.to_number]
+    'SELECT id, opted_out FROM contacts WHERE phone_number = ANY($1::text[]) ORDER BY opted_out DESC LIMIT 1',
+    [toVariants]
   );
   if (contact?.opted_out) {
     await pool.query(

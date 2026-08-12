@@ -250,6 +250,25 @@ router.post('/schedule', requireAuth, async (req, res) => {
   if (when.getTime() < Date.now() + 60 * 1000) {
     return res.status(400).json({ error: 'Scheduled time must be at least 1 minute in the future' });
   }
+
+  // TCPA quiet-hours guard: don't allow sends outside 8am–9pm. We don't know the
+  // recipient's timezone, so we use the business timezone as a proxy.
+  try {
+    const { rows: [cfg] } = await pool.query(
+      "SELECT business_timezone FROM ivr_settings WHERE id = 1 LIMIT 1"
+    );
+    const tz = cfg?.business_timezone || 'America/New_York';
+    const hour = parseInt(new Intl.DateTimeFormat('en-US', {
+      timeZone: tz, hour: 'numeric', hour12: false, hourCycle: 'h23'
+    }).format(when), 10);
+    if (hour < 8 || hour >= 21) {
+      return res.status(400).json({
+        error: `Scheduled time falls outside allowed messaging hours (8am–9pm ${tz}). Please pick a time within that window.`
+      });
+    }
+  } catch (e) {
+    console.error('[schedule quiet-hours check]', e.message); // fail open — don't block on a config read error
+  }
   try {
     const { rows: [conv] } = await pool.query(`
       SELECT c.id, co.id AS contact_id, co.phone_number AS to_number, co.opted_out
