@@ -303,12 +303,19 @@ router.post('/ivr-gather', async (req, res) => {
 
       case 'voicemail': {
         const serverUrl = process.env.SERVER_URL || '';
+        // Twilio's recordingStatusCallback payload does NOT include From/To, so
+        // carry the caller number through on the callback URL query string.
+        // Without this every voicemail resolved to the literal string 'unknown'
+        // and got filed against a single junk contact.
+        const callerNum = req.body.From || '';
+        const vmCallback = `${serverUrl}/webhooks/voice/recording-complete?vm=1`
+          + (callerNum ? `&from=${encodeURIComponent(callerNum)}` : '');
         twiml.say({ voice }, 'Please leave a message after the tone. Press pound when finished.');
         twiml.record({
           maxLength:               120,
           finishOnKey:             '#',
           transcribe:              false,
-          recordingStatusCallback: `${serverUrl}/webhooks/voice/recording-complete`,
+          recordingStatusCallback: vmCallback,
           recordingStatusCallbackMethod: 'POST',
         });
         twiml.say({ voice }, 'Thank you for your message. Goodbye.');
@@ -559,7 +566,13 @@ router.post('/recording-complete', async (req, res) => {
   // Respond immediately so Twilio doesn't retry
   res.sendStatus(200);
 
-  const { RecordingUrl, RecordingDuration, RecordingSid, CallSid, From } = req.body;
+  const { RecordingUrl, RecordingDuration, RecordingSid, CallSid } = req.body;
+  // From is never present on a recordingStatusCallback. Prefer the value we
+  // threaded through the query string; fall back to the Twilio REST API below.
+  const From = req.query.from || req.body.From || null;
+  // Only the voicemail TwiML path sets vm=1. Recordings of ordinary answered
+  // calls must never be inserted as new voicemail rows.
+  const isVoicemail = req.query.vm === '1';
   if (!RecordingUrl) return;
 
   // Skip very short recordings (< 3s — likely silence or hangups)
@@ -571,20 +584,64 @@ router.post('/recording-complete', async (req, res) => {
     try {
       const mp3Url = RecordingUrl + '.mp3';
 
-      // Find the matching call record by twilio_call_sid, or the most recent one
-      let { rows: [callRecord] } = await pool.query(
-        `SELECT ca.*, co.phone_number AS contact_phone, co.name AS contact_name, co.id AS contact_id
-         FROM calls ca
-         JOIN conversations cv ON cv.id = ca.conversation_id
-         JOIN contacts co      ON co.id = cv.contact_id
-         WHERE ca.twilio_call_sid = $1 OR ca.status = 'voicemail'
-         ORDER BY ca.started_at DESC LIMIT 1`,
-        [CallSid]
-      );
+      // Find the matching call record by twilio_call_sid ONLY. The previous
+      // "OR ca.status = 'voicemail'" clause matched any historical voicemail,
+      // so this returned an unrelated row and the code below duplicated it.
+      let callRecord = null;
+      if (CallSid) {
+        const { rows } = await pool.query(
+          `SELECT ca.*, co.phone_number AS contact_phone, co.name AS contact_name, co.id AS contact_id
+           FROM calls ca
+           JOIN conversations cv ON cv.id = ca.conversation_id
+           JOIN contacts co      ON co.id = cv.contact_id
+           WHERE ca.twilio_call_sid = $1
+           ORDER BY ca.started_at DESC LIMIT 1`,
+          [CallSid]
+        );
+        callRecord = rows[0] || null;
+      }
+
+      // No matching call row. If this isn't the voicemail path, the row for an
+      // ordinary recorded call may just not be written yet — wait and retry once
+      // rather than fabricating a mislabelled voicemail.
+      if (!callRecord && !isVoicemail) {
+        await new Promise(r => setTimeout(r, 5000));
+        const { rows } = await pool.query(
+          `SELECT ca.*, co.phone_number AS contact_phone, co.name AS contact_name, co.id AS contact_id
+           FROM calls ca
+           JOIN conversations cv ON cv.id = ca.conversation_id
+           JOIN contacts co      ON co.id = cv.contact_id
+           WHERE ca.twilio_call_sid = $1
+           ORDER BY ca.started_at DESC LIMIT 1`,
+          [CallSid]
+        );
+        callRecord = rows[0] || null;
+        if (!callRecord) {
+          console.error(`[recording] No call row for ${CallSid} and not a voicemail — skipping`);
+          return;
+        }
+      }
 
       // If this is a voicemail (no existing call record), create one
-      if (!callRecord || callRecord.status === 'voicemail') {
-        const phone = From || 'unknown';
+      if (!callRecord) {
+        // Last-resort caller lookup: ask Twilio who placed this call.
+        let resolvedFrom = From;
+        if (!resolvedFrom && CallSid
+            && process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) {
+          try {
+            const tw = require('twilio')(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+            const callInfo = await tw.calls(CallSid).fetch();
+            resolvedFrom = callInfo.from || null;
+            console.log(`[recording] Resolved caller ${resolvedFrom} for ${CallSid} via Twilio API`);
+          } catch (e) {
+            console.error('[recording] Twilio caller lookup failed:', e.message);
+          }
+        }
+        if (!resolvedFrom) {
+          console.error(`[recording] Could not determine caller for ${CallSid} — skipping voicemail insert`);
+          return;
+        }
+        const phone = resolvedFrom;
         await pool.query('INSERT INTO contacts (phone_number, name) VALUES ($1, $2) ON CONFLICT (phone_number) DO NOTHING', [phone, phone]);
         const { rows: [contact] } = await pool.query('SELECT * FROM contacts WHERE phone_number = $1', [phone]);
         let { rows: [conv] } = await pool.query(
@@ -597,9 +654,9 @@ router.post('/recording-complete', async (req, res) => {
           conv = r.rows[0];
         }
         const { rows: [newCall] } = await pool.query(`
-          INSERT INTO calls (conversation_id, direction, duration, status, recording_url, recording_sid, started_at, ended_at)
-          VALUES ($1, 'inbound', $2, 'voicemail', $3, $4, NOW(), NOW()) RETURNING *
-        `, [conv.id, duration, mp3Url, RecordingSid]);
+          INSERT INTO calls (conversation_id, direction, duration, status, recording_url, recording_sid, twilio_call_sid, started_at, ended_at)
+          VALUES ($1, 'inbound', $2, 'voicemail', $3, $4, $5, NOW(), NOW()) RETURNING *
+        `, [conv.id, duration, mp3Url, RecordingSid, CallSid || null]);
 
         callRecord = { ...newCall, contact_phone: phone, contact_name: contact.name || phone, contact_id: contact.id };
 
