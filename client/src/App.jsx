@@ -40,6 +40,7 @@ function AppInner() {
   const [loading,    setLoading]    = useState(true)
   const [activeTab,  setActiveTab]  = useState('dialpad')
   const [navConvId,  setNavConvId]  = useState(null)   // deep-link into a specific SMS conversation
+  const [autoDialNumber, setAutoDialNumber] = useState(null) // click-to-call: number DialpadTab should dial on mount
   const [smsOpenChat, setSmsOpenChat] = useState(false) // true when a conversation thread is open
   const [agentStatus, setAgentStatus] = useState('online')
   const [compose,      setCompose]      = useState(false)
@@ -347,6 +348,28 @@ function AppInner() {
     setNotifOpen(false)
   }
 
+  // ── Click-to-call / click-to-message (CallsTab + ContactsTab icons) ─────────
+  // dialTo: switch to the dialpad and connect immediately.
+  function dialTo(number) {
+    if (!number) return
+    setAutoDialNumber(number)
+    setActiveTab('dialpad')
+  }
+
+  // messageTo: resolve (or create) the conversation for this number, then jump
+  // straight into that SMS thread.
+  async function messageTo(number) {
+    if (!number) return
+    try {
+      const r = await api.ensureConversation(number)
+      setNavConvId(r.conversation_id)
+      setActiveTab('sms')
+    } catch (e) {
+      console.error('[messageTo]', e)
+      alert(e.message || 'Could not open conversation')
+    }
+  }
+
   async function handleStatusChange(newStatus) {
     setAgentStatus(newStatus) // optimistic
     try {
@@ -566,13 +589,15 @@ function AppInner() {
             setCallerInfo(null)
           }}
         />}
-        {activeTab === 'contacts' && <ContactsTab agent={agent} />}
-        {activeTab === 'calls'    && <CallsTab    agent={agent} onWrapUpClick={c => setWrapUpCall(c)} />}
+        {activeTab === 'contacts' && <ContactsTab agent={agent} onDial={dialTo} onMessage={messageTo} />}
+        {activeTab === 'calls'    && <CallsTab    agent={agent} onWrapUpClick={c => setWrapUpCall(c)} onDial={dialTo} onMessage={messageTo} />}
         {activeTab === 'dialpad'  && (
           <DialpadTab
             agent={agent}
             device={twilioDevice}
             activeCall={activeCall}
+            autoDial={autoDialNumber}
+            onAutoDialConsumed={() => setAutoDialNumber(null)}
             onCallStart={(call, phone) => {
               const info = { phone, name: null }
               call.customDirection = 'outbound'

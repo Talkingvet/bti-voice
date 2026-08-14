@@ -36,11 +36,15 @@ app.use('/api/quick-dial',    require('./routes/quickDial'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/track',         require('./routes/track'));
 app.use('/admin/activity',    require('./routes/adminActivity'));
+app.use('/api/zoho-widget',   require('./routes/zohoWidget'));
 
 // ── Twilio Webhooks ───────────────────────────────────────────
 const { validateTwilio } = require('./webhooks/validateTwilio');
 app.use('/webhooks/sms',       validateTwilio, require('./webhooks/sms'));
 app.use('/webhooks/voice',     validateTwilio, require('./webhooks/voice'));
+
+// ── Zoho CRM widget (static page, tracked in git — server/public is build output) ──
+app.use('/zoho-widget', express.static(path.join(__dirname, 'zoho-widget')));
 
 // ── Serve React Frontend ──────────────────────────────────────
 const PUBLIC = path.join(__dirname, 'public');

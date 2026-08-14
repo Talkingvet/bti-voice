@@ -116,11 +116,28 @@ function autoLogCall({ callSid, from, to, duration, direction, status, callStart
 
 // ── Outbound: browser → PSTN ──────────────────────────────────────────────────
 router.post('/outbound', async (req, res) => {
-  const { To } = req.body;
-  const callerId = process.env.TWILIO_PHONE_NUMBER;
+  const { To, From } = req.body;
+  // Per-agent caller ID: the browser client leg arrives as From="client:agent_N".
+  // Use that agent's own Twilio number when they have one; otherwise fall back
+  // to the shared env number (danny's test number).
+  let callerId = process.env.TWILIO_PHONE_NUMBER;
+  const clientMatch = /^client:agent_(\d+)$/.exec(From || '');
+  if (clientMatch) {
+    try {
+      const { rows: [agent] } = await pool.query(
+        'SELECT phone_number FROM agents WHERE id = $1 AND is_active = TRUE',
+        [parseInt(clientMatch[1], 10)]
+      );
+      if (agent && agent.phone_number && agent.phone_number.startsWith('+')) {
+        callerId = agent.phone_number;
+      }
+    } catch (e) {
+      console.error('[outbound] agent callerId lookup failed:', e.message);
+    }
+  }
   const twiml = new twilio.twiml.VoiceResponse();
 
-  console.log(`[outbound] To=${To} callerId=${callerId}`);
+  console.log(`[outbound] To=${To} From=${From} callerId=${callerId}`);
 
   if (!callerId) {
     console.error('[outbound] ⚠️  TWILIO_PHONE_NUMBER is not set — outbound calls will fail');
@@ -747,33 +764,20 @@ Keep it tight — this is for a CRM note, not a report.`,
         ai_summary:    aiSummary,
       });
 
-      // ── Sync summary to Zoho CRM as a note (fire-and-forget) ─────────────
-      // v1.4.0: re-read the row to pick up chosen_zoho_contact_id set by the
-      // post-call wrap-up screen. Falls back to auto-match (resolveZohoId) if
-      // the agent didn't pick a contact in time.
-      // To revert: pass only `contact_id: callRecord.contact_id` like before.
+      // ── Sync transcript + AI summary into the BTI_Voice module ───────────
+      // Upserts the call's record (BTI_Ref 'call-<id>') with Recording_URL,
+      // Transcript and AI_Summary. The endpoint re-reads the row, so it picks
+      // up chosen_zoho_contact_id set by the post-call wrap-up screen.
+      // (Replaced the old POST /api/zoho/add-note path 2026-08-14.)
       if (process.env.ZOHO_REFRESH_TOKEN && callRecord.contact_id) {
         try {
-          const fresh = await pool.query(
-            'SELECT chosen_zoho_contact_id, chosen_zoho_module FROM calls WHERE id = $1',
-            [callRecord.id]
-          );
-          const chosenZohoId     = fresh.rows[0] && fresh.rows[0].chosen_zoho_contact_id;
-          const chosenZohoModule = fresh.rows[0] && fresh.rows[0].chosen_zoho_module;
-          const noteBody = {
-            contact_id: callRecord.contact_id,
-            note:       'Call Summary (' + new Date().toLocaleDateString() + '):\n\n' + aiSummary,
-          };
-          if (chosenZohoId)     noteBody.zoho_contact_id = chosenZohoId;
-          // v1.4.1: pass module so note lands on the right type (Contact OR Lead)
-          if (chosenZohoModule) noteBody.zoho_module     = chosenZohoModule;
-          await fetch('http://localhost:' + (process.env.PORT || 3000) + '/api/zoho/add-note', {
+          await fetch('http://localhost:' + (process.env.PORT || 3000) + '/api/zoho/update-call-record', {
             method:  'POST',
             headers: { 'Content-Type': 'application/json', 'x-internal-token': require('../secret').INTERNAL_TOKEN },
-            body:    JSON.stringify(noteBody),
+            body:    JSON.stringify({ call_id: callRecord.id }),
           });
         } catch (e) {
-          console.error('[recording] Zoho note sync failed:', e.message);
+          console.error('[recording] Zoho BTI_Voice sync failed:', e.message);
         }
       }
 

@@ -13,7 +13,7 @@ const KEYS = [
 ]
 
 // device, activeCall, onCallStart, onCallEnd provided by App.jsx
-export default function DialpadTab({ agent, device, activeCall, onCallStart, onCallEnd }) {
+export default function DialpadTab({ agent, device, activeCall, onCallStart, onCallEnd, autoDial, onAutoDialConsumed }) {
   const C = useColors()
   const { toast } = useToast()
   const [number,       setNumber]       = useState('')
@@ -135,13 +135,23 @@ export default function DialpadTab({ agent, device, activeCall, onCallStart, onC
 
   function backspace() { setNumber(prev => prev.slice(0, -1)) }
 
-  // ── Outbound call ─────────────────────────────────────────────────────────────
-  async function startCall() {
-    if (!number.trim() || !device) return
-    setCallState('connecting')
-    setStatus(`Calling ${formatNumber(number)}…`)
+  // ── Click-to-call: auto-dial a number passed in from CallsTab/ContactsTab ────
+  useEffect(() => {
+    if (!autoDial || !device || callState !== 'idle') return
+    const digits = autoDial.replace(/\D/g, '')
+    setNumber(digits.length === 11 && digits.startsWith('1') ? digits.slice(1) : digits)
+    onAutoDialConsumed && onAutoDialConsumed()
+    startCall(autoDial)
+  }, [autoDial, device, callState]) // eslint-disable-line
 
-    const digits = number.replace(/\D/g, '')
+  // ── Outbound call ─────────────────────────────────────────────────────────────
+  async function startCall(rawOverride) {
+    const raw = typeof rawOverride === 'string' ? rawOverride : number
+    if (!raw.trim() || !device) return
+    setCallState('connecting')
+    setStatus(`Calling ${formatNumber(raw)}…`)
+
+    const digits = raw.replace(/\D/g, '')
     const to = digits.length === 10 ? `+1${digits}` : `+${digits}`
 
     try {

@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BTI Voice — SMS</title>
+<script src="https://live.zwidgets.com/js-sdk/1.2/ZohoEmbededAppSDK.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #f4f6f9; color: #1e293b; display: flex; flex-direction: column;
+    font-size: 13px;
+  }
+  #header {
+    padding: 8px 12px; background: white; border-bottom: 1px solid #e2e8f0;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    flex-shrink: 0;
+  }
+  #header .who { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #header .num { color: #64748b; font-size: 11px; }
+  #status { font-size: 11px; color: #64748b; flex-shrink: 0; }
+  #optout-banner {
+    display: none; background: #fef2f2; color: #b91c1c; border-bottom: 1px solid #fecaca;
+    padding: 6px 12px; font-size: 11px; font-weight: 600; flex-shrink: 0;
+  }
+  #thread { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .bubble-row { display: flex; flex-direction: column; max-width: 78%; }
+  .bubble-row.in  { align-self: flex-start; align-items: flex-start; }
+  .bubble-row.out { align-self: flex-end;   align-items: flex-end; }
+  .bubble {
+    padding: 7px 11px; border-radius: 14px; line-height: 1.45;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .in  .bubble { background: white; border: 1px solid #e2e8f0; border-bottom-left-radius: 4px; }
+  .out .bubble { background: #4f9cf9; color: white; border-bottom-right-radius: 4px; }
+  .meta { font-size: 10px; color: #94a3b8; margin-top: 2px; padding: 0 4px; }
+  .meta .agent { font-weight: 700; }
+  .day-sep { text-align: center; font-size: 10px; color: #94a3b8; margin: 6px 0 2px; }
+  #composer {
+    background: white; border-top: 1px solid #e2e8f0; padding: 8px 12px;
+    display: flex; flex-direction: column; gap: 6px; flex-shrink: 0;
+  }
+  #composer-row { display: flex; gap: 8px; align-items: flex-end; }
+  #msg-input {
+    flex: 1; resize: none; border: 1px solid #cbd5e1; border-radius: 10px;
+    padding: 8px 10px; font: inherit; min-height: 36px; max-height: 110px; outline: none;
+  }
+  #msg-input:focus { border-color: #4f9cf9; }
+  #send-btn {
+    background: #4f9cf9; color: white; border: none; border-radius: 10px;
+    padding: 9px 16px; font-weight: 600; font-size: 13px; cursor: pointer; flex-shrink: 0;
+  }
+  #send-btn:disabled { background: #cbd5e1; cursor: default; }
+  #agent-row { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #64748b; }
+  #agent-select { font: inherit; font-size: 11px; border: 1px solid #cbd5e1; border-radius: 6px; padding: 3px 6px; color: #1e293b; background: white; }
+  #error { display: none; color: #b91c1c; font-size: 11px; padding: 0 2px; }
+  #empty { text-align: center; color: #94a3b8; margin-top: 40px; font-size: 12px; }
+</style>
+</head>
+<body>
+  <div id="header">
+    <div style="overflow:hidden">
+      <div class="who" id="contact-name">Loading…</div>
+      <div class="num" id="contact-number"></div>
+    </div>
+    <div id="status"></div>
+  </div>
+  <div id="optout-banner">This contact has opted out of SMS (replied STOP). Sending is blocked until they text START.</div>
+  <div id="thread"><div id="empty">Loading conversation…</div></div>
+  <div id="composer">
+    <div id="error"></div>
+    <div id="agent-row">
+      <span>Send as</span>
+      <select id="agent-select"></select>
+    </div>
+    <div id="composer-row">
+      <textarea id="msg-input" placeholder="Type a message…" rows="1"></textarea>
+      <button id="send-btn" disabled>Send</button>
+    </div>
+  </div>
+
+<script>
+(function () {
+  'use strict';
+
+  // The shared key rides on the widget URL that Danny registers in Zoho
+  // (e.g. .../zoho-widget/sms.html?key=XXXX). It is NOT baked into this file.
+  var KEY   = new URLSearchParams(location.search).get('key') || '';
+  var BASE  = location.origin;
+  var POLL_MS = 10000;
+
+  var phone = null;          // resolved from the current Contact/Lead record
+  var agents = [];
+  var lastRenderKey = '';    // avoid re-rendering identical threads
+  var pollTimer = null;
+
+  var elName   = document.getElementById('contact-name');
+  var elNum    = document.getElementById('contact-number');
+  var elStatus = document.getElementById('status');
+  var elThread = document.getElementById('thread');
+  var elInput  = document.getElementById('msg-input');
+  var elSend   = document.getElementById('send-btn');
+  var elSelect = document.getElementById('agent-select');
+  var elErr    = document.getElementById('error');
+  var elOptout = document.getElementById('optout-banner');
+
+  function api(path, opts) {
+    opts = opts || {};
+    opts.headers = Object.assign({ 'x-widget-key': KEY }, opts.headers || {});
+    return fetch(BASE + path, opts).then(function (r) {
+      return r.json().then(function (j) {
+        if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+        return j;
+      });
+    });
+  }
+
+  function showError(msg) {
+    elErr.textContent = msg;
+    elErr.style.display = msg ? 'block' : 'none';
+  }
+
+  function fmtTime(iso) {
+    var d = new Date(iso);
+    return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  }
+  function fmtDay(iso) {
+    var d = new Date(iso);
+    return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
+  function renderThread(data) {
+    var msgs = data.messages || [];
+    var key = msgs.length + ':' + (msgs.length ? msgs[msgs.length - 1].id : 0) + ':' + data.opted_out;
+    if (key === lastRenderKey) return;
+    lastRenderKey = key;
+
+    elOptout.style.display = data.opted_out ? 'block' : 'none';
+    elSend.disabled = data.opted_out;
+
+    elThread.innerHTML = '';
+    if (!msgs.length) {
+      var empty = document.createElement('div');
+      empty.id = 'empty';
+      empty.textContent = 'No messages yet — start the conversation below.';
+      elThread.appendChild(empty);
+      return;
+    }
+    var lastDay = '';
+    msgs.forEach(function (m) {
+      var day = fmtDay(m.sent_at);
+      if (day !== lastDay) {
+        lastDay = day;
+        var sep = document.createElement('div');
+        sep.className = 'day-sep';
+        sep.textContent = day;
+        elThread.appendChild(sep);
+      }
+      var row = document.createElement('div');
+      row.className = 'bubble-row ' + (m.direction === 'inbound' ? 'in' : 'out');
+      var bub = document.createElement('div');
+      bub.className = 'bubble';
+      bub.textContent = (m.body || '') + (m.has_media ? (m.body ? '\n' : '') + '📎 [attachment]' : '');
+      row.appendChild(bub);
+      var meta = document.createElement('div');
+      meta.className = 'meta';
+      if (m.direction === 'inbound') {
+        meta.textContent = fmtTime(m.sent_at);
+      } else {
+        var ag = document.createElement('span');
+        ag.className = 'agent';
+        ag.textContent = m.agent_name || 'BTI Voice';
+        if (m.agent_color) ag.style.color = m.agent_color;
+        meta.appendChild(ag);
+        meta.appendChild(document.createTextNode(' · ' + fmtTime(m.sent_at)));
+      }
+      row.appendChild(meta);
+      elThread.appendChild(row);
+    });
+    elThread.scrollTop = elThread.scrollHeight;
+  }
+
+  function poll() {
+    if (!phone) return;
+    api('/api/zoho-widget/thread?phone=' + encodeURIComponent(phone))
+      .then(function (data) {
+        elStatus.textContent = '';
+        renderThread(data);
+      })
+      .catch(function (e) { elStatus.textContent = '⚠ ' + e.message; });
+  }
+
+  function loadAgents() {
+    return api('/api/zoho-widget/agents').then(function (data) {
+      agents = (data.agents || []).filter(function (a) { return a.can_send; });
+      elSelect.innerHTML = '';
+      agents.forEach(function (a) {
+        var opt = document.createElement('option');
+        opt.value = a.id;
+        opt.textContent = a.name;
+        elSelect.appendChild(opt);
+      });
+      if (!agents.length) {
+        showError('No agents have Twilio numbers assigned yet.');
+        elSend.disabled = true;
+      }
+    });
+  }
+
+  function send() {
+    var text = elInput.value.trim();
+    if (!text || !phone || elSend.disabled) return;
+    elSend.disabled = true;
+    showError('');
+    api('/api/zoho-widget/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: phone, body: text, agent_id: parseInt(elSelect.value, 10) }),
+    })
+      .then(function () {
+        elInput.value = '';
+        lastRenderKey = ''; // force re-render
+        poll();
+      })
+      .catch(function (e) { showError(e.message); })
+      .finally(function () { elSend.disabled = false; elInput.focus(); });
+  }
+
+  elSend.addEventListener('click', send);
+  elInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+  });
+  elInput.addEventListener('input', function () {
+    elSend.disabled = !elInput.value.trim();
+    elInput.style.height = 'auto';
+    elInput.style.height = Math.min(elInput.scrollHeight, 110) + 'px';
+  });
+
+  function start(recordPhone, displayLabel) {
+    phone = recordPhone;
+    elName.textContent = displayLabel || recordPhone;
+    elNum.textContent = recordPhone;
+    loadAgents().catch(function (e) { showError(e.message); });
+    poll();
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(poll, POLL_MS);
+  }
+
+  // ── Zoho Embedded App bootstrap ─────────────────────────────────────────────
+  if (window.ZOHO && ZOHO.embeddedApp) {
+    ZOHO.embeddedApp.on('PageLoad', function (data) {
+      var entity   = data.Entity;
+      var entityId = data.EntityId;
+      if (Array.isArray(entityId)) entityId = entityId[0];
+      ZOHO.CRM.API.getRecord({ Entity: entity, RecordID: entityId })
+        .then(function (resp) {
+          var rec = resp && resp.data && resp.data[0];
+          if (!rec) { elName.textContent = 'Record not found'; return; }
+          var p = rec.Phone || rec.Mobile;
+          if (!p) { elName.textContent = rec.Full_Name || 'No phone on record'; elNum.textContent = 'Add a phone number in Zoho to text this record.'; return; }
+          start(p, rec.Full_Name || p);
+        })
+        .catch(function () { elName.textContent = 'Could not read record'; });
+    });
+    ZOHO.embeddedApp.init();
+  } else {
+    // Dev fallback: open sms.html?key=...&phone=+1... directly in a browser
+    var devPhone = new URLSearchParams(location.search).get('phone');
+    if (devPhone) start(devPhone, devPhone);
+    else elName.textContent = 'Open inside Zoho CRM';
+  }
+})();
+</script>
+</body>
+</html>

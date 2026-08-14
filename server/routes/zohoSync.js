@@ -20,6 +20,7 @@ const {
   createZohoContact,
   createZohoTask,
 } = require('../zoho');
+const { upsertSmsDigest, upsertCallRecord } = require('../helpers/btiVoiceModule');
 
 // ── Shared: resolve a Zoho contact ID for a BTI contact ───────────────────────
 // Checks the local cache first, then searches Zoho by phone number.
@@ -80,6 +81,7 @@ router.post('/log-call', async (req, res) => {
     // Fetch call details from BTI Voice DB
     const queryResult = await pool.query(
       'SELECT ca.id, ca.direction, ca.status, ca.duration, ca.started_at, ' +
+      '       ca.recording_url, ca.transcription, ca.ai_summary, ' +
       '       ca.chosen_zoho_contact_id, ca.chosen_zoho_module, ' +
       '       ca.zoho_call_id, ca.zoho_logged_at, ' +
       '       c.contact_id, ' +
@@ -167,6 +169,29 @@ router.post('/log-call', async (req, res) => {
     );
 
     console.log('[Zoho] Call ' + callId + ' logged on ' + zohoModule + ' ' + zohoId + ' (Zoho record: ' + zohoCallId + ')');
+
+    // Also record it in the custom BTI_Voice module (one record per call,
+    // upserted on BTI_Ref 'call-<id>' — transcript/summary may land later via
+    // /update-call-record). Non-fatal: native Calls logging above is the
+    // source of truth for Zoho activity reporting.
+    try {
+      await upsertCallRecord({
+        id:            call.id,
+        direction:     call.direction,
+        status:        call.status,
+        duration:      call.duration,
+        started_at:    call.started_at,
+        phone_number:  call.phone_number,
+        contact_name:  call.contact_name,
+        agent_name:    call.agent_name,
+        recording_url: call.recording_url,
+        transcription: call.transcription,
+        ai_summary:    call.ai_summary,
+      }, zohoId, zohoModule);
+    } catch (e) {
+      console.error('[Zoho log-call] BTI_Voice upsert failed:', e.message, e.body ? JSON.stringify(e.body) : '');
+    }
+
     res.json({ success: true, zoho_contact_id: zohoId, zoho_module: zohoModule, zoho_call_id: zohoCallId });
 
   } catch (e) {
@@ -182,7 +207,7 @@ router.post('/log-sms', async (req, res) => {
 
   try {
     const queryResult = await pool.query(
-      'SELECT m.id, m.body, m.direction, m.sent_at, ' +
+      'SELECT m.id, m.body, m.direction, m.sent_at, m.conversation_id, ' +
       '       c.contact_id, ' +
       '       co.phone_number, co.name AS contact_name, ' +
       '       a.name AS agent_name ' +
@@ -205,36 +230,66 @@ router.post('/log-sms', async (req, res) => {
     const zohoId     = rec.id;
     const zohoModule = rec.module === 'Leads' ? 'Leads' : 'Contacts';
 
-    // Log as a Note on the record.
-    // If you identify the SMS extension API later, swap this out.
-    const direction = msg.direction === 'inbound' ? 'Received from' : 'Sent to';
-    const preview   = (msg.body || '').substring(0, 80);
-    const noteBody  = [
-      '[SMS] ' + direction + ' ' + msg.phone_number,
-      'Agent: ' + (msg.agent_name || 'Unknown'),
-      '',
-      msg.body || '',
-      '',
-      '- Logged by BTI Voice at ' + new Date(msg.sent_at || Date.now()).toLocaleString(),
-    ].join('\n');
-
-    const titleSuffix = msg.body && msg.body.length > 80 ? '...' : '';
-    const noteTitle   = 'SMS: ' + (msg.contact_name || msg.phone_number) + ' - "' + preview + titleSuffix + '"';
-
-    await zohoAPI('POST', '/Notes', {
-      data: [{
-        Note_Title:   noteTitle,
-        Note_Content: noteBody,
-        Parent_Id:    { id: zohoId },
-        $se_module:   zohoModule,
-      }]
+    // Upsert the live-appending daily digest in the BTI_Voice module
+    // (BTI_Ref 'sms-YYYY-MM-DD-<phone>'). The whole day is rebuilt from our DB
+    // on every message, so retries and out-of-order syncs converge.
+    await upsertSmsDigest({
+      conversationId: msg.conversation_id,
+      phoneNumber:    msg.phone_number,
+      contactName:    msg.contact_name,
+      when:           msg.sent_at || new Date(),
+      zohoId:         zohoId,
+      zohoModule:     zohoModule,
     });
 
-    console.log('[Zoho] SMS ' + messageId + ' logged on ' + zohoModule + ' ' + zohoId);
+    console.log('[Zoho] SMS ' + messageId + ' digested on ' + zohoModule + ' ' + zohoId);
     res.json({ success: true, zoho_contact_id: zohoId, zoho_module: zohoModule });
 
   } catch (e) {
     console.error('[Zoho log-sms]', e.message, e.body || '');
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── POST /api/zoho/update-call-record ─────────────────────────────────────────
+// Called by webhooks/voice.js after transcription/AI summary complete. Upserts
+// the BTI_Voice record for the call (BTI_Ref 'call-<id>') with the recording
+// URL, transcript and AI summary. Replaces the old add-note path for summaries.
+router.post('/update-call-record', async (req, res) => {
+  const callId = req.body.call_id;
+  if (!callId) return res.status(400).json({ error: 'call_id required' });
+  try {
+    const queryResult = await pool.query(
+      'SELECT ca.id, ca.direction, ca.status, ca.duration, ca.started_at, ' +
+      '       ca.recording_url, ca.transcription, ca.ai_summary, ' +
+      '       ca.chosen_zoho_contact_id, ca.chosen_zoho_module, ' +
+      '       co.phone_number, co.name AS contact_name, ' +
+      '       a.name AS agent_name ' +
+      'FROM   calls ca ' +
+      'LEFT JOIN conversations c  ON c.id  = ca.conversation_id ' +
+      'LEFT JOIN contacts      co ON co.id = c.contact_id ' +
+      'LEFT JOIN agents        a  ON a.id  = ca.agent_id ' +
+      'WHERE  ca.id = $1',
+      [callId]
+    );
+    if (!queryResult.rows[0]) return res.status(404).json({ error: 'Call not found' });
+    const call = queryResult.rows[0];
+    if (!call.phone_number) return res.json({ skipped: true, reason: 'No contact linked to this call' });
+
+    let zohoId     = call.chosen_zoho_contact_id || null;
+    let zohoModule = call.chosen_zoho_module     || null;
+    if (!zohoId) {
+      const rec = await resolveZohoRecord(call.phone_number);
+      if (rec) { zohoId = rec.id; zohoModule = rec.module; }
+    }
+    if (zohoModule !== 'Leads') zohoModule = 'Contacts';
+    // zohoId may be null — the record still gets created, just without a lookup.
+
+    const details = await upsertCallRecord(call, zohoId, zohoModule);
+    console.log('[Zoho] BTI_Voice call record updated for call ' + callId);
+    res.json({ success: true, bti_voice_id: details && details.id });
+  } catch (e) {
+    console.error('[Zoho update-call-record]', e.message, e.body ? JSON.stringify(e.body) : '');
     res.status(500).json({ error: e.message });
   }
 });

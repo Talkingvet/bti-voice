@@ -63,7 +63,7 @@ const ST = {
 }
 
 /* ── Main component ──────────────────────────────────────────────── */
-export default function CallsTab({ agent, onWrapUpClick }) {
+export default function CallsTab({ agent, onWrapUpClick, onDial, onMessage }) {
   const C = useColors()
   const [subTab,     setSubTab]     = useState('logs')
   const [calls,       setCalls]      = useState([])
@@ -211,6 +211,8 @@ export default function CallsTab({ agent, onWrapUpClick }) {
                   expanded={expandedCall === row.data.id}
                   onToggle={() => setExpandedCall(p => p === row.data.id ? null : row.data.id)}
                   onWrapUp={onWrapUpClick}
+                  onDial={onDial}
+                  onMessage={onMessage}
                   C={C}
                 />
             )}
@@ -255,12 +257,14 @@ function DateHeader({ label, C }) {
 }
 
 /* ── Call row ────────────────────────────────────────────────────── */
-function CallRow({ call, expanded, onToggle, onWrapUp, C }) {
+function CallRow({ call, expanded, onToggle, onWrapUp, onDial, onMessage, C }) {
   const isMissed  = call.status === 'missed'
   const isInbound = call.direction === 'inbound'
   const color     = isMissed ? '#ef4444' : isInbound ? '#22c55e' : '#4f9cf9'
   const duration  = fmtDuration(call.duration)
-  const hasDetail = call.recording_url || call.transcription || call.ai_summary
+  // Every row expands now — the detail area always offers Call/Message actions,
+  // plus recording/summary/transcript when present.
+  const hasDetail = true
 
   return (
     <>
@@ -324,6 +328,20 @@ function CallRow({ call, expanded, onToggle, onWrapUp, C }) {
 
       {expanded && (
         <div style={{ background: C.surface, borderBottom: `1px solid ${C.borderItem}`, padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {call.contact_number && (
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                title={`Call ${call.contact_number}`}
+                onClick={e => { e.stopPropagation(); onDial && onDial(call.contact_number) }}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, border: '1px solid rgba(34,197,94,0.4)', background: 'rgba(34,197,94,0.12)', color: '#22c55e', borderRadius: 8, padding: '5px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+              >📞 Call</button>
+              <button
+                title={`Message ${call.contact_number}`}
+                onClick={e => { e.stopPropagation(); onMessage && onMessage(call.contact_number) }}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, border: '1px solid rgba(79,156,249,0.4)', background: 'rgba(79,156,249,0.12)', color: '#4f9cf9', borderRadius: 8, padding: '5px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+              >💬 Message</button>
+            </div>
+          )}
           {call.recording_url && (
             <div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>

@@ -25,7 +25,7 @@ function fmtPhone(p) {
   return formatPhone(p)
 }
 
-export default function ContactsTab({ agent }) {
+export default function ContactsTab({ agent, onDial, onMessage }) {
   const C = useColors()
   const { toast } = useToast()
   const [contacts,   setContacts]   = useState([])
@@ -73,6 +73,8 @@ export default function ContactsTab({ agent }) {
       <ContactDetail
         contact={selected}
         onBack={() => setSelected(null)}
+        onDial={onDial}
+        onMessage={onMessage}
         onUpdate={(updated) => {
           setContacts(prev => prev.map(c => c.id === updated.id ? updated : c))
           setSelected(updated)
@@ -144,7 +146,7 @@ export default function ContactsTab({ agent }) {
 }
 
 /* ── Contact detail view ─────────────────────────────────────────── */
-function ContactDetail({ contact, onBack, onUpdate, C }) {
+function ContactDetail({ contact, onBack, onUpdate, onDial, onMessage, C }) {
   const [editing,    setEditing]    = useState(false)
   const [syncing,    setSyncing]    = useState(false)
   const [syncResult, setSyncResult] = useState(null)
@@ -214,6 +216,18 @@ function ContactDetail({ contact, onBack, onUpdate, C }) {
         {contact.name && (
           <div style={{ ...D.heroPhone, color: C.textSec }}>{fmtPhone(contact.phone_number)}</div>
         )}
+        <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
+          <button
+            title={`Call ${contact.phone_number}`}
+            onClick={() => onDial && onDial(contact.phone_number)}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, border: '1px solid rgba(34,197,94,0.4)', background: 'rgba(34,197,94,0.12)', color: '#22c55e', borderRadius: 10, padding: '7px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+          >📞 Call</button>
+          <button
+            title={`Message ${contact.phone_number}`}
+            onClick={() => onMessage && onMessage(contact.phone_number)}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, border: '1px solid rgba(79,156,249,0.4)', background: 'rgba(79,156,249,0.12)', color: '#4f9cf9', borderRadius: 10, padding: '7px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+          >💬 Message</button>
+        </div>
       </div>
 
       {/* Info rows */}
