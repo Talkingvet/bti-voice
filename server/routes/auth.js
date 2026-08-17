@@ -19,9 +19,12 @@ router.post('/login', async (req, res) => {
     const valid = await bcrypt.compare(password, agent.password_hash);
     if (!valid) return res.status(401).json({ error: 'Invalid username or password' });
 
+    // Nag-banner support: flag logins that still use the seeded default password.
+    const default_password = password === agent.username + '123';
+
     delete agent.password_hash;
     logActivity(req, agent, 'login');
-    res.json({ agent, token: generateToken(agent) });
+    res.json({ agent, token: generateToken(agent), default_password });
   } catch (e) {
     console.error('[auth/login]', e);
     res.status(500).json({ error: 'Server error' });

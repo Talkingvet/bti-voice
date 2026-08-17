@@ -187,6 +187,14 @@ function AppInner() {
     window.electronAPI.setZoom(d.factor, d.w, d.h)
   }, [])
 
+  // ── Default-password nag banner ──────────────────────────────────────────────
+  const [defaultPw, setDefaultPw] = useState(false)
+  useEffect(() => {
+    const clear = () => setDefaultPw(false)
+    window.addEventListener('bti-password-changed', clear)
+    return () => window.removeEventListener('bti-password-changed', clear)
+  }, [])
+
   // ── Apply saved font on startup ───────────────────────────────────────────────
   useEffect(() => {
     const saved = localStorage.getItem('bti_font') || 'system'
@@ -379,14 +387,16 @@ function AppInner() {
     }
   }
 
-  function handleLogin(agentData, token) {
+  function handleLogin(agentData, token, defaultPassword) {
     localStorage.setItem('bti_token', token)
     setAgent(agentData)
     setAgentStatus(agentData.status || 'online')
     setActiveTab('dialpad')
+    setDefaultPw(!!defaultPassword)
   }
 
   function handleLogout() {
+    setDefaultPw(false)
     disconnectSocket()
     localStorage.removeItem('bti_token')
     setActivity([])
@@ -536,6 +546,37 @@ function AppInner() {
       border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.1)'}`,
     }}>
       <TitleBar agent={agent} unreadCount={unreadCount} onBellClick={handleBellClick} agentStatus={agentStatus} onStatusChange={handleStatusChange} deviceStatus={deviceStatus} />
+
+      {/* ── Default-password nag banner ─────────────────────────────── */}
+      {defaultPw && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px',
+          background: 'rgba(245,158,11,0.14)', borderBottom: '1px solid rgba(245,158,11,0.35)',
+          fontSize: 12, color: isDark ? '#fbbf24' : '#92400e', flexShrink: 0,
+        }}>
+          <span style={{ flexShrink: 0 }}>&#9888;&#65039;</span>
+          <span style={{ flex: 1 }}>You&apos;re still using the default password.</span>
+          <button
+            onClick={() => setActiveTab('settings')}
+            style={{
+              border: 'none', borderRadius: 6, padding: '4px 10px', cursor: 'pointer',
+              background: '#f59e0b', color: '#1e1b0e', fontSize: 11, fontWeight: 700, flexShrink: 0,
+            }}
+          >
+            Change it
+          </button>
+          <button
+            onClick={() => setDefaultPw(false)}
+            title="Dismiss until next sign-in"
+            style={{
+              border: 'none', background: 'none', cursor: 'pointer', flexShrink: 0,
+              color: 'inherit', fontSize: 13, padding: '2px 4px', opacity: 0.7,
+            }}
+          >
+            &#10005;
+          </button>
+        </div>
+      )}
 
       {notifOpen && (
         <NotificationsPanel

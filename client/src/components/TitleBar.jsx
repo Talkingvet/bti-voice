@@ -81,8 +81,24 @@ export default function TitleBar({ agent, unreadCount = 0, onBellClick, agentSta
   const status  = normalizeStatus(agentStatus)
   const current = STATUSES.find(s => s.value === status) || STATUSES[0]
 
-  const barBg     = isDark ? '#1d2330' : '#1a2035'
-  const borderCol = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.10)'
+  const barBg     = isDark ? '#1d2330' : '#ffffff'
+  const borderCol = isDark ? 'rgba(255,255,255,0.07)' : '#dde3ee'
+  // Light-mode overrides (dark values live in S below as the base)
+  const T = isDark ? {
+    brand: {}, agentBtn: {}, agentName: {}, agentNum: {},
+    dropdown: {}, dropHeader: {}, dropItem: {}, bellBtn: {}, btn: {}, chevron: 'rgba(255,255,255,0.45)',
+  } : {
+    brand:      { color: '#1e293b' },
+    agentBtn:   { background: '#eef2f8', border: '1px solid #d0d8e8', color: '#1e293b' },
+    agentName:  { color: '#1e293b' },
+    agentNum:   { color: 'rgba(30,41,59,0.45)' },
+    dropdown:   { background: '#ffffff', border: '1px solid #dde3ee', boxShadow: '0 8px 28px rgba(30,41,59,0.18)' },
+    dropHeader: { color: '#96a3b8' },
+    dropItem:   { color: '#1e293b' },
+    bellBtn:    { color: '#6b7c9a' },
+    btn:        { color: '#6b7c9a' },
+    chevron:    'rgba(30,41,59,0.4)',
+  }
 
   return (
     <div style={{ ...S.bar, background: barBg, borderBottom: `1px solid ${borderCol}` }}>
@@ -100,7 +116,7 @@ export default function TitleBar({ agent, unreadCount = 0, onBellClick, agentSta
               <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.42 2 2 0 0 1 3.58 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 9.91a16 16 0 0 0 6.16 6.16l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
             </svg>
           </div>
-          <span style={S.brand}>BTI Voice</span>
+          <span style={{ ...S.brand, ...T.brand }}>BTI Voice</span>
         </div>
       )}
 
@@ -109,17 +125,17 @@ export default function TitleBar({ agent, unreadCount = 0, onBellClick, agentSta
         <div style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', WebkitAppRegion: 'no-drag' }}>
           <button
             ref={btnRef}
-            style={S.agentBtn}
+            style={{ ...S.agentBtn, ...T.agentBtn }}
             onClick={() => setShowDropdown(v => !v)}
             title="Change status"
           >
             <div style={{ ...S.dot, background: agent.color || '#4f9cf9' }} />
-            <span style={S.agentName}>{agent.name}</span>
+            <span style={{ ...S.agentName, ...T.agentName }}>{agent.name}</span>
             {agent.phone_number && agent.phone_number !== 'TBD' && (
-              <span style={S.agentNum}>{agent.phone_number}</span>
+              <span style={{ ...S.agentNum, ...T.agentNum }}>{agent.phone_number}</span>
             )}
             <StatusIcon status={current} size={11} />
-            <ChevronIcon open={showDropdown} />
+            <ChevronIcon open={showDropdown} color={T.chevron} />
           </button>
         </div>
       )}
@@ -145,10 +161,10 @@ export default function TitleBar({ agent, unreadCount = 0, onBellClick, agentSta
           )
         })()}
 
-        <button style={S.bellBtn} onClick={onBellClick} title="Activity">
+        <button style={{ ...S.bellBtn, ...T.bellBtn }} onClick={onBellClick} title="Activity">
           <BellIcon />
           {unreadCount > 0 && (
-            <span style={S.badge}>
+            <span style={{ ...S.badge, border: `1.5px solid ${barBg}` }}>
               {unreadCount > 99 ? '99+' : unreadCount}
             </span>
           )}
@@ -156,13 +172,13 @@ export default function TitleBar({ agent, unreadCount = 0, onBellClick, agentSta
 
         {isElectron && !isMac && (
           <div style={S.controls}>
-            <button style={S.btn} onClick={() => window.electronAPI.minimize()} title="Minimize">
+            <button style={{ ...S.btn, ...T.btn }} onClick={() => window.electronAPI.minimize()} title="Minimize">
               <MinimizeIcon />
             </button>
-            <button style={S.btn} onClick={() => window.electronAPI.maximize()} title={maximized ? 'Restore' : 'Maximize'}>
-              {maximized ? <RestoreIcon /> : <MaximizeIcon />}
+            <button style={{ ...S.btn, ...T.btn }} onClick={() => window.electronAPI.maximize()} title={maximized ? 'Restore' : 'Maximize'}>
+              {maximized ? <RestoreIcon holeFill={barBg} /> : <MaximizeIcon />}
             </button>
-            <button style={{ ...S.btn, ...S.closeBtn }} onClick={() => window.electronAPI.close()} title="Minimize to tray">
+            <button style={{ ...S.btn, ...T.btn, ...S.closeBtn }} onClick={() => window.electronAPI.close()} title="Minimize to tray">
               <CloseIcon />
             </button>
           </div>
@@ -175,24 +191,26 @@ export default function TitleBar({ agent, unreadCount = 0, onBellClick, agentSta
           ref={dropRef}
           style={{
             ...S.dropdown,
+            ...T.dropdown,
             top:  dropPos.top,
             left: dropPos.left,
             transform: 'translateX(-50%)',
           }}
         >
-          <div style={S.dropHeader}>Set status</div>
+          <div style={{ ...S.dropHeader, ...T.dropHeader }}>Set status</div>
           {STATUSES.map(s => (
             <button
               key={s.value}
               style={{
                 ...S.dropItem,
+                ...T.dropItem,
                 background: s.value === status ? 'rgba(79,156,249,0.12)' : 'transparent',
                 fontWeight: s.value === status ? 700 : 400,
               }}
               onClick={() => { onStatusChange?.(s.value); setShowDropdown(false) }}
             >
               <StatusIcon status={s} size={13} />
-              <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12 }}>{s.label}</span>
+              <span style={{ color: 'inherit', fontSize: 12 }}>{s.label}</span>
               {s.value === status && <span style={{ marginLeft: 'auto', color: '#4f9cf9', fontSize: 10 }}>✓</span>}
             </button>
           ))}
@@ -228,9 +246,9 @@ function StatusIcon({ status, size = 11 }) {
   )
 }
 
-function ChevronIcon({ open }) {
+function ChevronIcon({ open, color = 'rgba(255,255,255,0.45)' }) {
   return (
-    <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.45)" strokeWidth="2.5"
+    <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5"
       style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }}>
       <polyline points="6 9 12 15 18 9" />
     </svg>
@@ -252,8 +270,8 @@ function MinimizeIcon() {
 function MaximizeIcon() {
   return <svg width="10" height="10" viewBox="0 0 10 10"><rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="currentColor" strokeWidth="1" /></svg>
 }
-function RestoreIcon() {
-  return <svg width="10" height="10" viewBox="0 0 10 10"><rect x="2" y="0" width="8" height="8" fill="none" stroke="currentColor" strokeWidth="1" /><rect x="0" y="2" width="8" height="8" fill="#1d2330" stroke="currentColor" strokeWidth="1" /></svg>
+function RestoreIcon({ holeFill = '#1d2330' }) {
+  return <svg width="10" height="10" viewBox="0 0 10 10"><rect x="2" y="0" width="8" height="8" fill="none" stroke="currentColor" strokeWidth="1" /><rect x="0" y="2" width="8" height="8" fill={holeFill} stroke="currentColor" strokeWidth="1" /></svg>
 }
 function CloseIcon() {
   return <svg width="10" height="10" viewBox="0 0 10 10"><line x1="0" y1="0" x2="10" y2="10" stroke="currentColor" strokeWidth="1.2" /><line x1="10" y1="0" x2="0" y2="10" stroke="currentColor" strokeWidth="1.2" /></svg>

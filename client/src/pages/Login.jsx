@@ -1,7 +1,10 @@
 import { useState } from 'react'
 import { api } from '../api'
+import { useTheme } from '../ThemeContext'
 
 export default function Login({ onLogin }) {
+  const { theme } = useTheme()
+  const isDark = theme === 'dark'
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError]       = useState('')
@@ -12,8 +15,8 @@ export default function Login({ onLogin }) {
     setError('')
     setLoading(true)
     try {
-      const { agent, token } = await api.login(username, password)
-      onLogin(agent, token)
+      const { agent, token, default_password } = await api.login(username, password)
+      onLogin(agent, token, default_password)
     } catch (err) {
       setError(err.message || 'Login failed')
     } finally {
@@ -21,18 +24,27 @@ export default function Login({ onLogin }) {
     }
   }
 
+  const T = isDark ? {
+    card:  { background: '#1d2330', boxShadow: '0 20px 60px rgba(0,0,0,0.5)' },
+    brand: { color: '#e8edf5' },
+    sub:   { color: 'rgba(255,255,255,0.4)' },
+    label: { color: 'rgba(255,255,255,0.55)' },
+    input: { background: '#252d3c', border: '1.5px solid rgba(255,255,255,0.12)', color: '#e8edf5' },
+    error: { background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)' },
+  } : { card: {}, brand: {}, sub: {}, label: {}, input: {}, error: {} }
+
   return (
     <div style={styles.page}>
-      <div style={styles.card}>
+      <div style={{ ...styles.card, ...T.card }}>
         <div style={styles.logo}>📞</div>
-        <h1 style={styles.brand}><span style={{ color: '#4f9cf9' }}>BTI</span> Voice</h1>
-        <p style={styles.sub}>Shared SMS & Call Inbox</p>
+        <h1 style={{ ...styles.brand, ...T.brand }}><span style={{ color: '#4f9cf9' }}>BTI</span> Voice</h1>
+        <p style={{ ...styles.sub, ...T.sub }}>Shared SMS & Call Inbox</p>
 
         <form onSubmit={handleSubmit} style={styles.form}>
           <div style={styles.field}>
-            <label style={styles.label}>Username</label>
+            <label style={{ ...styles.label, ...T.label }}>Username</label>
             <input
-              style={styles.input}
+              style={{ ...styles.input, ...T.input }}
               type="text"
               placeholder="e.g. shawn"
               value={username}
@@ -42,9 +54,9 @@ export default function Login({ onLogin }) {
             />
           </div>
           <div style={styles.field}>
-            <label style={styles.label}>Password</label>
+            <label style={{ ...styles.label, ...T.label }}>Password</label>
             <input
-              style={styles.input}
+              style={{ ...styles.input, ...T.input }}
               type="password"
               placeholder="••••••••"
               value={password}
@@ -52,7 +64,7 @@ export default function Login({ onLogin }) {
               required
             />
           </div>
-          {error && <div style={styles.error}>{error}</div>}
+          {error && <div style={{ ...styles.error, ...T.error }}>{error}</div>}
           <button style={styles.btn} type="submit" disabled={loading}>
             {loading ? 'Signing in...' : 'Sign In'}
           </button>

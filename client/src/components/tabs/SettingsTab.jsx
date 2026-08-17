@@ -152,13 +152,15 @@ function ProfileSection({ agent, C }) {
   async function savePassword() {
     if (next !== confirm) { setPwMsg('Passwords do not match'); return }
     try {
-      await fetch('/api/agents/me/password', {
+      const res = await fetch('/api/agents/me/password', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('bti_token')}` },
         body: JSON.stringify({ current_password: curr, new_password: next }),
       })
+      if (!res.ok) throw new Error('bad status')
       setPwMsg('Password changed ✓')
       setCurr(''); setNext(''); setConfirm('')
+      window.dispatchEvent(new Event('bti-password-changed'))
     } catch { setPwMsg('Failed — check current password') }
     setTimeout(() => setPwMsg(''), 3000)
   }
@@ -208,8 +210,29 @@ function ProfileSection({ agent, C }) {
 
 /* ── Team section ───────────────────────────────────────────────────────────── */
 function TeamSection({ C }) {
-  const [agents, setAgents] = useState([])
+  const [agents, setAgents]   = useState([])
+  const [editing, setEditing] = useState(null)   // agent id being edited
+  const [numDraft, setNumDraft] = useState('')
+  const [numMsg, setNumMsg]     = useState('')
+
   useEffect(() => { api.agents().then(setAgents).catch(console.error) }, [])
+
+  function startEdit(m) {
+    setEditing(m.id)
+    setNumDraft(m.phone_number && m.phone_number !== 'TBD' ? m.phone_number : '')
+    setNumMsg('')
+  }
+
+  async function saveNumber(id) {
+    try {
+      const updated = await api.updateAgentNumber(id, numDraft.trim())
+      setAgents(prev => prev.map(a => a.id === id ? { ...a, phone_number: updated.phone_number } : a))
+      setEditing(null)
+      setNumMsg('')
+    } catch (e) {
+      setNumMsg(e.message || 'Failed')
+    }
+  }
 
   return (
     <div style={S.section}>
@@ -223,9 +246,40 @@ function TeamSection({ C }) {
             <div style={{ ...S.avatar, width: 32, height: 32, fontSize: 11, background: m.color || '#3b82f6', flexShrink: 0 }}>
               {m.initials || m.name?.slice(0,2).toUpperCase()}
             </div>
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ ...S.rowLabel, color: C.text }}>{m.name}</div>
-              <div style={{ ...S.rowDesc, color: C.textMuted }}>{m.phone_number !== 'TBD' ? m.phone_number : 'No number assigned'}</div>
+              {editing === m.id ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+                  <input
+                    style={{ ...S.input, background: C.inputBg, border: `1px solid ${C.inputBorder}`, color: C.text, width: 150, fontSize: 12 }}
+                    placeholder="+12395551234 (blank = none)"
+                    value={numDraft}
+                    onChange={e => setNumDraft(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') saveNumber(m.id); if (e.key === 'Escape') setEditing(null) }}
+                    autoFocus
+                  />
+                  <button style={{ ...S.primaryBtn, padding: '5px 10px', fontSize: 11 }} onClick={() => saveNumber(m.id)}>Save</button>
+                  <button
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textMuted, fontSize: 11 }}
+                    onClick={() => setEditing(null)}
+                  >
+                    Cancel
+                  </button>
+                  {numMsg && <span style={{ fontSize: 11, color: '#ef4444' }}>{numMsg}</span>}
+                </div>
+              ) : (
+                <div style={{ ...S.rowDesc, color: C.textMuted }}>
+                  {m.phone_number && m.phone_number !== 'TBD' ? m.phone_number : 'No number assigned'}
+                  {' '}
+                  <button
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#4f9cf9', fontSize: 11, fontWeight: 600, padding: 0 }}
+                    onClick={() => startEdit(m)}
+                    title="Assign or change this agent's Twilio number"
+                  >
+                    edit
+                  </button>
+                </div>
+              )}
             </div>
             <div style={{ ...S.badge, background: 'rgba(34,197,94,0.12)', color: '#22c55e' }}>
               <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#22c55e' }} />

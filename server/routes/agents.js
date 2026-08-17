@@ -23,6 +23,29 @@ router.patch('/me/number', requireAuth, async (req, res) => {
   res.json(rows[0]);
 });
 
+// Assign any agent's Twilio number (internal tool — the app has no roles;
+// consistent with the existing "send as another agent" posture).
+router.patch('/:id/number', requireAuth, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: 'Bad agent id' });
+  let { phone_number } = req.body;
+  phone_number = (phone_number || '').trim();
+  if (phone_number && !/^\+[0-9]{11,15}$/.test(phone_number)) {
+    return res.status(400).json({ error: 'Number must be E.164 (e.g. +12395551234) or empty to unassign' });
+  }
+  try {
+    const { rows } = await pool.query(
+      'UPDATE agents SET phone_number = $1 WHERE id = $2 AND is_active = true RETURNING id, name, username, phone_number',
+      [phone_number || null, id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Agent not found' });
+    res.json(rows[0]);
+  } catch (e) {
+    console.error('[agents/:id/number]', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // Update own status
 router.patch('/me/status', requireAuth, async (req, res) => {
   const { status } = req.body;

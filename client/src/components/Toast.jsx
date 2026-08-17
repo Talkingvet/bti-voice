@@ -8,6 +8,7 @@
  */
 import { createContext, useContext, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
+import { useTheme } from '../ThemeContext'
 
 const ToastContext = createContext(null)
 
@@ -58,9 +59,16 @@ const ICONS = {
 }
 
 const COLORS = {
-  success: { bg: '#166534', border: '#15803d', icon: '#4ade80' },
-  error:   { bg: '#7f1d1d', border: '#991b1b', icon: '#f87171' },
-  info:    { bg: '#1e3a5f', border: '#1d4ed8', icon: '#60a5fa' },
+  dark: {
+    success: { bg: '#166534', border: '#15803d', icon: '#4ade80', text: 'white' },
+    error:   { bg: '#7f1d1d', border: '#991b1b', icon: '#f87171', text: 'white' },
+    info:    { bg: '#1e3a5f', border: '#1d4ed8', icon: '#60a5fa', text: 'white' },
+  },
+  light: {
+    success: { bg: '#f0fdf4', border: '#bbf7d0', icon: '#16a34a', text: '#166534' },
+    error:   { bg: '#fef2f2', border: '#fecaca', icon: '#dc2626', text: '#7f1d1d' },
+    info:    { bg: '#eff6ff', border: '#bfdbfe', icon: '#2563eb', text: '#1e3a5f' },
+  },
 }
 
 function ToastList({ toasts }) {
@@ -73,9 +81,11 @@ function ToastList({ toasts }) {
 }
 
 function ToastItem({ toast }) {
-  const c = COLORS[toast.type] || COLORS.info
+  const { theme } = useTheme()
+  const palette = COLORS[theme] || COLORS.dark
+  const c = palette[toast.type] || palette.info
   return (
-    <div style={{ ...S.toast, background: c.bg, border: `1px solid ${c.border}` }}>
+    <div style={{ ...S.toast, background: c.bg, border: `1px solid ${c.border}`, color: c.text }}>
       <span style={{ color: c.icon, flexShrink: 0, display: 'flex', alignItems: 'center' }}>
         {ICONS[toast.type]}
       </span>

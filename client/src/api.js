@@ -28,6 +28,7 @@ export const api = {
   login:         (username, password)  => request('/auth/login', { method: 'POST', body: { username, password } }),
   me:            ()                    => request('/auth/me'),
   agents:        ()                    => request('/agents'),
+  updateAgentNumber: (id, phone_number) => request(`/agents/${id}/number`, { method: 'PATCH', body: { phone_number } }),
   conversations: ()                    => request('/conversations'),
   messages:      (convId)              => request(`/conversations/${convId}/messages`),
   sendMessage:   (conversation_id, body, media_ids) => request('/messages/send', { method: 'POST', body: { conversation_id, body, media_ids } }),
