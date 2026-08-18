@@ -119,6 +119,24 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
       .finally(() => setZohoLoading(false))
   }, [conv?.contact_id])
 
+  // ── Re-sync with CRM: pull the authoritative name/profile from Zoho ──
+  const [crmSyncing, setCrmSyncing] = useState(false)
+  async function resyncCrm() {
+    if (!conv?.contact_id || crmSyncing) return
+    setCrmSyncing(true)
+    try {
+      const result = await api.syncContactZoho(conv.contact_id)
+      if (result.synced && result.contact?.name) conv.contact_name = result.contact.name
+      // Refresh the CRM panel data too
+      const p = await api.zohoProfile(conv.contact_id).catch(() => null)
+      setZohoProfile(p)
+    } catch (e) {
+      alert(e?.message || 'CRM sync failed')
+    } finally {
+      setCrmSyncing(false)
+    }
+  }
+
   // ── Contact rename (blocked server-side too for CRM-matched contacts) ──
   async function saveContactName() {
     const newName = nameDraft.trim()
@@ -461,7 +479,7 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
       </div>
 
       {/* ── Zoho CRM Panel ── */}
-      <ZohoPanel profile={zohoProfile} loading={zohoLoading} open={showZoho} onToggle={() => setShowZoho(v => !v)} C={C} />
+      <ZohoPanel profile={zohoProfile} loading={zohoLoading} open={showZoho} onToggle={() => setShowZoho(v => !v)} onRefresh={resyncCrm} refreshing={crmSyncing} C={C} />
 
       {/* ── Messages tab ── */}
       {activeTab === 'messages' && (
@@ -884,7 +902,7 @@ function OutboundMsg({ msg, currentAgentId, C }) {
 }
 
 /* ── Zoho CRM Context Panel ─────────────────────────────────────── */
-function ZohoPanel({ profile, loading, open, onToggle, C }) {
+function ZohoPanel({ profile, loading, open, onToggle, onRefresh, refreshing, C }) {
   // Don't render anything if still loading and no prior profile
   if (!loading && !profile) return null
   if (!loading && profile && !profile.type) return null
@@ -933,7 +951,15 @@ function ZohoPanel({ profile, loading, open, onToggle, C }) {
             }}>{typeLabel}</span>
           )}
         </span>
-        <span style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>▾</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span
+            role="button"
+            title="Re-sync with CRM"
+            onClick={e => { e.stopPropagation(); if (!refreshing) onRefresh?.() }}
+            style={{ fontSize: 12, opacity: refreshing ? 0.4 : 0.8, cursor: refreshing ? 'default' : 'pointer', display: 'inline-flex', animation: refreshing ? 'btiSpin 0.9s linear infinite' : 'none' }}
+          >🔄</span>
+          <span style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>▾</span>
+        </span>
       </button>
 
       {/* Content */}

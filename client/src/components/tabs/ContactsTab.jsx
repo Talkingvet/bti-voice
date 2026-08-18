@@ -227,7 +227,7 @@ function ContactDetail({ contact, onBack, onUpdate, onDial, onMessage, C }) {
         onUpdate(result.contact)
         setSyncResult({ ok: true, msg: `Name updated to "${result.zoho_name}" from Zoho CRM` })
       } else if (result.synced) {
-        setSyncResult({ ok: true, msg: 'Zoho contact found — name was already set, no change needed' })
+        setSyncResult({ ok: true, msg: 'Zoho contact found — name already matches the CRM' })
       } else {
         setSyncResult({ ok: false, msg: result.message || 'Not found in Zoho CRM' })
       }

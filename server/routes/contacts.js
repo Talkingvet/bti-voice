@@ -122,9 +122,10 @@ router.patch('/:id', async (req, res) => {
   }
 });
 
-// ── POST /:id/sync-zoho — pull name from Zoho CRM and update if unset ─────────
-// Only overwrites the BTI Voice name if it still equals the raw phone number
-// (meaning it was auto-created and no human has given it a real name yet).
+// ── POST /:id/sync-zoho — pull name from Zoho CRM ─────────────────────────────
+// Since 2026-08-18 the CRM is the source of truth for matched contacts (local
+// name edits are blocked for them), so a sync ALWAYS adopts the CRM name.
+// This powers the "Re-sync with CRM" buttons.
 router.post('/:id/sync-zoho', async (req, res) => {
   if (!process.env.ZOHO_REFRESH_TOKEN) {
     return res.status(400).json({ error: 'Zoho is not configured' });
@@ -147,16 +148,12 @@ router.post('/:id/sync-zoho', async (req, res) => {
     const zohoId   = zohoContact.id;
     const zohoName = zohoContact.Full_Name || null;
 
-    // Determine if we should update the name:
-    // Only overwrite if current name is null, empty, or equals the raw phone number
-    const phone = contact.phone_number;
-    const nameIsUnset = !contact.name
-      || contact.name === phone
-      || contact.name === phone.replace(/\D/g, '')
-      || contact.name.replace(/\D/g, '') === phone.replace(/\D/g, '');
+    // CRM is authoritative for matched contacts: adopt its name whenever it
+    // differs from what we have.
+    const nameChanged = zohoName && zohoName !== contact.name;
 
     let updatedContact = contact;
-    if (zohoName && nameIsUnset) {
+    if (nameChanged) {
       const { rows: [updated] } = await pool.query(
         `UPDATE contacts
          SET name = $1, zoho_contact_id = $2, zoho_synced_at = NOW()
@@ -177,9 +174,17 @@ router.post('/:id/sync-zoho', async (req, res) => {
       updatedContact = updated;
     }
 
+    // Broadcast so open conversation lists/threads pick up the new name
+    if (nameChanged) {
+      try {
+        const { getIO } = require('../socket');
+        getIO()?.emit('conversation_updated', { contact_id: updatedContact.id });
+      } catch (e) { /* socket not initialized — fine */ }
+    }
+
     res.json({
       synced:       true,
-      name_updated: zohoName && nameIsUnset,
+      name_updated: nameChanged,
       zoho_name:    zohoName,
       contact:      updatedContact,
     });
