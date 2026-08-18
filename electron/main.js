@@ -90,8 +90,8 @@ function createWindow() {
     height:    savedBounds.height || DEFAULT_BOUNDS.height,
     x:         savedBounds.x,   // undefined falls back to OS default centering
     y:         savedBounds.y,
-    minWidth:  380,
-    minHeight: 580,
+    minWidth:  330,
+    minHeight: 560,
     ...chrome,
     backgroundColor: '#0f172a',
     icon: ICON_PATH,

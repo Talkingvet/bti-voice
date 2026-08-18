@@ -50,8 +50,7 @@ export default function TitleBar({ agent, unreadCount = 0, onBellClick, agentSta
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
   }, [])
-  const showNumber = winW >= 560
-  const showName   = winW >= 430
+  const showName = winW >= 400
 
   useEffect(() => {
     if (isElectron) {
@@ -141,14 +140,10 @@ export default function TitleBar({ agent, unreadCount = 0, onBellClick, agentSta
             onClick={() => setShowDropdown(v => !v)}
             title="Change status"
           >
-            <div style={{ ...S.dot, background: agent.color || '#4f9cf9' }} />
+            <StatusIcon status={current} size={12} />
             {showName && (
-              <span style={{ ...S.agentName, ...T.agentName, maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{agent.name}</span>
+              <span style={{ ...S.agentName, ...T.agentName, maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{agent.name}</span>
             )}
-            {showNumber && agent.phone_number && agent.phone_number !== 'TBD' && (
-              <span style={{ ...S.agentNum, ...T.agentNum, whiteSpace: 'nowrap' }}>{agent.phone_number}</span>
-            )}
-            <StatusIcon status={current} size={11} />
             <ChevronIcon open={showDropdown} color={T.chevron} />
           </button>
         </div>
@@ -157,7 +152,7 @@ export default function TitleBar({ agent, unreadCount = 0, onBellClick, agentSta
       {/* Right: voice status dot + bell + window controls */}
       <div style={S.right}>
         {/* Voice device status indicator */}
-        {agent && (() => {
+        {agent && deviceStatus !== 'registered' && deviceStatus !== 'idle' && (() => {
           const ds = DEVICE_STATUS_UI[deviceStatus] || DEVICE_STATUS_UI.idle
           return (
             <div

@@ -212,7 +212,7 @@ const S = {
     position: 'absolute',
     top: 38,
     right: 0,
-    width: 320,
+    width: 'min(320px, calc(100vw - 20px))',
     maxHeight: 460,
     display: 'flex', flexDirection: 'column',
     borderRadius: '0 0 10px 10px',

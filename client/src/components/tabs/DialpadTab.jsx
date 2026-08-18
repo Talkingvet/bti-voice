@@ -17,6 +17,16 @@ export default function DialpadTab({ agent, device, activeCall, onCallStart, onC
   const C = useColors()
   const { toast } = useToast()
   const [number,       setNumber]       = useState('')
+  // Compact mode: shrink the keypad so the call button never clips at small
+  // window sizes (min window is 330x560; full-size keypad needs ~660px height)
+  const [compact, setCompact] = useState(window.innerHeight < 660)
+  useEffect(() => {
+    const onResize = () => setCompact(window.innerHeight < 660)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+  const KEY = compact ? 56 : 72
+  const CALLBTN = compact ? 52 : 64
   const [status,       setStatus]       = useState('')
   const [callState,    setCallState]    = useState('idle') // idle | connecting | active
   const [quickDials,   setQuickDials]   = useState([])
@@ -209,12 +219,15 @@ export default function DialpadTab({ agent, device, activeCall, onCallStart, onC
         <div style={{ ...S.headerSub, color: C.textSec }}>
           Calling from
           <span style={{ ...S.fromBadge, background: agent.color || '#3b82f6' }}>{agent.name}</span>
+          {agent.phone_number && agent.phone_number.startsWith('+') && (
+            <span style={{ opacity: 0.7 }}>{agent.phone_number}</span>
+          )}
         </div>
       </div>
 
       {/* Number display — clicking anywhere on it focuses the hidden input */}
       <div
-        style={{ ...S.display, cursor: isActive ? 'default' : 'text' }}
+        style={{ ...S.display, padding: compact ? '10px 20px 4px' : '24px 20px 8px', minHeight: compact ? 48 : 70, cursor: isActive ? 'default' : 'text' }}
         onClick={() => { try { inputRef.current && inputRef.current.focus() } catch (e) {} }}
       >
         {/* Hidden input — receives typing & paste, makes the window grab focus on mount */}
@@ -276,11 +289,11 @@ export default function DialpadTab({ agent, device, activeCall, onCallStart, onC
       </div>
 
       {/* Keypad */}
-      <div style={S.keypad}>
+      <div style={{ ...S.keypad, gridTemplateColumns: `repeat(3, ${KEY}px)`, gap: compact ? 7 : 10, padding: compact ? '4px 0 10px' : '8px 0 16px' }}>
         {KEYS.map(([digit, letters]) => (
           <button
             key={digit}
-            style={{ ...S.key, background: C.panel, boxShadow: `0 1px 4px rgba(0,0,0,0.15)` }}
+            style={{ ...S.key, width: KEY, height: KEY, background: C.panel, boxShadow: `0 1px 4px rgba(0,0,0,0.15)` }}
             onClick={() => pressDigit(digit)}
           >
             <span style={{ ...S.keyDigit, color: C.text }}>{digit}</span>
@@ -292,10 +305,10 @@ export default function DialpadTab({ agent, device, activeCall, onCallStart, onC
       {/* Call / Hangup button */}
       <div style={S.callRow}>
         {isActive ? (
-          <button style={S.hangupBtn} onClick={hangUp}><HangupIcon /></button>
+          <button style={{ ...S.hangupBtn, width: CALLBTN, height: CALLBTN }} onClick={hangUp}><HangupIcon /></button>
         ) : (
           <button
-            style={{ ...S.callBtn, ...(!number || !device ? S.callBtnDisabled : {}) }}
+            style={{ ...S.callBtn, width: CALLBTN, height: CALLBTN, ...(!number || !device ? S.callBtnDisabled : {}) }}
             onClick={startCall}
             disabled={!number || !device}
           >

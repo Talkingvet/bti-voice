@@ -17,7 +17,6 @@ import DialpadTab                  from './components/tabs/DialpadTab'
 import ContactsTab                 from './components/tabs/ContactsTab'
 import CallsTab                    from './components/tabs/CallsTab'
 import SettingsTab                 from './components/tabs/SettingsTab'
-import NotificationsTab            from './components/tabs/NotificationsTab'
 import { api } from './api'
 import { applyFont } from './utils/font'
 
@@ -251,7 +250,6 @@ function AppInner() {
 
   // Clear badge when user opens the notifications tab
   useEffect(() => {
-    if (activeTab === 'notifications') setUnreadNotifs(0)
     if (activeTab === 'sms')           setUnreadSms(0)
     if (activeTab === 'calls')         setUnreadVm(0)
   }, [activeTab])
@@ -662,7 +660,6 @@ function AppInner() {
           />
         )}
         {activeTab === 'settings'       && <SettingsTab       agent={agent} onLogout={handleLogout} />}
-        {activeTab === 'notifications'  && <NotificationsTab  agent={agent} />}
 
         {/* Active call panel — overlays the content area during any call */}
         {activeCall && (
@@ -679,7 +676,7 @@ function AppInner() {
         )}
       </div>
 
-      {!smsOpenChat && activeTab !== 'settings' && activeTab !== 'notifications' && <button style={S.composeBtn} onClick={() => setCompose(true)} title="New message">
+      {!smsOpenChat && activeTab !== 'settings' && <button style={S.composeBtn} onClick={() => setCompose(true)} title="New message">
         <ComposePenIcon />
       </button>}
 
