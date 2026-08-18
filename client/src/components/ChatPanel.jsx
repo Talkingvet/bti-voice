@@ -71,6 +71,14 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
   const [nameDraft,   setNameDraft]   = useState('')
   const [savingName,  setSavingName]  = useState(false)
 
+  // Narrow-window awareness for placeholder + header truncation
+  const [narrow, setNarrow] = useState(window.innerWidth < 480)
+  useEffect(() => {
+    const onResize = () => setNarrow(window.innerWidth < 480)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
   const messagesEndRef = useRef(null)
   const textareaRef    = useRef(null)
   const noteRef        = useRef(null)
@@ -354,7 +362,9 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
               </div>
             ) : (
               <div style={{ ...styles.headerName, color: C.text, display: 'flex', alignItems: 'center', gap: 6 }}>
-                {conv.contact_name || conv.contact_number}
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+                  {conv.contact_name || conv.contact_number}
+                </span>
                 {/* Pencil only when Zoho lookup finished and found NO CRM record — CRM contacts are edited in the CRM */}
                 {!zohoLoading && !zohoProfile?.type && (
                   <button
@@ -580,7 +590,7 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
               <textarea
                 ref={textareaRef}
                 style={{ ...styles.textarea, background: C.inputBg, border: `1px solid ${C.inputBorder}`, color: C.text }}
-                placeholder="Enter a message — type / for quick replies"
+                placeholder={narrow ? "Message… ( / = templates)" : "Enter a message — type / for quick replies"}
                 value={body}
                 onChange={handleBodyChange}
                 onKeyDown={handleKeyDown}
@@ -1116,7 +1126,7 @@ const styles = {
   headerLeft: { display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 },
   headerMid:  { flex: 1, minWidth: 0 },
   headerName: { fontSize: 14, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  headerSub:  { fontSize: 11, marginTop: 1, display: 'flex', alignItems: 'center' },
+  headerSub:  { fontSize: 11, marginTop: 1, display: 'flex', alignItems: 'center', overflow: 'hidden', whiteSpace: 'nowrap' },
   agentDot:   { display: 'inline-block', width: 7, height: 7, borderRadius: '50%', marginLeft: 3 },
   iconBtn: { display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, border: 'none', background: 'transparent', cursor: 'pointer', borderRadius: 8, flexShrink: 0 },
 
