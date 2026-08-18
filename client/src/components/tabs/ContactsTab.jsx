@@ -31,6 +31,12 @@ export default function ContactsTab({ agent, onDial, onMessage }) {
   const [contacts,   setContacts]   = useState([])
   const [search,     setSearch]     = useState('')
   const [selected,   setSelected]   = useState(null)
+  const [isWide,     setIsWide]     = useState(window.innerWidth >= 900)
+  useEffect(() => {
+    const onResize = () => setIsWide(window.innerWidth >= 900)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
   const [showCreate, setShowCreate] = useState(false)
   const [loading,    setLoading]    = useState(true)
 
@@ -48,7 +54,7 @@ export default function ContactsTab({ agent, onDial, onMessage }) {
     (c.phone_number || '').includes(search)
   ).sort((a, b) => (a.name || a.phone_number || '').localeCompare(b.name || b.phone_number || ''))
 
-  if (showCreate) {
+  if (!isWide && showCreate) {
     return (
       <ContactForm
         C={C}
@@ -68,7 +74,7 @@ export default function ContactsTab({ agent, onDial, onMessage }) {
     )
   }
 
-  if (selected) {
+  if (!isWide && selected) {
     return (
       <ContactDetail
         contact={selected}
@@ -84,8 +90,41 @@ export default function ContactsTab({ agent, onDial, onMessage }) {
     )
   }
 
+  const detailPane = !isWide ? null : showCreate ? (
+    <ContactForm
+      C={C}
+      onSave={async (data) => {
+        try {
+          const created = await api.createContact(data)
+          setContacts(prev => [...prev, created])
+          setSelected(created)
+          setShowCreate(false)
+          toast.success('Contact created')
+        } catch (e) { toast.error(e.message) }
+      }}
+      onCancel={() => setShowCreate(false)}
+    />
+  ) : selected ? (
+    <ContactDetail
+      contact={selected}
+      onDial={onDial}
+      onMessage={onMessage}
+      onUpdate={(updated) => {
+        setContacts(prev => prev.map(c => c.id === updated.id ? updated : c))
+        setSelected(updated)
+      }}
+      C={C}
+    />
+  ) : (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: C.emptyText }}>
+      <div style={{ fontSize: 36, marginBottom: 10, opacity: 0.35 }}>👤</div>
+      <div style={{ fontSize: 13 }}>Select a contact</div>
+    </div>
+  )
+
   return (
-    <div style={{ ...S.page, background: C.panel }}>
+    <div style={{ display: 'flex', flexDirection: 'row', flex: 1, overflow: 'hidden', height: '100%', background: C.panel }}>
+    <div style={{ ...S.page, background: C.panel, ...(isWide ? { width: 360, minWidth: 300, flexShrink: 0, borderRight: '1px solid rgba(128,140,160,0.18)' } : {}) }}>
       {/* Search bar + New button */}
       <div style={{ ...S.searchBar, borderBottom: `1px solid ${C.border}` }}>
         <div style={{ ...S.searchWrap, background: C.surface, border: `1px solid ${C.borderSoft}` }}>
@@ -142,6 +181,14 @@ export default function ContactsTab({ agent, onDial, onMessage }) {
         {filtered.length} contact{filtered.length !== 1 ? 's' : ''}
       </div>
     </div>
+
+    {/* ── Wide-window detail pane ── */}
+    {isWide && (
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {detailPane}
+      </div>
+    )}
+    </div>
   )
 }
 
@@ -195,9 +242,11 @@ function ContactDetail({ contact, onBack, onUpdate, onDial, onMessage, C }) {
     <div style={{ ...D.page, background: C.bg }}>
       {/* Header */}
       <div style={{ ...D.header, background: C.panel, borderBottom: `1px solid ${C.border}` }}>
-        <button style={{ ...D.backBtn, color: C.textSec }} onClick={onBack}>
-          <BackIcon />
-        </button>
+        {onBack ? (
+          <button style={{ ...D.backBtn, color: C.textSec }} onClick={onBack}>
+            <BackIcon />
+          </button>
+        ) : <span style={{ width: 28 }} />}
         <span style={{ ...D.headerTitle, color: C.text }}>Contact</span>
         <button
           style={{ ...D.editBtn, color: '#4f9cf9' }}

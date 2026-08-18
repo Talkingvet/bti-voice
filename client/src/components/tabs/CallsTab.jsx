@@ -73,6 +73,15 @@ export default function CallsTab({ agent, onWrapUpClick, onDial, onMessage }) {
   const [unreadVm,     setUnreadVm]    = useState(0)
   const [expandedCall, setExpandedCall] = useState(null)
   const [search,       setSearch]       = useState('')
+  const [isWide,       setIsWide]       = useState(window.innerWidth >= 900)
+
+  // Wide-window split view: call list left, detail pane right
+  useEffect(() => {
+    const onResize = () => setIsWide(window.innerWidth >= 900)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+  const selectedCall = isWide ? calls.find(c => c.id === expandedCall) || null : null
 
   // When user opens the voicemail sub-tab, mark all unplayed voicemails as played in DB
   useEffect(() => {
@@ -138,7 +147,8 @@ export default function CallsTab({ agent, onWrapUpClick, onDial, onMessage }) {
   const vmGroups   = groupByDate(voicemails, 'received_at')
 
   return (
-    <div style={{ ...S.page, background: C.bg }}>
+    <div style={{ display: 'flex', flexDirection: 'row', flex: 1, overflow: 'hidden', height: '100%', background: C.bg }}>
+    <div style={{ ...S.page, background: C.bg, ...(isWide ? { width: 400, minWidth: 340, flexShrink: 0, borderRight: '1px solid rgba(128,140,160,0.18)' } : {}) }}>
 
       {/* Sub-tabs */}
       <SubTabs
@@ -209,6 +219,7 @@ export default function CallsTab({ agent, onWrapUpClick, onDial, onMessage }) {
                   key={row.data.id}
                   call={row.data}
                   expanded={expandedCall === row.data.id}
+                  inlineExpand={!isWide}
                   onToggle={() => setExpandedCall(p => p === row.data.id ? null : row.data.id)}
                   onWrapUp={onWrapUpClick}
                   onDial={onDial}
@@ -244,6 +255,37 @@ export default function CallsTab({ agent, onWrapUpClick, onDial, onMessage }) {
         </div>
       )}
     </div>
+
+    {/* ── Wide-window detail pane ── */}
+    {isWide && (
+      <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+        {selectedCall ? (
+          <>
+            <div style={{ padding: '14px 18px 10px', borderBottom: `1px solid ${C.borderItem}`, background: C.panel, flexShrink: 0 }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>
+                {selectedCall.contact_name || selectedCall.contact_number || 'Unknown'}
+              </div>
+              <div style={{ fontSize: 11, color: C.textSec, marginTop: 2 }}>
+                {selectedCall.contact_name && selectedCall.contact_number ? selectedCall.contact_number + ' · ' : ''}
+                {selectedCall.direction === 'inbound' ? 'Inbound' : 'Outbound'}
+                {selectedCall.status === 'missed' ? ' · Missed' : selectedCall.duration ? ` · ${fmtDuration(selectedCall.duration)}` : ''}
+                {' · '}{fmtTime(selectedCall.started_at)}
+                {selectedCall.agent_name && <span style={{ color: selectedCall.agent_color, fontWeight: 600 }}> · {selectedCall.agent_name}</span>}
+              </div>
+            </div>
+            <div style={{ padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <CallDetailBody call={selectedCall} onDial={onDial} onMessage={onMessage} C={C} />
+            </div>
+          </>
+        ) : (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: C.emptyText }}>
+            <div style={{ fontSize: 36, marginBottom: 10, opacity: 0.35 }}>📞</div>
+            <div style={{ fontSize: 13 }}>Select a call to see details</div>
+          </div>
+        )}
+      </div>
+    )}
+    </div>
   )
 }
 
@@ -257,7 +299,7 @@ function DateHeader({ label, C }) {
 }
 
 /* ── Call row ────────────────────────────────────────────────────── */
-function CallRow({ call, expanded, onToggle, onWrapUp, onDial, onMessage, C }) {
+function CallRow({ call, expanded, inlineExpand = true, onToggle, onWrapUp, onDial, onMessage, C }) {
   const isMissed  = call.status === 'missed'
   const isInbound = call.direction === 'inbound'
   const color     = isMissed ? '#ef4444' : isInbound ? '#22c55e' : '#4f9cf9'
@@ -269,7 +311,7 @@ function CallRow({ call, expanded, onToggle, onWrapUp, onDial, onMessage, C }) {
   return (
     <>
       <div
-        style={{ ...S.row, borderBottom: expanded ? 'none' : `1px solid ${C.borderItem}`, cursor: hasDetail ? 'pointer' : 'default' }}
+        style={{ ...S.row, borderBottom: (expanded && inlineExpand) ? 'none' : `1px solid ${C.borderItem}`, cursor: hasDetail ? 'pointer' : 'default', background: (expanded && !inlineExpand) ? 'rgba(79,156,249,0.10)' : 'transparent' }}
         onClick={hasDetail ? onToggle : undefined}
       >
         <div style={{ ...S.callIcon, color }}>
@@ -321,13 +363,25 @@ function CallRow({ call, expanded, onToggle, onWrapUp, onDial, onMessage, C }) {
             : <div style={{ ...S.rowDur, color: C.textSec }}>⏱ {duration || '0:00'}</div>
           }
         </div>
-        {hasDetail && (
+        {hasDetail && inlineExpand && (
           <div style={{ color: C.textMuted, fontSize: 12, paddingLeft: 4 }}>{expanded ? '▾' : '▸'}</div>
         )}
       </div>
 
-      {expanded && (
+      {expanded && inlineExpand && (
         <div style={{ background: C.surface, borderBottom: `1px solid ${C.borderItem}`, padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <CallDetailBody call={call} onDial={onDial} onMessage={onMessage} C={C} />
+        </div>
+      )}
+    </>
+  )
+}
+
+/* ── Call detail content — shared by inline expansion (narrow) and the
+     wide-window right pane ─────────────────────────────────────────── */
+function CallDetailBody({ call, onDial, onMessage, C }) {
+  return (
+    <>
           {call.contact_number && (
             <div style={{ display: 'flex', gap: 8 }}>
               <button
@@ -369,8 +423,6 @@ function CallRow({ call, expanded, onToggle, onWrapUp, onDial, onMessage, C }) {
               <div style={{ fontSize: 11, color: C.textSec, lineHeight: 1.6, marginTop: 6, whiteSpace: 'pre-wrap' }}>{call.transcription}</div>
             </details>
           )}
-        </div>
-      )}
     </>
   )
 }
