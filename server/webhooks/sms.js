@@ -65,7 +65,7 @@ async function maybeSendAfterHoursReply({ conv, contact, From, To, keyword }) {
     if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) return;
     const twilio = require('twilio')(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
     const params = {
-      body: s.after_hours_sms_message || "Talkingvet: Thanks for your message! Our team is away right now, but we'll reply as soon as we're back during business hours.",
+      body: s.after_hours_sms_message || "Thanks for your message! Our team is away right now, but we'll reply as soon as we're back during business hours.",
       from: To, // reply from whichever number they texted
       to:   From,
     };

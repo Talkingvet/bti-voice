@@ -731,8 +731,7 @@ router.post('/recording-complete', async (req, res) => {
         messages: [
           {
             role: 'system',
-            content: `You are analyzing a business call for Talkingvet — an AI scribing and dictation solution for veterinary practices.
-The team (Raven, Shawn, Danny) handles sales, technical support, and billing for vet clinics and practices.
+            content: `You are analyzing a business call for ${process.env.COMPANY_NAME || 'this business'}.${process.env.AI_SUMMARY_CONTEXT ? '\n' + process.env.AI_SUMMARY_CONTEXT : ''}
 Produce a concise call summary with these sections:
 • Reason for Calling (1-2 sentences — why did the caller reach out?)
 • Key Topics Discussed (bullet list of main subjects covered)

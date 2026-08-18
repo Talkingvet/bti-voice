@@ -31,7 +31,9 @@ function validateTwilio(req, res, next) {
 
   if (valid) return next();
 
-  const strict = process.env.TWILIO_STRICT_WEBHOOKS === 'true';
+  const strict = process.env.TWILIO_STRICT_WEBHOOKS !== undefined
+    ? process.env.TWILIO_STRICT_WEBHOOKS === 'true'
+    : process.env.NODE_ENV === 'production'; // default strict in prod
   console.warn(`[twilio-validate] signature check FAILED for ${req.method} ${req.originalUrl}` +
                ` (url=${url}) strict=${strict}`);
   if (strict) return res.status(403).send('Invalid Twilio signature');

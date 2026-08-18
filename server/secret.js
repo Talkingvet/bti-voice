@@ -7,14 +7,19 @@
 // JWT_SECRET in Railway to make sessions survive deploys.
 const crypto = require('crypto');
 
-function resolve(name) {
+function resolve(name, { requiredInProd = false } = {}) {
   if (process.env[name]) return process.env[name];
+  if (requiredInProd && process.env.NODE_ENV === 'production') {
+    console.error(`[secret] FATAL: ${name} is not set. Refusing to start in production ` +
+                  `without it — set ${name} in the environment and redeploy.`);
+    process.exit(1);
+  }
   console.warn(`[secret] ${name} is not set — using a random per-boot value. ` +
                `Set ${name} in the environment for stable sessions.`);
   return crypto.randomBytes(32).toString('hex');
 }
 
-const JWT_SECRET = resolve('JWT_SECRET');
+const JWT_SECRET = resolve('JWT_SECRET', { requiredInProd: true });
 const ADMIN_KEY  = resolve('ADMIN_KEY');
 // Random per-process token so internal server-to-server calls (localhost
 // self-calls into /api/zoho/*) can authenticate without exposing those

@@ -2,6 +2,39 @@ const bcrypt = require('bcryptjs');
 const { pool } = require('./db');
 
 async function seed() {
+  // ── Fresh-deploy bootstrap (customer instances) ─────────────────────────
+  // If the agents table is empty and SEED_DEMO is not enabled, create a single
+  // admin account from ADMIN_USERNAME / ADMIN_PASSWORD env vars. This is how a
+  // brand-new customer deploy gets its first login. Demo/BTI seeding below only
+  // runs when SEED_DEMO=true is explicitly set.
+  if (process.env.SEED_DEMO !== 'true') {
+    const { rows: [{ count: agentCount }] } = await pool.query('SELECT COUNT(*) FROM agents');
+    if (parseInt(agentCount) === 0) {
+      const username = process.env.ADMIN_USERNAME;
+      const password = process.env.ADMIN_PASSWORD;
+      if (!username || !password) {
+        console.error('[seed] No agents exist and ADMIN_USERNAME/ADMIN_PASSWORD are not set. ' +
+                      'Nobody can log in. Set both env vars and redeploy to create the first account.');
+        return;
+      }
+      if (password.length < 8) {
+        console.error('[seed] ADMIN_PASSWORD must be at least 8 characters. Refusing to create the first account.');
+        return;
+      }
+      const hash = await bcrypt.hash(password, 10);
+      const name = process.env.ADMIN_NAME || username;
+      const initials = name.split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
+      await pool.query(
+        'INSERT INTO agents (name, username, password_hash, color, initials) VALUES ($1,$2,$3,$4,$5)',
+        [name, username, hash, '#10b981', initials]
+      );
+      console.log(`[seed] Bootstrap admin account created: ${username}. ` +
+                  'Change the password in Settings and unset ADMIN_PASSWORD.');
+    }
+    return; // never run demo/BTI seeding unless SEED_DEMO=true
+  }
+
+  // ── SEED_DEMO=true: BTI/demo seeding (original behavior) ────────────────
   // Create agents
   const agents = [
     { name: 'Danny Roche',     username: 'danny',  password: 'danny123',  color: '#10b981', initials: 'DR' },

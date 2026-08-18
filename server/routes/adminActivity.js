@@ -3,7 +3,7 @@ const { pool }  = require('../db');
 
 const router = express.Router();
 
-const ADMIN_KEY = process.env.ADMIN_KEY || 'bti-admin-2026';
+const { ADMIN_KEY } = require('../secret'); // no hardcoded fallback — random per boot if unset
 
 const EVENT_LABELS = {
   login:        '🔑 Login',

@@ -136,7 +136,7 @@ async function migrate() {
   // After-hours SMS auto-responder (v1.5.x)
   await pool.query(`
     ALTER TABLE ivr_settings ADD COLUMN IF NOT EXISTS after_hours_sms_enabled BOOLEAN DEFAULT false;
-    ALTER TABLE ivr_settings ADD COLUMN IF NOT EXISTS after_hours_sms_message TEXT    DEFAULT 'Talkingvet: Thanks for your message! Our team is away right now, but we''ll reply as soon as we''re back during business hours.';
+    ALTER TABLE ivr_settings ADD COLUMN IF NOT EXISTS after_hours_sms_message TEXT    DEFAULT 'Thanks for your message! Our team is away right now, but we''ll reply as soon as we''re back during business hours.';
     ALTER TABLE ivr_settings ADD COLUMN IF NOT EXISTS business_hours_start VARCHAR(5)  DEFAULT '09:00';
     ALTER TABLE ivr_settings ADD COLUMN IF NOT EXISTS business_hours_end   VARCHAR(5)  DEFAULT '17:00';
     ALTER TABLE ivr_settings ADD COLUMN IF NOT EXISTS business_days        VARCHAR(20) DEFAULT '1,2,3,4,5';
