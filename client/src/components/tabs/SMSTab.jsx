@@ -13,6 +13,20 @@ export default function SMSTab({ agent, navConvId, onNavConvConsumed, device, on
   const [selectedId,    setSelectedId]    = useState(null)
   const [messages,      setMessages]      = useState([])
   const [loadingMsgs,   setLoadingMsgs]   = useState(false)
+  const [isWide,        setIsWide]        = useState(window.innerWidth >= 900)
+
+  // Wide-window split view: list stays visible beside the thread (like a
+  // desktop mail client) instead of the phone-style navigator.
+  useEffect(() => {
+    const onResize = () => setIsWide(window.innerWidth >= 900)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+  useEffect(() => {
+    // In split view the bottom nav should always stay visible
+    if (isWide) onChatOpenChange?.(false)
+    else if (selectedId !== null) onChatOpenChange?.(true)
+  }, [isWide])
 
   useEffect(() => {
     loadConversations()
@@ -108,6 +122,36 @@ export default function SMSTab({ agent, navConvId, onNavConvConsumed, device, on
 
   const selectedConv = conversations.find(c => c.id === selectedId) || null
 
+  if (isWide) {
+    return (
+      <div style={S.wrap}>
+        <div style={S.listPane}>
+          <ConvList
+            conversations={conversations}
+            selectedId={selectedId}
+            onSelect={id => setSelectedId(id)}
+            currentAgent={agent}
+            agents={agents}
+          />
+        </div>
+        <div style={S.chatPane}>
+          <ChatPanel
+            conv={selectedConv}
+            messages={messages}
+            loading={loadingMsgs}
+            currentAgent={agent}
+            agents={agents}
+            onSend={handleSend}
+            onAssign={handleAssign}
+            device={device}
+            onCallStart={onCallStart}
+            onCallEnd={onCallEnd}
+          />
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div style={S.wrap}>
       {selectedId === null ? (
@@ -139,4 +183,9 @@ export default function SMSTab({ agent, navConvId, onNavConvConsumed, device, on
 
 const S = {
   wrap: { display: 'flex', flex: 1, overflow: 'hidden', height: '100%' },
+  listPane: {
+    width: 360, minWidth: 300, flexShrink: 0, display: 'flex',
+    borderRight: '1px solid rgba(128,140,160,0.18)', overflow: 'hidden',
+  },
+  chatPane: { flex: 1, display: 'flex', minWidth: 0, overflow: 'hidden' },
 }

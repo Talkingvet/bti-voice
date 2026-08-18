@@ -36,10 +36,22 @@ export default function TitleBar({ agent, unreadCount = 0, onBellClick, agentSta
   const { theme } = useTheme()
   const isDark = theme === 'dark'
   const [maximized,    setMaximized]    = useState(false)
+  const [winW,         setWinW]         = useState(window.innerWidth)
   const [showDropdown, setShowDropdown] = useState(false)
   const [dropPos,      setDropPos]      = useState({ top: 0, left: 0 })
   const btnRef     = useRef(null)
   const dropRef    = useRef(null)
+
+  // Responsive title bar: at narrow widths drop the phone number, then the
+  // name, so the identity pill never collides with the brand or the window
+  // controls (the pill is absolutely centered and can't rely on flex to shrink).
+  useEffect(() => {
+    const onResize = () => setWinW(window.innerWidth)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+  const showNumber = winW >= 560
+  const showName   = winW >= 430
 
   useEffect(() => {
     if (isElectron) {
@@ -130,9 +142,11 @@ export default function TitleBar({ agent, unreadCount = 0, onBellClick, agentSta
             title="Change status"
           >
             <div style={{ ...S.dot, background: agent.color || '#4f9cf9' }} />
-            <span style={{ ...S.agentName, ...T.agentName }}>{agent.name}</span>
-            {agent.phone_number && agent.phone_number !== 'TBD' && (
-              <span style={{ ...S.agentNum, ...T.agentNum }}>{agent.phone_number}</span>
+            {showName && (
+              <span style={{ ...S.agentName, ...T.agentName, maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{agent.name}</span>
+            )}
+            {showNumber && agent.phone_number && agent.phone_number !== 'TBD' && (
+              <span style={{ ...S.agentNum, ...T.agentNum, whiteSpace: 'nowrap' }}>{agent.phone_number}</span>
             )}
             <StatusIcon status={current} size={11} />
             <ChevronIcon open={showDropdown} color={T.chevron} />

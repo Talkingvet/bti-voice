@@ -40,7 +40,7 @@ process.on('unhandledRejection', (reason) => console.error('[unhandledRejection]
 // app-data directory and apply it on createWindow if the saved bounds
 // still fit on the user's currently-attached displays.
 const WINDOW_STATE_FILE = () => path.join(app.getPath('userData'), 'window-state.json')
-const DEFAULT_BOUNDS = { width: 420, height: 720 }
+const DEFAULT_BOUNDS = { width: 470, height: 805 } // Danny's preferred default (2026-08-18)
 
 function loadWindowState() {
   try {
@@ -86,8 +86,8 @@ function createWindow() {
   const savedBounds = loadWindowState()
 
   mainWindow = new BrowserWindow({
-    width:     savedBounds.width  || 420,
-    height:    savedBounds.height || 720,
+    width:     savedBounds.width  || DEFAULT_BOUNDS.width,
+    height:    savedBounds.height || DEFAULT_BOUNDS.height,
     x:         savedBounds.x,   // undefined falls back to OS default centering
     y:         savedBounds.y,
     minWidth:  380,
