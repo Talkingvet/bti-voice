@@ -66,6 +66,11 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
   const [savingNote,  setSavingNote]  = useState(false)
   const [editingNote, setEditingNote] = useState(null) // { id, body }
 
+  // Contact rename state (only for contacts with no CRM match)
+  const [editingName, setEditingName] = useState(false)
+  const [nameDraft,   setNameDraft]   = useState('')
+  const [savingName,  setSavingName]  = useState(false)
+
   const messagesEndRef = useRef(null)
   const textareaRef    = useRef(null)
   const noteRef        = useRef(null)
@@ -105,6 +110,22 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
       .catch(() => setZohoProfile(null))
       .finally(() => setZohoLoading(false))
   }, [conv?.contact_id])
+
+  // ── Contact rename (blocked server-side too for CRM-matched contacts) ──
+  async function saveContactName() {
+    const newName = nameDraft.trim()
+    if (!newName || savingName) return
+    setSavingName(true)
+    try {
+      await api.updateContact(conv.contact_id, { name: newName })
+      conv.contact_name = newName // optimistic; socket conversation_updated refreshes the list
+      setEditingName(false)
+    } catch (e) {
+      alert(e?.message || 'Could not rename — this contact may be managed in the CRM.')
+    } finally {
+      setSavingName(false)
+    }
+  }
 
   // ── Canned responses: show dropdown when user types /
   function handleBodyChange(e) {
@@ -313,9 +334,37 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
             </button>
           )}
           <div style={styles.headerMid}>
-            <div style={{ ...styles.headerName, color: C.text }}>
-              {conv.contact_name || conv.contact_number}
-            </div>
+            {editingName ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <input
+                  autoFocus
+                  value={nameDraft}
+                  onChange={e => setNameDraft(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') saveContactName(); if (e.key === 'Escape') setEditingName(false) }}
+                  placeholder="Contact name"
+                  style={{
+                    fontSize: 14, fontWeight: 600, padding: '3px 8px', borderRadius: 6,
+                    border: `1px solid ${C.border}`, background: C.surface, color: C.text, outline: 'none', width: 180,
+                  }}
+                />
+                <button onClick={saveContactName} disabled={savingName}
+                  style={{ ...styles.iconBtn, color: '#22c55e', fontSize: 15 }} title="Save">✓</button>
+                <button onClick={() => setEditingName(false)}
+                  style={{ ...styles.iconBtn, color: C.textMuted, fontSize: 15 }} title="Cancel">✕</button>
+              </div>
+            ) : (
+              <div style={{ ...styles.headerName, color: C.text, display: 'flex', alignItems: 'center', gap: 6 }}>
+                {conv.contact_name || conv.contact_number}
+                {/* Pencil only when Zoho lookup finished and found NO CRM record — CRM contacts are edited in the CRM */}
+                {!zohoLoading && !zohoProfile?.type && (
+                  <button
+                    onClick={() => { setNameDraft(conv.contact_name || ''); setEditingName(true) }}
+                    style={{ ...styles.iconBtn, color: C.textMuted, fontSize: 12, padding: 2 }}
+                    title="Edit contact name"
+                  >✎</button>
+                )}
+              </div>
+            )}
             <div style={{ ...styles.headerSub, color: C.textMuted }}>
               {conv.contact_number !== conv.contact_name && conv.contact_number}
               {agentsInvolved.length > 0 && (

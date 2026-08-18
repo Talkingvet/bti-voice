@@ -276,6 +276,8 @@ function ContactDetail({ contact, onBack, onUpdate, onDial, onMessage, C }) {
 /* ── Create / Edit form ──────────────────────────────────────────── */
 function ContactForm({ C, initial, onSave, onCancel }) {
   const isEdit = !!initial
+  // CRM-matched contacts: name is managed in the CRM, not editable here
+  const crmLocked = !!initial?.zoho_contact_id
   const [name,      setName]      = useState(initial?.name  || '')
   const [phone,     setPhone]     = useState(initial?.phone_number || '')
   const [notes,     setNotes]     = useState(initial?.notes || '')
@@ -290,7 +292,9 @@ function ContactForm({ C, initial, onSave, onCancel }) {
     setPhoneErr('')
     setSaving(true)
     try {
-      await onSave({ name: name.trim() || null, phone_number: phone.trim(), notes: notes.trim() || null })
+      const payload = { phone_number: phone.trim(), notes: notes.trim() || null }
+      if (!crmLocked) payload.name = name.trim() || null
+      await onSave(payload)
     } finally {
       setSaving(false)
     }
@@ -324,12 +328,19 @@ function ContactForm({ C, initial, onSave, onCancel }) {
           <div style={{ ...F.fieldRow, borderBottom: `1px solid ${C.borderSoft}` }}>
             <label style={{ ...F.label, color: C.textSec }}>Name</label>
             <input
-              style={{ ...F.input, color: C.text, background: 'transparent' }}
+              style={{ ...F.input, color: crmLocked ? C.textMuted : C.text, background: 'transparent', cursor: crmLocked ? 'not-allowed' : undefined }}
               placeholder="Full name"
               value={name}
               onChange={e => setName(e.target.value)}
+              disabled={crmLocked}
+              title={crmLocked ? 'This contact is matched to the CRM — edit the name there' : undefined}
             />
           </div>
+          {crmLocked && (
+            <div style={{ padding: '4px 14px 8px', fontSize: 11, color: C.textMuted }}>
+              🔒 Name is managed in the CRM. Notes can still be edited here.
+            </div>
+          )}
           <div style={{ ...F.fieldRow }}>
             <label style={{ ...F.label, color: C.textSec }}>Phone</label>
             <input
