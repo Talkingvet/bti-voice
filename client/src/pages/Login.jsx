@@ -76,7 +76,7 @@ export default function Login({ onLogin }) {
 
 const styles = {
   page: {
-    minHeight: '100vh',
+    minHeight: '100dvh', // dvh: shrinks with the iOS keyboard so the card stays visible
     background: 'linear-gradient(135deg, #1a2332 0%, #243447 100%)',
     display: 'flex',
     alignItems: 'center',
