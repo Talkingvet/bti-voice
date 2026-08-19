@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BTI Voice — Shared SMS & VOIP Inbox</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+  /* TOP BAR */
+  .topbar { background: #1a2332; color: white; padding: 0 20px; height: 52px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; z-index: 100; }
+  .topbar-brand { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; display: flex; align-items: center; gap: 8px; }
+  .topbar-brand span { color: #4f9cf9; }
+  .topbar-right { display: flex; align-items: center; gap: 14px; }
+  .agent-switcher { display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; padding: 5px 12px; cursor: pointer; font-size: 13px; color: white; position: relative; user-select: none; }
+  .agent-switcher:hover { background: rgba(255,255,255,0.15); }
+  .agent-dot { width: 8px; height: 8px; border-radius: 50%; background: #4CAF50; }
+  .agent-dropdown { position: absolute; top: calc(100% + 8px); right: 0; background: white; border-radius: 10px; box-shadow: 0 8px 32px rgba(0,0,0,0.18); min-width: 220px; padding: 6px; display: none; z-index: 999; }
+  .agent-dropdown.open { display: block; }
+  .agent-option { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 7px; cursor: pointer; color: #222; font-size: 13px; }
+  .agent-option:hover { background: #f5f7fa; }
+  .agent-option.active { background: #eef3ff; }
+  .agent-avatar-sm { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: white; flex-shrink: 0; }
+  .topbar-stat { font-size: 12px; color: rgba(255,255,255,0.6); }
+  .topbar-stat strong { color: white; }
+
+  /* MAIN LAYOUT */
+  .app-body { display: flex; flex: 1; overflow: hidden; }
+
+  /* SIDEBAR */
+  .sidebar { width: 320px; background: white; border-right: 1px solid #e8eaed; display: flex; flex-direction: column; flex-shrink: 0; }
+  .sidebar-header { padding: 14px 16px 10px; border-bottom: 1px solid #f0f2f5; }
+  .sidebar-title { font-size: 13px; font-weight: 600; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
+  .search-box { display: flex; align-items: center; gap: 8px; background: #f5f7fa; border-radius: 8px; padding: 7px 12px; }
+  .search-box input { border: none; background: transparent; outline: none; font-size: 13px; color: #333; width: 100%; }
+  .search-box svg { color: #999; flex-shrink: 0; }
+  .tab-row { display: flex; padding: 10px 16px 0; gap: 4px; }
+  .tab-btn { padding: 6px 12px; border-radius: 6px; border: none; background: transparent; font-size: 12px; font-weight: 600; color: #888; cursor: pointer; }
+  .tab-btn.active { background: #eef3ff; color: #3b82f6; }
+  .conv-list { flex: 1; overflow-y: auto; }
+
+  /* CONVERSATION ITEMS */
+  .conv-item { padding: 13px 16px; border-bottom: 1px solid #f5f7fa; cursor: pointer; display: flex; gap: 11px; align-items: flex-start; transition: background 0.1s; position: relative; }
+  .conv-item:hover { background: #f8f9fc; }
+  .conv-item.active { background: #eef3ff; border-left: 3px solid #3b82f6; }
+  .conv-avatar { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; color: white; flex-shrink: 0; }
+  .conv-info { flex: 1; min-width: 0; }
+  .conv-name { font-size: 13px; font-weight: 600; color: #1a2332; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .conv-preview { font-size: 12px; color: #888; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .conv-preview .agent-label { font-weight: 600; }
+  .conv-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
+  .conv-time { font-size: 11px; color: #aaa; }
+  .warn-badge { background: #fff3cd; color: #856404; border: 1px solid #ffd966; border-radius: 4px; padding: 1px 5px; font-size: 10px; font-weight: 700; display: flex; align-items: center; gap: 3px; }
+  .unread-dot { width: 8px; height: 8px; border-radius: 50%; background: #3b82f6; }
+
+  /* CHAT PANEL */
+  .chat-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .chat-header { background: white; border-bottom: 1px solid #e8eaed; padding: 14px 20px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+  .chat-header-info { display: flex; flex-direction: column; }
+  .chat-header-name { font-size: 16px; font-weight: 700; color: #1a2332; }
+  .chat-header-number { font-size: 12px; color: #888; margin-top: 2px; }
+  .chat-header-actions { display: flex; gap: 8px; }
+  .btn { padding: 7px 14px; border-radius: 8px; border: 1px solid #e0e3e8; background: white; font-size: 12px; font-weight: 600; cursor: pointer; color: #444; display: flex; align-items: center; gap: 6px; transition: all 0.15s; }
+  .btn:hover { background: #f5f7fa; }
+  .btn.primary { background: #3b82f6; color: white; border-color: #3b82f6; }
+  .btn.primary:hover { background: #2563eb; }
+  .btn.green { background: #22c55e; color: white; border-color: #22c55e; }
+  .btn.green:hover { background: #16a34a; }
+  .agent-pills { display: flex; gap: 6px; flex-wrap: wrap; }
+  .agent-pill { display: flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; color: white; }
+
+  /* DOUBLE-TEXT WARNING */
+  .double-text-warning { background: #fffbeb; border-bottom: 2px solid #f59e0b; padding: 10px 20px; display: flex; align-items: center; gap: 10px; font-size: 13px; color: #92400e; }
+  .double-text-warning svg { flex-shrink: 0; color: #f59e0b; }
+  .double-text-warning strong { color: #78350f; }
+
+  /* MESSAGES */
+  .messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; background: #f8f9fc; }
+  .date-divider { text-align: center; font-size: 11px; color: #aaa; font-weight: 600; position: relative; }
+  .date-divider::before, .date-divider::after { content: ''; position: absolute; top: 50%; width: 40%; height: 1px; background: #e0e3e8; }
+  .date-divider::before { left: 0; }
+  .date-divider::after { right: 0; }
+
+  .msg-group { display: flex; flex-direction: column; gap: 4px; }
+  .msg-group.outbound { align-items: flex-end; }
+  .msg-group.inbound { align-items: flex-start; }
+
+  .msg-sender-label { font-size: 11px; color: #888; font-weight: 600; margin-bottom: 2px; display: flex; align-items: center; gap: 6px; }
+  .msg-sender-label .num { color: #bbb; font-weight: 400; }
+
+  .bubble { max-width: 70%; padding: 10px 14px; border-radius: 14px; font-size: 13.5px; line-height: 1.5; color: #1a2332; position: relative; }
+  .bubble.outbound { color: white; border-bottom-right-radius: 4px; }
+  .bubble.inbound { background: white; border: 1px solid #e8eaed; border-bottom-left-radius: 4px; color: #1a2332; }
+  .bubble-time { font-size: 10.5px; margin-top: 3px; color: rgba(255,255,255,0.7); }
+  .bubble.inbound .bubble-time { color: #aaa; }
+
+  .agent-tag { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border-radius: 4px; font-size: 10px; font-weight: 700; color: white; margin-bottom: 4px; }
+
+  /* DOUBLE TEXT MESSAGE highlight */
+  .msg-group.double-text .bubble { border: 2px solid #f59e0b; }
+
+  /* COMPOSE */
+  .compose-area { background: white; border-top: 1px solid #e8eaed; padding: 12px 20px; flex-shrink: 0; }
+  .compose-from { font-size: 11px; color: #888; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+  .compose-from .from-badge { display: flex; align-items: center; gap: 5px; background: #f5f7fa; border-radius: 5px; padding: 2px 8px; font-weight: 600; color: #555; }
+  .compose-row { display: flex; gap: 10px; align-items: flex-end; }
+  .compose-input { flex: 1; border: 1.5px solid #e0e3e8; border-radius: 10px; padding: 10px 14px; font-size: 13.5px; outline: none; resize: none; font-family: inherit; line-height: 1.4; max-height: 120px; transition: border-color 0.15s; }
+  .compose-input:focus { border-color: #3b82f6; }
+  .send-btn { background: #3b82f6; color: white; border: none; border-radius: 10px; padding: 10px 18px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; height: 42px; flex-shrink: 0; }
+  .send-btn:hover { background: #2563eb; }
+
+  /* CALLS TAB */
+  .calls-panel { flex: 1; overflow-y: auto; padding: 20px; background: #f8f9fc; }
+  .call-card { background: white; border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; display: flex; align-items: center; gap: 14px; border: 1px solid #e8eaed; }
+  .call-icon { width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+  .call-icon.completed { background: #dcfce7; }
+  .call-icon.missed { background: #fee2e2; }
+  .call-icon.outbound-call { background: #dbeafe; }
+  .call-info { flex: 1; }
+  .call-customer { font-size: 13px; font-weight: 600; color: #1a2332; }
+  .call-detail { font-size: 12px; color: #888; margin-top: 2px; }
+  .call-meta { text-align: right; font-size: 11px; color: #aaa; }
+  .call-duration { font-size: 12px; font-weight: 600; color: #555; margin-top: 2px; }
+
+  /* EMPTY STATE */
+  .empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #bbb; gap: 12px; }
+  .empty-state svg { opacity: 0.4; }
+  .empty-state p { font-size: 14px; }
+
+  /* NOTIFICATION TOAST */
+  .toast { position: fixed; bottom: 24px; right: 24px; background: #1a2332; color: white; padding: 12px 18px; border-radius: 10px; font-size: 13px; display: none; align-items: center; gap: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.2); z-index: 9999; animation: slideIn 0.3s ease; }
+  .toast.show { display: flex; }
+  @keyframes slideIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+  /* SCROLLBAR */
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #ddd; border-radius: 10px; }
+
+  /* CALL MODAL */
+  .call-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 9998; }
+  .call-modal.show { display: flex; }
+  .call-modal-card { background: white; border-radius: 16px; padding: 32px; width: 320px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.2); }
+  .call-modal-card h2 { font-size: 20px; margin-bottom: 6px; color: #1a2332; }
+  .call-modal-card p { color: #888; font-size: 13px; margin-bottom: 24px; }
+  .call-pulse { width: 70px; height: 70px; border-radius: 50%; background: #22c55e; display: flex; align-items: center; justify-content: center; margin: 0 auto 24px; font-size: 28px; animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0.4); } 50% { box-shadow: 0 0 0 16px rgba(34,197,94,0); } }
+  .call-timer { font-size: 28px; font-weight: 700; color: #1a2332; margin-bottom: 24px; font-variant-numeric: tabular-nums; }
+  .end-call-btn { background: #ef4444; color: white; border: none; border-radius: 50px; padding: 12px 32px; font-size: 14px; font-weight: 700; cursor: pointer; }
+  .end-call-btn:hover { background: #dc2626; }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="topbar-brand">
+    📞 <span>BTI</span> Voice
+    <span style="font-size:11px; background:rgba(79,156,249,0.2); color:#4f9cf9; padding:2px 8px; border-radius:4px; font-weight:600; margin-left:4px;">DEMO</span>
+  </div>
+  <div class="topbar-right">
+    <div class="topbar-stat">Active conversations: <strong id="conv-count">5</strong></div>
+    <div class="topbar-stat">Today's SMS: <strong>47</strong></div>
+    <div class="topbar-stat">Calls: <strong>8</strong></div>
+    <div class="agent-switcher" id="agentSwitcherBtn">
+      <div class="agent-dot"></div>
+      <span id="currentAgentName">Shawn</span>
+      <span style="font-size:10px; opacity:0.7">▼</span>
+      <div class="agent-dropdown" id="agentDropdown">
+        <div class="agent-option active" data-agent="0">
+          <div class="agent-avatar-sm" style="background:#3b82f6">SH</div>
+          <div><div style="font-weight:700">Shawn</div><div style="color:#888;font-size:11px">(512) 555-0101</div></div>
+        </div>
+        <div class="agent-option" data-agent="1">
+          <div class="agent-avatar-sm" style="background:#10b981">DN</div>
+          <div><div style="font-weight:700">Danny</div><div style="color:#888;font-size:11px">(512) 555-0187</div></div>
+        </div>
+        <div class="agent-option" data-agent="2">
+          <div class="agent-avatar-sm" style="background:#8b5cf6">RV</div>
+          <div><div style="font-weight:700">Raven</div><div style="color:#888;font-size:11px">(512) 555-0223</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="app-body">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-title">All Conversations</div>
+      <div class="search-box">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input type="text" placeholder="Search customers..." oninput="filterConvs(this.value)">
+      </div>
+    </div>
+    <div class="tab-row">
+      <button class="tab-btn active" onclick="switchSideTab('sms',this)">💬 SMS</button>
+      <button class="tab-btn" onclick="switchSideTab('calls',this)">📞 Calls</button>
+    </div>
+    <div class="conv-list" id="convList"></div>
+    <div class="conv-list" id="callList" style="display:none;"></div>
+  </div>
+
+  <!-- CHAT PANEL -->
+  <div class="chat-panel" id="chatPanel">
+    <div class="empty-state">
+      <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      <p>Select a conversation to get started</p>
+    </div>
+  </div>
+
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<!-- CALL MODAL -->
+<div class="call-modal" id="callModal">
+  <div class="call-modal-card">
+    <div class="call-pulse">📞</div>
+    <h2 id="callModalName">Ranch Pet Clinic</h2>
+    <p id="callModalNum">(512) 555-0147</p>
+    <div class="call-timer" id="callTimer">0:00</div>
+    <button class="end-call-btn" onclick="endCall()">🔴 End Call</button>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// DATA
+// ============================================================
+const AGENTS = [
+  { id: 0, name: "Shawn", initials: "SH", number: "(512) 555-0101", color: "#3b82f6" },
+  { id: 1, name: "Danny", initials: "DN", number: "(512) 555-0187", color: "#10b981" },
+  { id: 2, name: "Raven", initials: "RV", number: "(512) 555-0223", color: "#8b5cf6" },
+];
+
+let currentAgent = 0;
+
+const CONVS = [
+  {
+    id: 0,
+    name: "Ranch Pet Clinic",
+    number: "(512) 555-0147",
+    avatarColor: "#f97316",
+    avatarInitials: "RC",
+    lastAgentId: 1,
+    lastMsgPreview: "Hey, just checking in to see if...",
+    time: "2m ago",
+    hasDoubleText: true,
+    agentsInvolved: [0, 1],
+    messages: [
+      { type: "date", text: "Today, Mon Apr 6" },
+      { type: "out", agentId: 0, text: "Hi there! Just following up on your TalkingVet renewal — any questions we can answer for you?", time: "9:14 AM" },
+      { type: "in",  text: "Yes, we'd love to proceed! Can you send over the contract?", time: "9:31 AM" },
+      { type: "out", agentId: 0, text: "Absolutely, sending it over now. You'll get an email shortly!", time: "9:33 AM" },
+      { type: "in",  text: "Perfect, thank you Shawn!", time: "9:40 AM" },
+      { type: "out", agentId: 1, text: "Hey! Just checking in to see if you had any questions about the renewal 😊", time: "10:52 AM", doubleText: true },
+    ]
+  },
+  {
+    id: 1,
+    name: "Riverside Animal Hosp.",
+    number: "(830) 555-0234",
+    avatarColor: "#0ea5e9",
+    avatarInitials: "RA",
+    lastAgentId: 0,
+    lastMsgPreview: "Great! Let me know if you need anything.",
+    time: "1h ago",
+    hasDoubleText: false,
+    agentsInvolved: [0, 2],
+    messages: [
+      { type: "date", text: "Today, Mon Apr 6" },
+      { type: "out", agentId: 2, text: "Hi! I've attached the updated pricing sheet for your review. Happy to walk you through it on a call anytime.", time: "9:02 AM" },
+      { type: "in",  text: "Thanks Raven! We'll take a look and get back to you.", time: "9:45 AM" },
+      { type: "out", agentId: 0, text: "Great! Let me know if you need anything else. We're here all week.", time: "10:10 AM" },
+    ]
+  },
+  {
+    id: 2,
+    name: "Happy Paws Grooming",
+    number: "(210) 555-0891",
+    avatarColor: "#ec4899",
+    avatarInitials: "HP",
+    lastAgentId: 1,
+    lastMsgPreview: "Yes, confirmed! See you then. 🐾",
+    time: "3h ago",
+    hasDoubleText: false,
+    agentsInvolved: [1],
+    messages: [
+      { type: "date", text: "Today, Mon Apr 6" },
+      { type: "out", agentId: 1, text: "Hi! Just wanted to confirm your demo appointment for Thursday at 2pm. Does that still work?", time: "7:45 AM" },
+      { type: "in",  text: "Yes, confirmed! See you then. 🐾", time: "8:02 AM" },
+    ]
+  },
+  {
+    id: 3,
+    name: "Austin Animal Center",
+    number: "(512) 555-0312",
+    avatarColor: "#14b8a6",
+    avatarInitials: "AA",
+    lastAgentId: 0,
+    lastMsgPreview: "We're still reviewing internally.",
+    time: "Yesterday",
+    hasDoubleText: false,
+    agentsInvolved: [0],
+    messages: [
+      { type: "date", text: "Sun Apr 5" },
+      { type: "out", agentId: 0, text: "Hello! Just following up on the demo we had last week — would love to hear your thoughts!", time: "2:10 PM" },
+      { type: "in",  text: "Hi Shawn, we're still reviewing internally. Should have an answer by end of week.", time: "4:55 PM" },
+    ]
+  },
+  {
+    id: 4,
+    name: "Paws & Claws Clinic",
+    number: "(737) 555-0456",
+    avatarColor: "#d97706",
+    avatarInitials: "PC",
+    lastAgentId: 2,
+    lastMsgPreview: "Your support ticket #1042 has been resolved.",
+    time: "2 days ago",
+    hasDoubleText: false,
+    agentsInvolved: [2],
+    messages: [
+      { type: "date", text: "Sat Apr 4" },
+      { type: "out", agentId: 2, text: "Hi! Your support ticket #1042 has been resolved. Let us know if you run into any other issues!", time: "11:20 AM" },
+      { type: "in",  text: "Wonderful, thank you so much!", time: "1:34 PM" },
+    ]
+  },
+];
+
+const CALLS = [
+  { id: 0, customerId: 0, agentId: 1, type: "outbound-call", label: "Outgoing", duration: "5m 12s", time: "Today, 8:30 AM", icon: "📞" },
+  { id: 1, customerId: 1, agentId: 0, type: "completed", label: "Incoming", duration: "11m 47s", time: "Yesterday, 3:15 PM", icon: "📲" },
+  { id: 2, customerId: 3, agentId: 2, type: "missed", label: "Missed", duration: "", time: "Today, 9:00 AM", icon: "📵" },
+  { id: 3, customerId: 2, agentId: 1, type: "outbound-call", label: "Outgoing", duration: "3m 04s", time: "Fri Apr 4, 10:15 AM", icon: "📞" },
+  { id: 4, customerId: 4, agentId: 2, type: "completed", label: "Incoming", duration: "7m 55s", time: "Thu Apr 3, 2:30 PM", icon: "📲" },
+];
+
+let selectedConvId = null;
+let sideTab = "sms";
+let callInterval = null;
+let callSeconds = 0;
+
+// ============================================================
+// RENDER SIDEBAR
+// ============================================================
+function renderConvList(filter = "") {
+  const el = document.getElementById("convList");
+  const filtered = CONVS.filter(c => c.name.toLowerCase().includes(filter.toLowerCase()) || c.number.includes(filter));
+  el.innerHTML = filtered.map(c => {
+    const agent = AGENTS[c.lastAgentId];
+    const isActive = c.id === selectedConvId;
+    const agentPillsHtml = c.agentsInvolved.map(aid => {
+      const a = AGENTS[aid];
+      return `<span class="agent-pill" style="background:${a.color}">${a.initials}</span>`;
+    }).join("");
+    return `
+      <div class="conv-item ${isActive ? 'active' : ''}" onclick="selectConv(${c.id})">
+        <div class="conv-avatar" style="background:${c.avatarColor}">${c.avatarInitials}</div>
+        <div class="conv-info">
+          <div class="conv-name">${c.name}</div>
+          <div class="conv-preview"><span class="agent-label" style="color:${agent.color}">${agent.name.split(' ')[0]}:</span> ${c.lastMsgPreview}</div>
+          <div style="display:flex; gap:4px; margin-top:4px;">${agentPillsHtml}</div>
+        </div>
+        <div class="conv-meta">
+          <div class="conv-time">${c.time}</div>
+          ${c.hasDoubleText ? '<div class="warn-badge">⚠️ Double text</div>' : '<div class="unread-dot" style="opacity:0"></div>'}
+        </div>
+      </div>`;
+  }).join("");
+}
+
+function renderCallList() {
+  const el = document.getElementById("callList");
+  el.innerHTML = CALLS.map(call => {
+    const customer = CONVS[call.customerId];
+    const agent = AGENTS[call.agentId];
+    return `
+      <div class="call-card">
+        <div class="call-icon ${call.type}">${call.icon}</div>
+        <div class="call-info">
+          <div class="call-customer">${customer.name}</div>
+          <div class="call-detail">${call.label} · <span style="color:${agent.color};font-weight:600">${agent.name.split(' ')[0]}</span> · ${customer.number}</div>
+        </div>
+        <div class="call-meta">
+          <div>${call.time}</div>
+          <div class="call-duration">${call.duration || '<span style="color:#ef4444">Missed</span>'}</div>
+        </div>
+      </div>`;
+  }).join("");
+}
+
+function filterConvs(val) { renderConvList(val); }
+
+function switchSideTab(tab, btn) {
+  sideTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  if (tab === "sms") {
+    document.getElementById("convList").style.display = "";
+    document.getElementById("callList").style.display = "none";
+    renderConvList();
+  } else {
+    document.getElementById("convList").style.display = "none";
+    document.getElementById("callList").style.display = "";
+    renderCallList();
+  }
+}
+
+// ============================================================
+// RENDER CHAT
+// ============================================================
+function selectConv(id) {
+  selectedConvId = id;
+  renderConvList();
+  renderChat();
+}
+
+function renderChat() {
+  const conv = CONVS[selectedConvId];
+  const panel = document.getElementById("chatPanel");
+  const me = AGENTS[currentAgent];
+
+  const hasDoubleText = conv.hasDoubleText;
+  const dtWarning = hasDoubleText ? `
+    <div class="double-text-warning">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <span><strong>Heads up:</strong> Danny already messaged this customer 2 minutes ago. Review the thread before replying.</span>
+    </div>` : "";
+
+  const messagesHtml = conv.messages.map(m => {
+    if (m.type === "date") return `<div class="date-divider">${m.text}</div>`;
+    if (m.type === "in") return `
+      <div class="msg-group inbound">
+        <div class="msg-sender-label">← Customer <span class="num">${conv.number}</span></div>
+        <div class="bubble inbound">${m.text}<div class="bubble-time">${m.time}</div></div>
+      </div>`;
+    // outbound
+    const agent = AGENTS[m.agentId];
+    const isDoubleText = m.doubleText;
+    return `
+      <div class="msg-group outbound ${isDoubleText ? 'double-text' : ''}">
+        <div class="msg-sender-label" style="justify-content:flex-end">
+          <span class="num">${agent.number}</span>
+          <span style="color:${agent.color};font-weight:700">${agent.name}</span> →
+        </div>
+        ${isDoubleText ? '<div style="text-align:right;font-size:11px;color:#f59e0b;font-weight:700;margin-bottom:2px">⚠️ Sent while customer already replied</div>' : ''}
+        <div class="bubble outbound" style="background:${agent.color}">${m.text}<div class="bubble-time">${m.time}</div></div>
+      </div>`;
+  }).join("");
+
+  panel.innerHTML = `
+    <div class="chat-header">
+      <div class="chat-header-info">
+        <div class="chat-header-name">${conv.name}</div>
+        <div class="chat-header-number">${conv.number} &nbsp;·&nbsp; ${conv.agentsInvolved.length} agent${conv.agentsInvolved.length > 1 ? 's involved' : ' involved'}</div>
+      </div>
+      <div class="chat-header-actions">
+        <button class="btn green" onclick="startCall(${conv.id})">📞 Call</button>
+        <button class="btn" onclick="showToast('✓ Marked as handled')">✓ Handled</button>
+        <button class="btn" onclick="showToast('📋 Notes saved')">📝 Notes</button>
+      </div>
+    </div>
+    ${dtWarning}
+    <div class="messages" id="messagesEl">${messagesHtml}</div>
+    <div class="compose-area">
+      <div class="compose-from">
+        Sending as
+        <span class="from-badge">
+          <div style="width:14px;height:14px;border-radius:50%;background:${me.color};display:inline-block"></div>
+          ${me.name} · ${me.number}
+        </span>
+      </div>
+      <div class="compose-row">
+        <textarea class="compose-input" id="composeInput" placeholder="Type a message..." rows="1" onkeydown="handleCompose(event)" oninput="autoResize(this)"></textarea>
+        <button class="send-btn" onclick="sendMessage()">Send ➤</button>
+      </div>
+    </div>`;
+
+  // scroll to bottom
+  setTimeout(() => {
+    const el = document.getElementById("messagesEl");
+    if (el) el.scrollTop = el.scrollHeight;
+  }, 50);
+}
+
+function autoResize(el) {
+  el.style.height = "auto";
+  el.style.height = Math.min(el.scrollHeight, 120) + "px";
+}
+
+function handleCompose(e) {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+}
+
+function sendMessage() {
+  const input = document.getElementById("composeInput");
+  const text = input.value.trim();
+  if (!text || selectedConvId === null) return;
+  const conv = CONVS[selectedConvId];
+  const now = new Date();
+  const time = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  conv.messages.push({ type: "out", agentId: currentAgent, text, time });
+  conv.lastAgentId = currentAgent;
+  conv.lastMsgPreview = text.length > 38 ? text.slice(0, 38) + "..." : text;
+  conv.time = "Just now";
+  if (!conv.agentsInvolved.includes(currentAgent)) conv.agentsInvolved.push(currentAgent);
+  input.value = "";
+  input.style.height = "auto";
+  renderConvList();
+  renderChat();
+  showToast(`✓ Message sent from ${AGENTS[currentAgent].number}`);
+}
+
+// ============================================================
+// AGENT SWITCHER
+// ============================================================
+document.getElementById("agentSwitcherBtn").addEventListener("click", (e) => {
+  e.stopPropagation();
+  document.getElementById("agentDropdown").classList.toggle("open");
+});
+document.addEventListener("click", () => { document.getElementById("agentDropdown").classList.remove("open"); });
+
+document.querySelectorAll(".agent-option").forEach(el => {
+  el.addEventListener("click", e => {
+    e.stopPropagation();
+    const idx = parseInt(el.dataset.agent);
+    currentAgent = idx;
+    document.getElementById("currentAgentName").textContent = AGENTS[idx].name;
+    document.querySelectorAll(".agent-option").forEach(o => o.classList.remove("active"));
+    el.classList.add("active");
+    document.getElementById("agentDropdown").classList.remove("open");
+    if (selectedConvId !== null) renderChat();
+    showToast(`Switched to ${AGENTS[idx].name} · ${AGENTS[idx].number}`);
+  });
+});
+
+// ============================================================
+// CALL MODAL
+// ============================================================
+function startCall(convId) {
+  const conv = CONVS[convId];
+  document.getElementById("callModalName").textContent = conv.name;
+  document.getElementById("callModalNum").textContent = conv.number;
+  document.getElementById("callModal").classList.add("show");
+  callSeconds = 0;
+  document.getElementById("callTimer").textContent = "0:00";
+  callInterval = setInterval(() => {
+    callSeconds++;
+    const m = Math.floor(callSeconds / 60);
+    const s = callSeconds % 60;
+    document.getElementById("callTimer").textContent = `${m}:${s.toString().padStart(2, '0')}`;
+  }, 1000);
+}
+
+function endCall() {
+  clearInterval(callInterval);
+  document.getElementById("callModal").classList.remove("show");
+  const conv = CONVS[selectedConvId];
+  const m = Math.floor(callSeconds / 60);
+  const s = callSeconds % 60;
+  showToast(`📞 Call with ${conv.name} ended · ${m}:${s.toString().padStart(2,'0')}`);
+  // add to call log
+  CALLS.unshift({ id: CALLS.length, customerId: selectedConvId, agentId: currentAgent, type: "outbound-call", label: "Outgoing", duration: `${m}m ${s}s`, time: "Just now", icon: "📞" });
+}
+
+// ============================================================
+// TOAST
+// ============================================================
+let toastTimer;
+function showToast(msg) {
+  const t = document.getElementById("toast");
+  t.innerHTML = msg;
+  t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 2800);
+}
+
+// ============================================================
+// INIT
+// ============================================================
+renderConvList();
+renderCallList();
+</script>
+</body>
+</html>

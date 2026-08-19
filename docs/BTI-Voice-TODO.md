@@ -1,0 +1,173 @@
+# BTI Voice — To-Do Checklist (as of 2026-08-19, end of day)
+
+Running list of what still needs doing, in rough priority. Check items off as you go.
+Full context for anything here lives in `BTI-Voice-Session-Handoff 3.md` (see §8f for the 8/17–8/18 sessions).
+
+## ⚡ WHAT'S NEXT (start a new session here)
+
+**🔴 DESKTOP IS STALE — do this first (2026-08-19):** the desktop repo is **2 commits behind origin** (`47f1bd3` iOS keyboard pod, `279022e` client package-lock — both from the Mac). In **Git Bash**:
+```bash
+cd "/c/Users/Doero/OneDrive/Documents/Claude/Projects/Talkingvet Help/bti-voice"
+rm -f .git/*.lock .git/*.old
+git pull origin main
+```
+(Claude's own pull failed, but that's a Claude sandbox limitation — yours will work. See below.)
+
+**🔴 CORRECTION — the "OneDrive lock" problem never existed.** Danny does not use OneDrive; the folder name is leftover. Every git lock error was **Claude's FUSE mount, which cannot delete files** — proven by creating a brand-new file and still being unable to `rm` it. Handoff §8k has the proof and the implications. Practical upshot: **Danny's native git always works; when Claude's git op fails on "Operation not permitted," hand the command to Danny.** Ignore all past advice about pausing sync or closing VS Code.
+
+**📁 DOCS NOW LIVE IN THE REPO (2026-08-19).** With no cloud sync, docs on the desktop had no backup and no way to reach other machines. All BTI Voice docs moved to `bti-voice/docs/` and committed; superseded/other-project docs in `bti-voice/docs/archive/`. **One `git clone` = code + full context + backup.** `BTI-Voice-Session-Handoff 3.md` → `BTI-Voice-Session-Handoff-3.md` (space removed). ⚠ The handoff carries the live Postgres password and is now in git history — repo must stay **private**; rotate that credential if that ever changes.
+
+**🧳 TRAVELING / MULTI-MACHINE:** laptop setup guide is `docs/BTI-Voice-LAPTOP-SETUP.md` (clone to `C:\Dev\bti-voice`). Handoff §8k has per-machine paths. **Claude now runs a git sync check at the start of every session and commits + pushes + verifies before every session ends — standing instruction, saved to memory.**
+
+**▶ START HERE 2026-08-20 — TestFlight, exact sequence (full detail: handoff §8j):**
+1. appstoreconnect.apple.com as the Account Holder (dannyr927@outlook.com) → accept the updated **Program License Agreement** (front-page banner). Everything below is blocked until this.
+2. Apps → **+ New App**: iOS, "BTI Voice", bundle `com.businesstechnologyinsight.btivoice` (in dropdown), SKU `bti-voice`.
+3. Mac Xcode (`npx cap open ios` from `client/` if closed): App target → General → **Version 1.5.0, Build 1**.
+4. Device chip → **Any iOS Device (arm64)** → **Product → Archive** → Organizer → **Distribute App → App Store Connect → Upload** (accept defaults). ⚠ Beta Xcode occasionally can't upload — if rejected, install release Xcode and re-archive.
+5. ASC → BTI Voice → **TestFlight** (build processes ~15-30 min) → "Missing Compliance" → standard HTTPS only = **exempt** → Internal group "BTI Team" → add testers (they need Users & Access entries first) → they install via the TestFlight app.
+6. On-phone verifications still open: **recording playback** (Range fix) + **incoming call while app is open**.
+- iOS state: app RUNS on Danny's iPhone, keyboard/viewport/touch polish done, everything committed+pushed (Mac & Windows in sync as of 8/19 evening). Known limitation: incoming calls only ring while the app is foregrounded — CallKit/VoIP push is the next iOS project.
+- Also open: Twilio support ticket (ISV flag + Compliance Embeddable — check Ticket history in a few days); pilot client pick; accountant email (draft ready: `BTI-Voice-Accountant-Email-Draft.md`); team password changes; pilot docs ready to send (`BTI-Voice-Pilot-One-Pager.md`, `BTI-Voice-Customer-Onboarding-Checklist.md`).
+
+
+**Big new direction (Danny, 2026-08-18): BTI Voice will be SOLD to external customers.** Target: BTI's own MSP clients (vets maybe later), 1–5 pilots in year one. **Productization plan written 2026-08-18 → `BTI-Voice-Productization-Plan.md`** (tenancy decision, per-customer Twilio/A2P mechanics with 2026 fees & timelines, $35/user/mo pricing vs competitors, re-scoped security list, sequenced roadmap). Key decisions: **single-tenant deploy per customer (NO multi-tenancy rewrite)**; Twilio subaccount per customer, each with own A2P brand+campaign under the CUSTOMER's EIN; browser-only for pilots (no per-customer installers); Zoho integration is an optional add-on (it's BTI's Zoho — customers only get CRM logging if they run Zoho themselves; app runs fine without it).
+
+### Phase 0 — before ANY customer deploy (from the plan, §1 + §6)
+- [x] **5 hard blockers — DONE 2026-08-18, commit `54fdaaf` (local, NEEDS PUSH):** `seed.js` demo/BTI seeding now requires `SEED_DEMO=true`; fresh deploys bootstrap one admin from `ADMIN_USERNAME`/`ADMIN_PASSWORD` (+optional `ADMIN_NAME`, min 8-char pw); Talkingvet removed from after-hours default (db.js/sms.js) and AI summary prompt (now `COMPANY_NAME` + optional `AI_SUMMARY_CONTEXT` env); `adminActivity.js` uses secret.js ADMIN_KEY (no `bti-admin-2026` fallback); prod boot exits without `JWT_SECRET`; webhook validation strict-by-default in production. All `node --check` ✓. **Danny: rm locks, push, then set `COMPANY_NAME=Talkingvet` (+ optionally `AI_SUMMARY_CONTEXT`) in Railway so BTI's own AI summaries keep their context.** BTI prod unaffected otherwise (agents exist → seed no-ops; JWT_SECRET + strict webhooks already set).
+- [x] **Brandable strings — DONE 2026-08-19 (commit `5a95ae1`, needs push):** `client/src/brand.js` reads `VITE_BRAND_NAME` (fallback "BTI Voice") → splash, title bar, document.title, Settings About/launch-at-login; server `BRAND_NAME` env → startup log + Zoho "Logged by" description. BTI deploy needs NO new vars (fallbacks match current behavior).
+- [x] **Consent-record storage — DONE 2026-08-19 (commit `d9b93c6`, needs push):** append-only `consent_records` table; auto-captured on new-contact-from-inbound-SMS (implied opt-in), STOP/START keywords, and all five 21610 carrier-block sites; manual capture UI in ContactDetail (verbal/web form/written — manual opt-in does NOT clear a carrier STOP, warns instead); per-contact history; CSV export at Settings → Calls → SMS Compliance. Also fixed a latent ReferenceError (ContactDetail used `toast` without declaring it).
+- [x] **Deploy runbook + env template — DONE 2026-08-19 (commit `40e6582`, needs push):** `docs/DEPLOY-RUNBOOK.md` (customer data collection → Railway → Twilio subaccount/A2P → app config → Zoho add-on → verification checklist) + `server/.env.example` (every env var, annotated).
+- [x] **Twilio one-time — DONE 2026-08-19** (except the support-ticket wait): approved Primary Profiles are READ-ONLY in console → support ticket filed for ISV Reseller/Partner identity flag + Compliance Embeddable beta + blank-Business-Type question. "Create Secondary Profile" exists already, so customer onboarding is NOT blocked on the ticket. SHAKEN/STIR Trust Product "Talkingvet Dialer" was already Approved but had 0 numbers — all 3 numbers assigned (Business Profile first, then Trust Product) = A-level attestation. Toll-free +18555998716 released.
+- [ ] **iOS / TestFlight (started 2026-08-19, see handoff §8j):** app RUNS on Danny's iPhone (scene lifecycle + keyboard/viewport fixes done). NEXT: (1) Account Holder accepts Apple's updated license agreement (ASC front-page banner, dannyr927@outlook.com); (2) ASC app record `com.businesstechnologyinsight.btivoice`; (3) Xcode: version 1.5.0/build 1 → Any iOS Device → Archive → Distribute → Upload; (4) TestFlight compliance = standard-HTTPS exempt → internal group "BTI Team". Verify on phone: recording playback (Range fix), incoming-call-while-open. Later: CallKit/VoIP push for background ringing; App Store "unlisted" distribution decision.
+- [ ] **Watch the Twilio support ticket** (ISV identity flag + Compliance Embeddable) — check Ticket history in a few days.
+- [x] Demo video recorded (2026-08-19, Danny).
+- [x] **Media/recording token hardening — DONE 2026-08-19 (commit `bd268b2`, needs push):** `POST /api/auth/media-token` mints 10-min `scope:'media'` JWTs; `/messages/media/:id` + `/calls/:id/recording` now use `requireMediaAuth` — full 7-day login JWTs are REJECTED in `?token=` query params (header Bearer still fine). Client auto-mints on login + refreshes every 5 min, clears on logout. calls.js's stale `bti-voice-dev-secret` fallback removed.
+- [x] **Per-number inbound CALL routing — DONE + LIVE 2026-08-19 (`de26f19` + picker fix `d0e3bd6`, pushed):** rules set (Rick/Paul numbers → them directly). Ring test on Paul's number still pending: `number_routing` table (dialed number → ivr / agent / all_agents / voicemail); `/inbound` checks it before the shared IVR; CRUD at `/api/ivr/number-routing`; Settings → Calls → **Number Routing** card with agent picker. After push: add rules so Rick's +12394755114 rings Rick and Paul's +12394454227 rings Paul (main +12396667033 stays on the IVR).
+
+### Done 2026-08-18 (afternoon)
+- [x] **Phase 0 pushed + redeployed by Danny**; `COMPANY_NAME` set; after-hours message edited in Settings.
+- [x] **Test thread purged for demo video:** conversation 28 / message 18 (+12392316219, Warren's 5/28 test) deleted from Postgres; Zoho digest `sms-2026-05-28-+12392316219` (record 4478198000142986027) deleted. Contact 47 kept (Zoho-linked, CBIA).
+- [x] **Contact editing with CRM lock — commit `0f54d44` (local, needs push):** ✎ rename in ChatPanel header, shown only when the Zoho panel finds no CRM match; server PATCH /contacts/:id returns 409 on name edits for Zoho-matched contacts (does a live findContactByPhone check if zoho_contact_id unset, caches the match; fails open if Zoho is down); ContactsTab edit form disables the name field with a 🔒 note for CRM contacts (notes stay editable); rename emits `conversation_updated` so all clients refresh. Client build ✓.
+
+- [x] **Responsive UI — commit `78ae865` (local, needs push):** compared BTI Voice vs Zoho Voice side-by-side on Danny's desktop. TitleBar identity pill (name+number+status) was absolutely centered and collided at narrow widths — now drops the number below 560px and the name below 430px (dot+status icon remain). SMS tab gets a **split view at ≥900px** (360px list pane + thread, desktop-mail style; back button hidden; bottom nav stays). Electron `DEFAULT_BOUNDS` bumped 420×720 → **470×805** (needs a future installer to reach anyone; existing users' saved size wins anyway — main.js already persists bounds to window-state.json on resize/move, so "remember last size" was already built). NOTE: stale `.git/*.lock` + `.old` files (⚠ left by *Claude's sandbox*, not OneDrive — see top of file) — rm in Git Bash before push. When `rm` fails on a lock, **`mv` (rename) works** — a Claude-side workaround only.
+
+- [x] **Small-window polish — commit `0be6d33` (local, needs push; decisions by Danny):** title bar pill reworked to status-icon + name only (fixes the "2 same-color dots"; number now shows in the Dialpad header; voice-ready dot only appears when degraded); **notifications consolidated to the bell panel** — the Alerts nav tab is gone (bell already opened a NotificationsPanel; the tab was redundant), bottom nav is 5 items; dialpad compact mode below 660px window height (56px keys, no clipped call button); **Electron min window 380×580 → 330×560 (needs a future installer)**; notifications panel width viewport-capped. Remaining known gaps at width: Calls/Contacts tabs still phone-stretch at large sizes (SMS has split view; give Calls the same treatment next).
+
+- [x] **Calls + Contacts split views — commit `a0dc21d` (local, needs push):** at ≥900px, Calls = 400px list + right detail pane (extracted `CallDetailBody` shared with narrow inline expansion; selected row highlights; header shows name/number/direction/duration/agent); Contacts = 360px list + detail/edit/create pane (ContactDetail back button now optional). Narrow behavior unchanged. All 3 main tabs (SMS/Calls/Contacts) now have desktop layouts; Dialpad centers fine; Settings untouched (scrolling form, acceptable). Also earlier: chat narrow fixes `fe1d649`.
+
+- [x] **Re-sync with CRM — commit `82e892b` (local, needs push):** `POST /contacts/:id/sync-zoho` now ALWAYS adopts the CRM name when it differs (old behavior only filled unset names; CRM is source of truth since the edit-lock change) and emits `conversation_updated`. New 🔄 button in the chat's ZOHO CRM panel header — re-syncs the name and reloads the profile card, spins while running. ContactDetail's existing sync button inherits the new always-adopt behavior.
+
+### Open decisions for Danny (plan §7)
+- [ ] Product name (keep "BTI Voice"?); first pilot client; pricing sign-off ($35/user/mo + $250–500 onboarding); confirm browser-only pilots; ask accountant about telecom tax/USF before first invoice.
+
+## Remaining small items (pre-existing)
+
+- [ ] **Team password changes** — everyone still on `username123`; nag banner now live in the app on every sign-in (danny, shawn, rick, paul, warren, ryan).
+- [ ] **Desktop verify — last two boxes:** 📞/💬 buttons on call-log rows after tray quit+reopen, and confirm Paul's outbound call displayed +12394454227 on the recipient's caller ID. (Everything else verified 8/18 — see §8f. A scheduled reminder existed for 8/18 9am; delete from Scheduled sidebar if it's now noise.)
+- [x] **Junk-data purge DONE 2026-08-19** (Danny approved): contacts 7/10/11, conversations 7/10/11, calls 58 + 80, 2 messages + reads/agents rows deleted from Postgres in one transaction; stale Zoho digests `sms-2026-04-15-Danny` + `sms-2026-04-22-Danny` deleted from BTI_Voice module.
+- [x] **Toll-free +18555998716 RELEASED 2026-08-19.**
+- [ ] Revisit **retiring the Zoho SMS channel** ~mid-Oct–mid-Nov 2026 (kept for the 60–90 day transition).
+
+## NEXT SESSION batch — CODE DONE 2026-08-14, committed locally as `0816440` (NOT pushed yet)
+
+All 5 items written, syntax-checked, and client build verified. One commit on local main.
+
+- [x] **1. Zoho SMS conversation widget** — `server/zoho-widget/sms.html` (self-contained, Embedded App SDK, chat bubbles, agent "send as" picker, 10s poll) + `server/routes/zohoWidget.js` with `GET /api/zoho-widget/thread`, `POST /api/zoho-widget/send`, and `GET /api/zoho-widget/agents` (powers the picker). Auth = `ZOHO_WIDGET_KEY` shared secret sent as `x-widget-key`; the widget reads the key from its own URL (`sms.html?key=…`), so the key lives only in the Zoho widget registration, never in the public HTML. Note: widget lives in `server/zoho-widget/` (NOT `server/public/` — that's gitignored Vite build output), mounted at `/zoho-widget` in index.js.
+- [x] **2. Per-agent outbound caller ID** — `/outbound` parses `client:agent_N`, uses that agent's `phone_number` as callerId when it starts with `+`, env fallback.
+- [x] **3. Click-to-call/message icons** — every call-log row now expands; expanded detail + ContactDetail hero get 📞 Call / 💬 Message buttons. `dialTo()` in App.jsx switches to DialpadTab and auto-connects; `messageTo()` uses `/conversations/ensure` then deep-links into the thread.
+- [x] **4. Zoho rerouting** — new `server/helpers/btiVoiceModule.js` upserts into `BTI_Voice` on `BTI_Ref`. SMS = daily digest per contact (`sms-YYYY-MM-DD-+1phone`), rebuilt from our DB on every message so it's self-healing; calls = one record each (`call-<id>`), created by `/log-call` and enriched with Recording_URL/Transcript/AI_Summary by new `POST /api/zoho/update-call-record` (which replaced the recording-complete add-note path). Native Zoho Calls activity logging kept. Field API names verified against the live module. Wrap-up agent notes still go to /Notes on purpose (human-authored).
+- [x] **5. Notes migration script** — `server/scripts/migrate-notes-to-bti-voice.js`. Rebuilds historical digests + call records **from Postgres** (authoritative — no note parsing), then `--list-notes` writes `bti-notes-deletion-list.csv` for Danny to review, then `--delete`.
+
+### Go-live status (updated 2026-08-14 ~2pm, Paul's session)
+1. [x] **Pushed.** `0816440` is live on Railway (verified: widget page serves, /api/zoho-widget/agents answers with the key).
+2. [x] **`ZOHO_WIDGET_KEY` set in Railway** and matches the widget registration.
+3. [x] **Widget registered + placed.** Developer Hub widget "BTI Voice SMS" (API name `BTI_Voice_SMS`), Type **Related List**, External, Base URL carries `?key=`. **Gotchas discovered (the TODO's original instructions were incomplete):**
+   - A Related List widget must first be **attached to the module**: temporarily assign Standard View to your own profile (Canvas Assignment), open any contact → Add Related List → Widgets → BTI Voice SMS, then re-assign the canvas. Until then it appears NOWHERE in the Canvas editor.
+   - An unplaced-but-attached related list **floats over every tab** of a canvas view — that's Zoho's fallback rendering, not a bug in our widget.
+   - Canvas drag-and-drop only nests a block into a tab if it FULLY fits inside; the reliable way is the tab-strip **+** menu → search the related list → it creates a properly-nested tab. Result: Contacts canvas now has a **BTI Voice SMS** tab (967×700 widget) next to the BTI Voice tab. Verified clean in preview + live on Danny Test (thread renders, send-as picker works).
+4. [x] **Add widget to Leads — DONE 2026-08-17** (via Claude browser session): Dianah Thompson lead → Add Related List → Widgets → BTI Voice SMS → Install → saved as related list "BTI Voice SMS". Verified rendering: lead name/phone header, empty-thread state, send-as picker populated, compose + Send present. Note: Leads also shows the native **Zoho SMS** related list right above ours — fuel for the "retire Zoho SMS channel" decision (item 7).
+5. [ ] **Desktop app verify** (quit + reopen from tray first): (a) Rick or Paul outbound call shows THEIR number; (b) 📞/💬 icons on call-log rows + contact detail; (c) BTI_Voice module records appearing for SMS digests and calls (transcript+summary after recording processes). (d) ~~delete smoke-test record~~ — **deleted 2026-08-17**; it had been upserted with real call-162 data (the manual smoke record used BTI_Ref `call-162`), so migration `--sync` must rebuild call-162 (step 6 covers it).
+6. [~] **Migration — `--sync` + `--list-notes` DONE 2026-08-17** (Paul, Git Bash). Gotchas: must `railway link` first (project "intuitive-compassion", env production, service bti-voice), and `railway run` injects the INTERNAL `DATABASE_URL` (`postgres.railway.internal`, unreachable off-platform) — override with `railway run env DATABASE_URL="<public maglev.proxy.rlwy.net URL>" node …`. Results: 16/16 digests, 91/92 calls (call-162 rebuilt ✓). One skip: **call 58** — its conversation points at junk contact `client:agent_3` (phone_number literally `client:agent_3`), so the upsert was rejected; it's a 23-min inbound from 2026-04-16 (test-era). Claude also deleted a duplicate `sms-2026-08-14-+12395959310` digest (the pre-migration original; the upsert created a second instead of matching — watch whether the NEXT live SMS to +12395959310 upserts cleanly onto the survivor instead of making another dup). Module now has 107 records. **Remaining:** review `server/scripts/bti-notes-deletion-list.csv` (25 notes, all clearly BTI-created) with Danny, then run `--delete` (same env override).
+   - [x] **`--delete` RUN 2026-08-17 ~3pm (Danny): 25 notes deleted, 0 failed. Migration 100% complete.** Danny confirmed all BTI Voice traffic to date was testing, and Claude re-verified all 25 CSV titles were machine patterns. Danny's same-day re-run of `--sync` after the unique-field fix updated all 106 records in place with zero duplicates — live confirmation the upsert fix holds.
+   - [ ] Data cleanup found along the way: junk contacts in Postgres — id 10 (phone "Danny"), 11 (`client:agent_3`, holds test call 58), 7 ('Unknown caller', holds orphan row 80). All test-era; Danny leaning toward deletion — awaiting explicit go.
+7. [x] **DECIDED 2026-08-17 (Paul): Zoho SMS channel STAYS for now** — still needed until the org fully moves to BTI Voice, which is at least 60–90 days out. **Revisit ~mid-October to mid-November 2026.** Side effect: Lead records show both the native Zoho SMS related list and the BTI Voice SMS widget stacked — acceptable in the interim. Also cosmetic: widget renders light-themed inside dark CRM; could theme it to match.
+
+## 2026-08-17 session (Paul + Claude) — data repair + feature commit `0aeceeb` (NOT pushed yet)
+
+- [x] **Voicemail review FINISHED.** 17 of the 18 rows merged (not just the same-phone ones — a tighter rule matched each junk row to the candidate call that *ended* 4–5s before the recording row was created, i.e. the callback latency; content spot-checks agreed). Includes junk 113 → call 112 (+18009378997, the 52-min T-Mobile call the ±4min window missed). Only **row 80** remains (6s "testing testing" recording, 4/20, no candidate call anywhere) — delete it + the Unknown caller contact on Danny's say-so.
+- [x] **Malformed contacts fixed:** dup contact 5 `2395959310` merged into 6 Danny Test (messages, calls, notes, reads); contact 47 normalized to `+12392316219`; misdial contact 61 `+239595931` removed, its call 137 re-filed to Danny Test; empty `client:agent_2` (12) removed. **Left + flagged:** contact 10 (phone literally "Danny", 2 test messages) and contact 11 `client:agent_3` holding call 58 — its real caller is recoverable via Twilio: `railway run node -e "require('twilio')(process.env.TWILIO_ACCOUNT_SID,process.env.TWILIO_AUTH_TOKEN).calls('CA879c7cee66697cddc9a1e18bc2a7ef68').fetch().then(c=>console.log(c.from,c.to))"`.
+- [x] **After the repairs, re-run migration `--sync`** to push restored recordings/transcripts + re-filed history to Zoho; then Claude deletes the stale digest records under old refs (`sms-*-2395959310` ×4, `sms-2026-05-28-239-231-6219`). *(--sync not yet re-run.)*
+- [x] **Commit `0aeceeb` (local, needs push):** default-password nag banner (login response flags `username+123`, dismissible amber banner until changed; also fixed change-password showing success on 400); agent number-assignment UI (Team section "edit" links → new `PATCH /api/agents/:id/number`, E.164-validated); light-mode theming for Login/toasts/title bar (ActiveCallPanel intentionally stays dark — call-screen convention). Client `vite build` ✓, `node --check` ✓.
+- [x] **dist-electron pruned** — 835 MB of 1.0.0–1.4.0 installers deleted, 1.5.0 kept.
+- [x] **Check-for-updates TODO item was STALE** — the Settings → About button shipped in 1.5.0 (commit a49cc6c + batch D). Removed from Product gaps.
+
+## CRITICAL FIX 2026-08-17 ~2:15pm — Zoho upsert was silently duplicating
+
+Paul's two extra `--sync` runs revealed that **every upsert into BTI_Voice created a new record instead of matching** — the module briefly held 3 copies of everything (318 records). Root cause: `duplicate_check_fields: ['BTI_Ref']` only works if the field has Zoho's **"Do not allow duplicate values" (unique)** property, which it didn't — Zoho silently falls back to insert. This also meant every live SMS/call since the 8/14 push was duplicating.
+
+Fix applied by Claude: deleted the 212 older copies via API (kept the newest run — 91 calls + 15 digests = 106 records), then set BTI_Ref → Edit Properties → "Do not allow duplicate values" in the Standard layout (Zoho requires zero existing dups first, hence the order). Verified with a live API upsert: `action: "update"` ✓. Live logging and repeat `--sync` runs are now idempotent. **Lesson: any future upsert-keyed field in Zoho must be marked unique.**
+
+## Verify next (started, not confirmed)
+- [x] **Test voicemail — VERIFIED 2026-08-14.** Danny's inbound voicemail from +12395959310 filed as call **162**: inbound/voicemail on Mr. Danny Test, with `twilio_call_sid` + `recording_sid` + recording URL stored. Unknown caller count stayed at 18; no duplicate from the status webhook. (First attempt 2026-08-13 was invalid — Danny dialed his cell FROM the app dialpad, logged as outbound call 161; the IVR was never touched.)
+- [ ] **Paul Messino's upgrade.** He was on 1.4.0. Simplest path is opening `https://bti-voice-production.up.railway.app/api/updates/download` in a browser — no login needed, downloads the 1.5.0 exe directly. The in-app banner is unreliable on 1.4.0 because the Accept/Decline fix only landed in 1.5.0. (Note: Paul was active in the app 2026-08-13 ~3:25p from Fort Myers — worth confirming which version he's on now.)
+
+## v1.5.0 release — DONE 2026-08-13
+- [x] Windows repo synced to latest main (was stranded on `dc480da` with a stale tracking ref)
+- [x] `BTI-Voice-Setup-1.5.0.exe` built (86.94 MiB) — this replaced a stale Aug 11 pre-audit build of the same version number that was sitting in `dist-electron/` (never uploaded anywhere)
+- [x] Uploaded to the v1.5.0 GitHub release alongside both Mac DMGs
+- [x] Railway `LATEST_VERSION` bumped 1.4.0 → 1.5.0 (it had never been changed, so nobody was being offered the update)
+- [x] Verified live: `/api/updates/latest` → 1.5.0, download resolves to the right exe
+- [x] Installed build spot-checked: dark mode, bell badge, "#" avatars, live SMS over socket, `/` canned responses
+
+## Voicemail caller-ID bug — FIXED 2026-08-13 (commit 52abfc0)
+- [x] Code fixed in `server/webhooks/voice.js` and deployed (see handoff §8c for the full story — Twilio never sends `From` on recording callbacks, and a bad `OR status='voicemail'` lookup was fabricating phantom voicemail rows out of ordinary call recordings)
+- [x] Historical data repaired: 16 recordings merged onto their real call rows (restoring transcripts and true durations), 1 genuine voicemail re-filed, junk contact renamed 'Unknown caller'
+- [ ] **18 rows still need review** — see `BTI-Voice-voicemail-review.csv`. In most, every candidate call shares the same phone number, so the contact is unambiguous even though the exact call row isn't; a looser matching rule would finish them off.
+- [ ] Malformed contact `+239595931` (9 digits, attached to call 137) survived the `phoneVariants()` dedupe fix — worth sweeping for other malformed numbers.
+
+## Zoho "BTI Voice" tab — module + Canvas DONE 2026-08-14, code pending
+- [x] Custom module **BTI Voice** created (API name `BTI_Voice`, id 4478198000142875002), visible to all 3 profiles. Fields: Type (Call/SMS), Direction (Inbound/Outbound/Missed/Voicemail), Agent, Phone_Number, Activity_Time, Duration, Recording_URL, Transcript, AI_Summary, Message_Log, Contact lookup, Lead lookup, BTI_Ref (dedupe/upsert key). Name field relabeled "Subject".
+- [x] **BTI Voice tab** added to the "Contacts - Redesign Draft" Canvas (the detail view all profiles use), with a tidied card layout. Leads use Standard View, where the related list appears automatically.
+- [x] Smoke-test record created on the Danny Test contact (Zoho record 4478198000142849021) — **deleted 2026-08-17** (it had absorbed real call-162 data via BTI_Ref upsert; `--sync` rebuilds it).
+- [x] **Server code — DONE 2026-08-14 (commit 0816440, pending push):** SMS logging + call transcripts/AI summaries rerouted from POST /Notes to the BTI_Voice module. See "NEXT SESSION batch" section at top.
+- [x] **Migration script written** (`server/scripts/migrate-notes-to-bti-voice.js`) — still needs to be RUN (--sync, then --list-notes + Danny review, then --delete). See step 6 at top.
+- [x] **SMS conversation widget — CODE DONE 2026-08-14 (commit 0816440, pending push + Zoho registration, steps 2–3 at top).** Original spec kept below for reference:
+  - Widget page served by the existing Railway server (e.g. `server/public/zoho-widget/` → `https://bti-voice-production.up.railway.app/zoho-widget/sms.html`). Single self-contained HTML/JS/CSS page.
+  - Uses Zoho's Embedded App JS SDK (`ZOHO.embeddedApp` / `ZOHO.CRM.API.getRecord`) to get the current Contact/Lead's phone number.
+  - New server endpoints (auth via a `ZOHO_WIDGET_KEY` env var shared secret, NOT agent JWT): `GET /api/zoho-widget/thread?phone=` (messages for that number's conversation: body, direction, agent name+color, timestamp, delivery status) and `POST /api/zoho-widget/send` (body, phone, agent_id).
+  - UI: chat bubbles — inbound left, outbound right **tagged with agent name/color (all agents' messages visible)**; compose box with **agent picker ("send as") dropdown** — the differentiator over Zoho SMS, which is single-sender. Poll every ~10s for new messages (socket optional later).
+  - Sends go out from the chosen agent's own Twilio number via the normal messages path, so they land in the BTI Voice shared inbox + Zoho digest like any app-sent text.
+  - Registration (Danny does clicks w/ instructions): Zoho Developer Hub → Widgets → new widget, hosting External, Base URL above; then Canvas builder → BTI Voice tab → place the widget component.
+  - Decide after launch: retire the Zoho SMS channel (it bypasses Twilio/A2P and splits history).
+- Dupe cleanup: two "Danny Test" contacts in Zoho (+12395959310 and "(239) 595-9310" formats) — merge sometime.
+
+## Security — do before wider rollout
+- [ ] **Change default passwords.** All active accounts still use username + `123` (e.g. `danny123`). Each person: Settings → Profile → Change Password. Accounts: danny, shawn, rick, paul, warren, ryan (raven is inactive).
+- [x] **`TWILIO_STRICT_WEBHOOKS=true` set in Railway — DONE 2026-08-17 ~2:45pm** (Claude via browser; service redeployed, `/api/updates/latest` verified healthy after). Watch tomorrow's desktop-verify calls/texts — if inbound suddenly fails (403s in Deploy Logs), set it back to `false` and investigate. Note: deploy logs also flagged `ADMIN_KEY is not set — using a random per-boot value`; set `ADMIN_KEY` in Railway if stable admin-endpoint access is ever needed.
+- [ ] (optional cleanup) An app-specific password leaked into Mac Terminal history during notarization setup — revoke at appleid.apple.com and re-run `store-credentials` if you want to be tidy.
+
+## Deferred security items (need more than a blind edit)
+- [ ] Updater endpoint auth + installer integrity check (updater is Windows-gated, lower risk)
+- [ ] Short-lived per-resource media/recording tokens (JWT currently rides in those URLs)
+- [ ] Decide policy on "send as another agent" + call-control-by-SID (fine internally; lock down if ever external)
+
+## Product gaps
+- [x] ~~No manual "check for updates"~~ — **stale item**: Settings → About already has the full check/download/install button (commit a49cc6c, in 1.5.0). Windows-only by design.
+- [x] Agent number-assignment UI — **DONE 2026-08-17** (commit 0aeceeb, pending push): Settings → Profile → Team, "edit" per agent.
+- [x] **2026-08-14: Rick and Paul got Twilio numbers.** Rick (agent 4) = +12394755114, Paul (agent 5) = +12394454227. Both configured with the production voice webhook and added to the A2P Messaging Service sender pool (campaign Verified). ~~Per-agent outbound caller ID~~ — **code done 2026-08-14 (commit 0816440, pending push)**. Still needed: per-number inbound routing (calls to any number hit the same IVR), 911 addresses on all three numbers.
+- [ ] **Stray toll-free number +18555998716 in the account** ("Toll free verification required", not usable for SMS without separate verification, ~$2.15/mo) — confirm whether it was bought intentionally; release it if not.
+- [ ] Conversation filters; editable disposition codes; AI-suggested replies (OpenAI already wired)
+
+## Polish / cleanup (lower priority)
+- [x] Finish dark-mode conversion — **DONE 2026-08-17** (0aeceeb): Login, toasts, title bar (incl. status dropdown + window controls) now theme both ways. BottomNav was already converted (stale). ActiveCallPanel deliberately stays dark (call-screen convention); revisit only if someone objects.
+- [ ] Tab-switch performance refactor (keep tabs mounted/cached)
+- [ ] Delete dead code: `client/src/pages/Inbox.jsx` + `components/Sidebar.jsx`
+- [x] ~~Prune `dist-electron/`~~ — **DONE 2026-08-18** (835 MB of 1.0.0–1.4.x deleted, 1.5.0 kept). Nothing syncs it anywhere; it's local-only and gitignored.
+- [ ] Zoho hardening: re-enable contact-ID cache in `zohoSync.js resolveZohoId`, retry logic for wrap-up pushes, confirm refresh-token rotation
+- [ ] Twilio console tidying: delete the 2 dead messaging services, add a 911 address to the test number
+- [ ] iOS device testing
+
+## Considered and deferred
+- **Renaming/moving the `Talkingvet Help` folder — RECONSIDER, the objection is gone.** Safe code-wise (nothing hardcodes the path, electron-builder's output is relative, git identifies the repo by `.git`). The old blocker was "OneDrive would re-sync 2.1 GB" — **void, OneDrive isn't running.** Only cost is reconnecting the folder in Cowork. Moving the desktop repo to `C:\Dev\bti-voice` would match the laptop and drop the misleading `OneDrive` path segment.
+
+See `BTI-Voice-Preprod-Audit.md` for the full pre-production audit findings.

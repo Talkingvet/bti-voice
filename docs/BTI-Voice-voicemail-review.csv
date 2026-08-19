@@ -1,0 +1,19 @@
+call_id,date,duration_s,candidate_calls,candidate_numbers,has_recording,transcript_excerpt
+80,2026-04-20 14:25:02,6,,,yes,"Hello, hello, hello. Testing, testing, testing."
+113,2026-05-21 02:41:56,3113,,,yes,"Welcome to T-Mobile. As part of this call and subsequent interactions from this call, T-Mobile may collect information about you to provide the best service pos"
+121,2026-06-15 22:42:44,23,120 122,+12392730685,yes,"Hey, Warren, is that you? I can't hear you. Hello?"
+123,2026-06-15 22:45:10,52,124 122 120,+12392730685,yes,"I don't know if you're there, Warren. I cannot hear anything from you. I heard a click. There you go. Now, I can hear you. Can you hear me okay? Hello? I can't "
+125,2026-06-15 22:46:33,22,126 124 122,+12392730685 +12395954034,yes,"Is there any better? Can you hear me, Warren? Hello? I can't hear you, Devon."
+127,2026-06-15 22:49:02,101,128 126 124,+12392730685 +12395954034,yes,"I'm not sure what the volume is on your side, but the call is going through. Let me check my volume mixer, maybe it's just not this app. All right. I'm going to"
+129,2026-06-15 22:50:20,63,128 126,+12392730685 +12395954034,yes,I can see the volume in the VTI voice is moving. All right. Can you hear me now? Yeah. All right. I guess it's working. I don't know why I'm not hearing it. Huh
+132,2026-06-16 16:02:27,7,131 130,+12392730685,yes,"1, 2, 3."
+134,2026-06-16 16:14:56,7,133 135,+12404577106,yes,Your call has been forwarded to an automated voice messaging system. 2-4-0-4
+136,2026-06-16 16:15:21,3,135 133,+12404577106,yes,Your call has been forwarded to an automated voice message.
+139,2026-06-16 16:32:37,12,138 137,+12395959310 +239595931,yes,We're going to get a wrap-up screen.
+141,2026-06-16 16:51:46,5,140 142,+12392730685,yes,Thank you for watching!
+143,2026-06-16 16:52:31,4,142 140,+12392730685,yes,It's self-admitted.
+145,2026-06-16 16:58:40,4,144 146,+12392730685,yes,"Thanks, everyone."
+147,2026-06-16 16:59:57,11,146 144,+12392730685,yes,"1, 2, 3."
+149,2026-06-17 14:51:56,3,148 150 152,+12404577106 +18435244551,yes,Your call has been forwarded to an automated voice messaging.
+151,2026-06-17 14:52:48,7,150 152 148,+12404577106 +18435244551,yes,Your call has been forwarded to an automated voice messaging system. 2-4-0
+153,2026-06-17 14:54:06,46,152 150 148,+12404577106 +18435244551,yes,Thank you for calling Sea Island Animal Hospital. Please listen to the menu in its entirety as our options have been updated. We are located at 40 Professional 
