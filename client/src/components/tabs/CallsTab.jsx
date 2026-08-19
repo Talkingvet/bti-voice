@@ -4,11 +4,10 @@ import { api } from '../../api'
 import { useColors } from '../../useColors'
 import { getSocket } from '../../socket'
 
-// Build an authenticated recording URL using a query-param token
-// (audio elements and download links can't send Authorization headers)
+// Authenticated recording URL — uses the short-lived media token minted by
+// api.ensureMediaToken() (audio/download links can't send Authorization headers)
 function recordingUrl(callId) {
-  const token = localStorage.getItem('bti_token') || ''
-  return `/api/calls/${callId}/recording?token=${encodeURIComponent(token)}`
+  return api.recordingUrl(callId)
 }
 
 /* ── Helpers ─────────────────────────────────────────────────────── */

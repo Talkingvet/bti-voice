@@ -7,6 +7,34 @@ function getToken() {
   return localStorage.getItem('bti_token')
 }
 
+// ── Short-lived media token ─────────────────────────────────────────────────
+// <img>/<audio> tags can't send Authorization headers, so media URLs carry a
+// token in the query string. Full login JWTs are rejected there by the server;
+// instead we mint a 10-minute media-only token and refresh it automatically.
+let mediaToken = null
+let mediaTokenExpiry = 0
+
+async function refreshMediaToken() {
+  const r = await request('/auth/media-token', { method: 'POST' })
+  mediaToken = r.token
+  // refresh 90s before actual expiry
+  mediaTokenExpiry = Date.now() + Math.max((r.expires_in - 90), 60) * 1000
+  return mediaToken
+}
+
+export async function ensureMediaToken() {
+  if (!getToken()) return null
+  if (!mediaToken || Date.now() >= mediaTokenExpiry) {
+    try { await refreshMediaToken() } catch (e) { console.error('[mediaToken]', e.message) }
+  }
+  return mediaToken
+}
+
+export function clearMediaToken() {
+  mediaToken = null
+  mediaTokenExpiry = 0
+}
+
 async function request(path, options = {}) {
   const res = await fetch(`${BASE}${path}`, {
     ...options,
@@ -44,7 +72,9 @@ export const api = {
     }
     return res.json()
   },
-  mediaUrl: (id) => `${BASE}/messages/media/${id}?token=${getToken()}`,
+  mediaUrl: (id) => `${BASE}/messages/media/${id}?token=${mediaToken || ''}`,
+  recordingUrl: (callId) => `${BASE}/calls/${callId}/recording?token=${mediaToken || ''}`,
+  ensureMediaToken,
   scheduleMessage: (conversation_id, body, send_at) => request('/messages/schedule', { method: 'POST', body: { conversation_id, body, send_at } }),
   scheduledMessages: (conversation_id) => request(`/messages/scheduled?conversation_id=${conversation_id}`),
   cancelScheduledMessage: (id) => request(`/messages/scheduled/${id}`, { method: 'DELETE' }),

@@ -1,7 +1,7 @@
 const express = require('express');
 const { pool } = require('../db');
 const { recordConsent } = require('../helpers/consent');
-const { requireAuth } = require('../auth');
+const { requireAuth , requireMediaAuth } = require('../auth');
 const { getIO } = require('../socket');
 
 // Fire-and-forget Zoho sync for outbound SMS
@@ -187,13 +187,9 @@ router.post('/upload-media', requireAuth,
 );
 
 // GET /api/messages/media/:id — serve media to the app.
-// Auth: Bearer header OR ?token= query param (img tags can't send headers).
-router.get('/media/:id', async (req, res) => {
-  const jwt    = require('jsonwebtoken');
-  const { JWT_SECRET } = require('../secret');
-  const raw    = req.headers.authorization?.replace('Bearer ', '') || req.query.token;
-  if (!raw) return res.status(401).json({ error: 'Unauthorized' });
-  try { jwt.verify(raw, JWT_SECRET); } catch { return res.status(401).json({ error: 'Invalid token' }); }
+// Auth: Bearer header, OR a short-lived scope:'media' token in ?token=
+// (img tags can't send headers; full login JWTs are rejected in URLs).
+router.get('/media/:id', requireMediaAuth, async (req, res) => {
 
   try {
     const { rows: [mm] } = await pool.query(

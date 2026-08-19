@@ -20,7 +20,7 @@ import DialpadTab                  from './components/tabs/DialpadTab'
 import ContactsTab                 from './components/tabs/ContactsTab'
 import CallsTab                    from './components/tabs/CallsTab'
 import SettingsTab                 from './components/tabs/SettingsTab'
-import { api } from './api'
+import { api, ensureMediaToken, clearMediaToken } from './api'
 import { applyFont } from './utils/font'
 
 const BASE_AT_KEY   = 'bti_notif_base_at'
@@ -216,6 +216,14 @@ function AppInner() {
     }
   }, [])
 
+  // ── Short-lived media token (images / recording audio URLs) ──────────────────
+  useEffect(() => {
+    if (!agent) return
+    ensureMediaToken()
+    const iv = setInterval(ensureMediaToken, 5 * 60 * 1000)
+    return () => clearInterval(iv)
+  }, [agent])
+
   // ── Activity feed ─────────────────────────────────────────────────────────────
   const loadActivity = useCallback(() => {
     api.activity().then(setActivity).catch(console.error)
@@ -399,6 +407,7 @@ function AppInner() {
   function handleLogout() {
     setDefaultPw(false)
     disconnectSocket()
+    clearMediaToken()
     localStorage.removeItem('bti_token')
     setActivity([])
     setUnreadSms(0); setUnreadVm(0); setUnreadNotifs(0)

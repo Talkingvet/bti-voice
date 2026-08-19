@@ -1,7 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { pool } = require('../db');
-const { generateToken, requireAuth } = require('../auth');
+const { generateToken, requireAuth, generateMediaToken, MEDIA_TOKEN_TTL_SEC } = require('../auth');
 const { logActivity } = require('../helpers/logActivity');
 
 const router = express.Router();
@@ -29,6 +29,12 @@ router.post('/login', async (req, res) => {
     console.error('[auth/login]', e);
     res.status(500).json({ error: 'Server error' });
   }
+});
+
+// POST /media-token — mint a short-lived, media-only token for <img>/<audio>
+// URLs. See requireMediaAuth in ../auth.js.
+router.post('/media-token', requireAuth, (req, res) => {
+  res.json({ token: generateMediaToken(req.agent.id), expires_in: MEDIA_TOKEN_TTL_SEC });
 });
 
 router.get('/me', requireAuth, async (req, res) => {

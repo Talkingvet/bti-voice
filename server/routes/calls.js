@@ -1,6 +1,6 @@
 const express = require('express');
 const { pool } = require('../db');
-const { requireAuth } = require('../auth');
+const { requireAuth , requireMediaAuth } = require('../auth');
 const { logActivity } = require('../helpers/logActivity');
 const { syncCallToZoho, fireZohoLogCall } = require('../helpers/syncCallToZoho');
 const { updateZohoCallContact } = require('../zoho');
@@ -220,13 +220,7 @@ router.get('/voicemails', requireAuth, async (req, res) => {
 // Twilio recording URLs require Account SID + Auth Token credentials; a browser
 // <audio> tag can't supply those, so we fetch server-side and stream to the client.
 // Auth: accepts Bearer header OR ?token= query param (needed for <audio src> and download links).
-router.get('/:id/recording', async (req, res) => {
-  // Accept token from Authorization header OR query param (audio elements can't send headers)
-  const jwt    = require('jsonwebtoken');
-  const SECRET = process.env.JWT_SECRET || 'bti-voice-dev-secret';
-  const raw    = req.headers.authorization?.replace('Bearer ', '') || req.query.token;
-  if (!raw) return res.status(401).json({ error: 'Unauthorized' });
-  try { jwt.verify(raw, SECRET); } catch { return res.status(401).json({ error: 'Invalid token' }); }
+router.get('/:id/recording', requireMediaAuth, async (req, res) => {
 
   try {
     const { rows: [call] } = await pool.query(
