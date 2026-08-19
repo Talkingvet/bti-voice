@@ -1,0 +1,13 @@
+{
+  "appId": "com.businesstechnologyinsight.btivoice",
+  "appName": "BTI Voice",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  },
+  "ios": {
+    "contentInset": "always",
+    "backgroundColor": "#0f1117",
+    "preferredContentMode": "mobile"
+  }
+}
