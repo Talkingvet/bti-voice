@@ -4,6 +4,7 @@ import { useColors } from '../../useColors'
 import { playDTMF } from '../../dtmf'
 import { api } from '../../api'
 import { useToast } from '../Toast'
+import { IS_TOUCH } from '../../utils/touch'
 
 const KEYS = [
   ['1',''],  ['2','ABC'],  ['3','DEF'],
@@ -78,6 +79,7 @@ export default function DialpadTab({ agent, device, activeCall, onCallStart, onC
   // Ensures keystrokes & paste land here without needing to click in the field
   // first (especially noticeable after the BTI Voice window first opens).
   useEffect(() => {
+    if (IS_TOUCH) return // never summon the on-screen keyboard uninvited
     if (callState === 'idle' && inputRef.current) {
       // microtask delay so any focus-stealing state updates settle first
       const t = setTimeout(() => {
@@ -107,7 +109,7 @@ export default function DialpadTab({ agent, device, activeCall, onCallStart, onC
         e.preventDefault()
         setNumber(digits)
         setStatus('')
-        try { inputRef.current && inputRef.current.focus() } catch (e2) {}
+        if (!IS_TOUCH) { try { inputRef.current && inputRef.current.focus() } catch (e2) {} }
       }
     }
     window.addEventListener('paste', onPaste)
@@ -228,7 +230,7 @@ export default function DialpadTab({ agent, device, activeCall, onCallStart, onC
       {/* Number display — clicking anywhere on it focuses the hidden input */}
       <div
         style={{ ...S.display, padding: compact ? '10px 20px 4px' : '24px 20px 8px', minHeight: compact ? 48 : 70, cursor: isActive ? 'default' : 'text' }}
-        onClick={() => { try { inputRef.current && inputRef.current.focus() } catch (e) {} }}
+        onClick={() => { if (!IS_TOUCH) { try { inputRef.current && inputRef.current.focus() } catch (e) {} } }}
       >
         {/* Hidden input — receives typing & paste, makes the window grab focus on mount */}
         <input
@@ -236,7 +238,7 @@ export default function DialpadTab({ agent, device, activeCall, onCallStart, onC
           type="text"
           inputMode="tel"
           autoComplete="off"
-          autoFocus
+          autoFocus={!IS_TOUCH}
           aria-label="Phone number"
           tabIndex={isActive ? -1 : 0}
           readOnly={isActive}
@@ -280,7 +282,7 @@ export default function DialpadTab({ agent, device, activeCall, onCallStart, onC
         {number && !isActive && (
           <button
             style={{ ...S.backBtn, color: C.textSec, zIndex: 2 }}
-            onClick={e => { e.stopPropagation(); backspace(); try { inputRef.current && inputRef.current.focus() } catch (er) {} }}
+            onClick={e => { e.stopPropagation(); backspace(); if (!IS_TOUCH) { try { inputRef.current && inputRef.current.focus() } catch (er) {} } }}
             title="Backspace"
           >
             <BackspaceIcon />

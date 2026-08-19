@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { api } from '../api'
 import { useTheme } from '../ThemeContext'
+import { IS_TOUCH } from '../utils/touch'
 
 export default function Login({ onLogin }) {
   const { theme } = useTheme()
@@ -49,7 +50,7 @@ export default function Login({ onLogin }) {
               placeholder="e.g. shawn"
               value={username}
               onChange={e => setUsername(e.target.value)}
-              autoFocus
+              autoFocus={!IS_TOUCH}
               required
             />
           </div>

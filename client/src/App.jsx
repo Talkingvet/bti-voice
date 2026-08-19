@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { BRAND } from './brand'
+import { IS_TOUCH } from './utils/touch'
 
 document.title = BRAND
 import { Device } from '@twilio/voice-sdk'
@@ -263,6 +264,8 @@ function AppInner() {
   useEffect(() => {
     if (activeTab === 'sms')           setUnreadSms(0)
     if (activeTab === 'calls')         setUnreadVm(0)
+    // Touch devices: dismiss the keyboard when changing tabs
+    if (IS_TOUCH && document.activeElement && document.activeElement.blur) document.activeElement.blur()
   }, [activeTab])
 
   // ── Mac dock badge ───────────────────────────────────────────────
