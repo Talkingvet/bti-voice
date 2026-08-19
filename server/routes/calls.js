@@ -233,17 +233,23 @@ router.get('/:id/recording', requireMediaAuth, async (req, res) => {
     if (!sid || !token) return res.status(503).json({ error: 'Twilio credentials not configured' });
 
     const twilioAuth = Buffer.from(`${sid}:${token}`).toString('base64');
-    const audioRes   = await fetch(call.recording_url, {
-      headers: { Authorization: `Basic ${twilioAuth}` },
-    });
+    // Forward Range requests — iOS/Safari refuse to play audio from servers
+    // that ignore Range (they probe with "bytes=0-1" and expect a 206).
+    const upstreamHeaders = { Authorization: `Basic ${twilioAuth}` };
+    if (req.headers.range) upstreamHeaders.Range = req.headers.range;
+    const audioRes = await fetch(call.recording_url, { headers: upstreamHeaders });
 
-    if (!audioRes.ok) {
+    if (!audioRes.ok && audioRes.status !== 206) {
       return res.status(audioRes.status).json({ error: `Twilio returned ${audioRes.status}` });
     }
 
-    // Forward content-type, content-length (needed for seek/duration), and stream
+    // Mirror status (200 or 206) + the headers Safari needs for seek/duration
+    res.status(audioRes.status);
     res.set('Content-Type', audioRes.headers.get('content-type') || 'audio/mpeg');
     res.set('Cache-Control', 'private, max-age=3600');
+    res.set('Accept-Ranges', 'bytes');
+    const cr = audioRes.headers.get('content-range');
+    if (cr) res.set('Content-Range', cr);
     const cl = audioRes.headers.get('content-length');
     if (cl) res.set('Content-Length', cl);
 

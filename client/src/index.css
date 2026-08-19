@@ -1,10 +1,16 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+html, body {
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   /* background/color are set by ThemeProvider so they follow the theme */
   background: #161b24;
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
   color: #e6eaf1;
   /* Remove default browser chrome for Electron */
@@ -13,6 +19,9 @@ body {
 
 #root {
   height: 100vh;
+  height: 100dvh; /* iOS: track the visual viewport (keyboard, notch) */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
   display: flex;
   flex-direction: column;
   border-radius: 8px;

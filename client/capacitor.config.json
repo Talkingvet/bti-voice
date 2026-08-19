@@ -8,6 +8,13 @@
   "ios": {
     "contentInset": "always",
     "backgroundColor": "#0f1117",
-    "preferredContentMode": "mobile"
+    "preferredContentMode": "mobile",
+    "scrollEnabled": false
+  },
+  "plugins": {
+    "Keyboard": {
+      "resize": "body",
+      "resizeOnFullScreen": true
+    }
   }
 }
