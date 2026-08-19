@@ -8,6 +8,7 @@
 
 const { pool }    = require('../db');
 const { getIO }   = require('../socket');
+const { recordConsent } = require('../helpers/consent');
 
 const SWEEP_INTERVAL_MS = 30 * 1000;
 
@@ -52,6 +53,7 @@ async function sendDueMessage(sm) {
       await pool.query(
         'UPDATE contacts SET opted_out = true, opted_out_at = NOW() WHERE id = $1', [contact.id]
       );
+      recordConsent({ contactId: contact.id, phone: sm.to_number, action: 'opt_out', method: 'carrier_block', detail: 'Twilio error 21610 on scheduled send' });
     }
     await pool.query(
       "UPDATE scheduled_messages SET status = 'failed', error = $2 WHERE id = $1",

@@ -271,6 +271,23 @@ async function migrate() {
     ALTER TABLE calls ADD COLUMN IF NOT EXISTS chosen_zoho_module     VARCHAR(20);
   `);
 
+  // Consent audit log (A2P 10DLC / TCPA) — append-only, survives contact deletion
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS consent_records (
+      id           SERIAL PRIMARY KEY,
+      contact_id   INTEGER REFERENCES contacts(id) ON DELETE SET NULL,
+      phone_number VARCHAR(30) NOT NULL,
+      action       VARCHAR(10) NOT NULL,
+      method       VARCHAR(30) NOT NULL,
+      detail       TEXT,
+      message_sid  VARCHAR(50),
+      recorded_by  INTEGER REFERENCES agents(id),
+      created_at   TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_consent_phone   ON consent_records (phone_number);
+    CREATE INDEX IF NOT EXISTS idx_consent_contact ON consent_records (contact_id);
+  `);
+
   console.log('[db] Migrations complete.');
 }
 

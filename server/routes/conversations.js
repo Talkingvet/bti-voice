@@ -1,5 +1,6 @@
 const express = require('express');
-const { pool } = require('../db');
+const { pool } = require('../db')
+const { recordConsent } = require('../helpers/consent');
 const { requireAuth } = require('../auth');
 const { createNotification } = require('../notifications');
 
@@ -176,6 +177,7 @@ router.post('/new-message', requireAuth, async (req, res) => {
       } catch (twErr) {
         if (twErr.code === 21610) {
           await pool.query('UPDATE contacts SET opted_out = true, opted_out_at = NOW() WHERE id = $1', [contact.id])
+          recordConsent({ contactId: contact.id, phone: contact.phone_number, action: 'opt_out', method: 'carrier_block', detail: 'Twilio error 21610 on new-message send' })
           return res.status(403).json({ error: 'This contact has opted out of SMS (replied STOP). They must text START to resume messaging.' })
         }
         throw twErr

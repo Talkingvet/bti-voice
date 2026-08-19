@@ -5,6 +5,7 @@ import { useColors }   from '../../useColors'
 import { api }         from '../../api'
 import { getSoundPrefs, setSoundPref, startRingtone, stopRingtone, playDTMF } from '../../dtmf'
 import { applyFont }   from '../../utils/font'
+import { useToast }    from '../Toast'
 
 const FONTS = [
   { key: 'system',            label: 'System',        sample: 'Aa' },
@@ -69,6 +70,7 @@ export default function SettingsTab({ agent, onLogout }) {
             <IVRSection C={C} />
             <MissedCallAutoTextSection C={C} />
             <AfterHoursSMSSection C={C} />
+            <ComplianceSection C={C} />
             <CannedResponsesSection C={C} />
           </>
         )}
@@ -1342,6 +1344,51 @@ function AfterHoursSMSSection({ C }) {
 }
 
 /* ── Canned Responses section ───────────────────────────────────────────────── */
+/* ── SMS compliance (A2P consent audit export) ─────────────────────────────── */
+function ComplianceSection({ C }) {
+  const { toast } = useToast()
+  const [busy, setBusy] = useState(false)
+
+  async function download() {
+    setBusy(true)
+    try {
+      const blob = await api.exportConsentCsv()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `consent-log-${new Date().toISOString().slice(0, 10)}.csv`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      toast.error(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <>
+      <SectionHeader title="SMS Compliance" C={C} />
+      <Card C={C}>
+        <div style={{ padding: '12px 14px' }}>
+          <div style={{ fontSize: 13, color: C.text, marginBottom: 4 }}>Consent audit log</div>
+          <div style={{ fontSize: 12, color: C.textSec, marginBottom: 10 }}>
+            Every opt-in and opt-out event (inbound texts, STOP/START keywords, carrier blocks, and manually
+            recorded consent) — exportable as CSV for A2P 10DLC / carrier audits.
+          </div>
+          <button
+            onClick={download}
+            disabled={busy}
+            style={{ border: '1px solid rgba(79,156,249,0.4)', background: 'rgba(79,156,249,0.12)', color: '#4f9cf9', borderRadius: 9, padding: '7px 14px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', opacity: busy ? 0.6 : 1 }}
+          >{busy ? 'Exporting…' : '⬇ Download consent log (CSV)'}</button>
+        </div>
+      </Card>
+    </>
+  )
+}
+
 function CannedResponsesSection({ C }) {
   const [list,       setList]       = useState([])
   const [loading,    setLoading]    = useState(true)

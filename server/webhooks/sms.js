@@ -2,6 +2,7 @@ const express = require('express');
 const { pool } = require('../db');
 const { getIO } = require('../socket');
 const { createNotification } = require('../notifications');
+const { recordConsent } = require('../helpers/consent');
 
 // Fire-and-forget Zoho sync — never blocks the Twilio webhook response
 function syncSMSToZoho(messageId) {
@@ -81,6 +82,7 @@ async function maybeSendAfterHoursReply({ conv, contact, From, To, keyword }) {
         await pool.query(
           'UPDATE contacts SET opted_out = true, opted_out_at = NOW() WHERE id = $1', [contact.id]
         );
+        recordConsent({ contactId: contact.id, phone: From, action: 'opt_out', method: 'carrier_block', detail: 'Twilio error 21610 on after-hours auto-reply' });
         return;
       }
       throw twErr;
@@ -136,6 +138,8 @@ router.post('/', async (req, res) => {
         'INSERT INTO contacts (phone_number) VALUES ($1) RETURNING *', [fromE164]
       );
       contact = result.rows[0];
+      // Contact texted us first — record the implied opt-in for the audit trail
+      recordConsent({ contactId: contact.id, phone: fromE164, action: 'opt_in', method: 'inbound_sms', detail: `Contact initiated conversation by texting ${To}`, messageSid: MessageSid });
     }
 
     // ── A2P opt-out / opt-in keyword handling ────────────────────────────
@@ -147,12 +151,14 @@ router.post('/', async (req, res) => {
         'UPDATE contacts SET opted_out = true, opted_out_at = NOW() WHERE id = $1',
         [contact.id]
       );
+      recordConsent({ contactId: contact.id, phone: From, action: 'opt_out', method: 'sms_keyword', detail: `Keyword: ${keyword}`, messageSid: MessageSid });
       console.log(`[webhook/sms] ${From} opted OUT (keyword: ${keyword})`);
     } else if (OPT_IN_WORDS.includes(keyword) && contact.opted_out) {
       await pool.query(
         'UPDATE contacts SET opted_out = false, opted_out_at = NULL WHERE id = $1',
         [contact.id]
       );
+      recordConsent({ contactId: contact.id, phone: From, action: 'opt_in', method: 'sms_keyword', detail: `Keyword: ${keyword}`, messageSid: MessageSid });
       console.log(`[webhook/sms] ${From} opted back IN (keyword: ${keyword})`);
     }
 

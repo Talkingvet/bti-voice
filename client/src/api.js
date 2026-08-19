@@ -94,6 +94,13 @@ export const api = {
   createContact:     (data)       => request('/contacts', { method: 'POST', body: data }),
   updateContact:     (id, data)   => request(`/contacts/${id}`, { method: 'PATCH', body: data }),
   syncContactZoho:   (id)         => request(`/contacts/${id}/sync-zoho`, { method: 'POST' }),
+  contactConsent:    (id)         => request(`/contacts/${id}/consent`),
+  recordConsent:     (id, data)   => request(`/contacts/${id}/consent`, { method: 'POST', body: data }),
+  exportConsentCsv:  async () => {
+    const res = await fetch(`${BASE}/contacts/consent/export`, { headers: { Authorization: `Bearer ${getToken()}` } })
+    if (!res.ok) throw new Error('Export failed')
+    return res.blob()
+  },
   zohoProfile:       (id)         => request(`/contacts/${id}/zoho-profile`),
 
   // Unread badges

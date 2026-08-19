@@ -194,6 +194,7 @@ export default function ContactsTab({ agent, onDial, onMessage }) {
 
 /* ── Contact detail view ─────────────────────────────────────────── */
 function ContactDetail({ contact, onBack, onUpdate, onDial, onMessage, C }) {
+  const { toast } = useToast()
   const [editing,    setEditing]    = useState(false)
   const [syncing,    setSyncing]    = useState(false)
   const [syncResult, setSyncResult] = useState(null)
@@ -318,6 +319,136 @@ function ContactDetail({ contact, onBack, onUpdate, onDial, onMessage, C }) {
           </div>
         )}
       </div>
+
+      {/* SMS consent audit trail (A2P/TCPA) */}
+      <ConsentSection contact={contact} C={C} />
+    </div>
+  )
+}
+
+/* ── SMS consent history + manual capture (A2P audit trail) ────────── */
+const CONSENT_METHOD_LABELS = {
+  sms_keyword:   'SMS keyword',
+  inbound_sms:   'Texted us first',
+  carrier_block: 'Carrier block (STOP)',
+  verbal:        'Verbal',
+  web_form:      'Web form',
+  written:       'Written',
+  other:         'Other',
+}
+
+function ConsentSection({ contact, C }) {
+  const { toast } = useToast()
+  const [records, setRecords] = useState(null)
+  const [adding,  setAdding]  = useState(false)
+  const [action,  setAction]  = useState('opt_in')
+  const [method,  setMethod]  = useState('verbal')
+  const [detail,  setDetail]  = useState('')
+  const [saving,  setSaving]  = useState(false)
+
+  useEffect(() => {
+    let dead = false
+    api.contactConsent(contact.id).then(r => { if (!dead) setRecords(r) }).catch(() => { if (!dead) setRecords([]) })
+    return () => { dead = true }
+  }, [contact.id])
+
+  async function save() {
+    if (!detail.trim()) { toast.error('Describe how consent was given (audit trail)'); return }
+    setSaving(true)
+    try {
+      const { record, warning } = await api.recordConsent(contact.id, { action, method, detail })
+      setRecords([record, ...(records || [])])
+      setAdding(false); setDetail('')
+      if (warning) toast.error(warning)
+      else toast.success('Consent recorded')
+    } catch (e) {
+      toast.error(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const inputStyle = {
+    background: C.surface, color: C.text, border: `1px solid ${C.border}`,
+    borderRadius: 8, padding: '7px 10px', fontSize: 13, outline: 'none',
+  }
+
+  return (
+    <div style={{ padding: '4px 16px 16px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: C.textMuted }}>
+          SMS Consent
+        </span>
+        {!adding && (
+          <button
+            style={{ background: 'none', border: 'none', color: '#4f9cf9', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 2 }}
+            onClick={() => setAdding(true)}
+          >+ Record consent</button>
+        )}
+      </div>
+
+      {adding && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, background: C.panel, border: `1px solid ${C.borderSoft}`, borderRadius: 10, padding: 10, marginBottom: 8 }}>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <select value={action} onChange={e => setAction(e.target.value)} style={{ ...inputStyle, flex: 1 }}>
+              <option value="opt_in">Opt-in (gave consent)</option>
+              <option value="opt_out">Opt-out (revoked consent)</option>
+            </select>
+            <select value={method} onChange={e => setMethod(e.target.value)} style={{ ...inputStyle, flex: 1 }}>
+              <option value="verbal">Verbal</option>
+              <option value="web_form">Web form</option>
+              <option value="written">Written</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <textarea
+            value={detail}
+            onChange={e => setDetail(e.target.value)}
+            placeholder="How was consent given? e.g. &quot;Asked to be texted appointment reminders during 8/19 phone call&quot;"
+            rows={2}
+            style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }}
+          />
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button
+              style={{ background: 'none', border: 'none', color: C.textSec, fontSize: 12, cursor: 'pointer' }}
+              onClick={() => { setAdding(false); setDetail('') }}
+            >Cancel</button>
+            <button
+              style={{ background: '#4f9cf9', border: 'none', color: '#fff', fontSize: 12, fontWeight: 600, borderRadius: 8, padding: '6px 14px', cursor: 'pointer', opacity: saving ? 0.6 : 1 }}
+              onClick={save}
+              disabled={saving}
+            >{saving ? 'Saving…' : 'Save'}</button>
+          </div>
+        </div>
+      )}
+
+      {records === null ? (
+        <div style={{ fontSize: 12, color: C.textMuted }}>Loading…</div>
+      ) : records.length === 0 ? (
+        <div style={{ fontSize: 12, color: C.textMuted }}>
+          No consent events recorded. Inbound texts and STOP/START keywords are captured automatically; use &quot;Record consent&quot; for verbal or web-form opt-ins.
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {records.map(r => (
+            <div key={r.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, background: C.panel, border: `1px solid ${C.borderSoft}`, borderRadius: 10, padding: '8px 10px' }}>
+              <span style={{ fontSize: 11, fontWeight: 700, borderRadius: 6, padding: '2px 7px', whiteSpace: 'nowrap',
+                background: r.action === 'opt_in' ? 'rgba(34,197,94,0.12)' : 'rgba(248,113,113,0.12)',
+                color:      r.action === 'opt_in' ? '#22c55e' : '#f87171' }}>
+                {r.action === 'opt_in' ? 'OPT-IN' : 'OPT-OUT'}
+              </span>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 12, color: C.text }}>
+                  {CONSENT_METHOD_LABELS[r.method] || r.method}
+                  {r.recorded_by_name ? ` — by ${r.recorded_by_name}` : ''}
+                </div>
+                {r.detail && <div style={{ fontSize: 12, color: C.textSec, wordBreak: 'break-word' }}>{r.detail}</div>}
+                <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>{fmtDate(r.created_at)}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

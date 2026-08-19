@@ -2,6 +2,7 @@
 const express = require('express');
 const { pool } = require('../db');
 const { requireAuth } = require('../auth');
+const { recordConsent } = require('../helpers/consent');
 
 const router = express.Router();
 
@@ -25,6 +26,92 @@ router.get('/', async (req, res) => {
   } catch (e) {
     console.error('[contacts GET /]', e.message);
     res.status(500).json({ error: 'Failed to fetch contacts' });
+  }
+});
+
+// ── GET /consent/export — full consent log as CSV (A2P audit) ─────────────────
+router.get('/consent/export', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT cr.id, cr.created_at, cr.phone_number, ct.name AS contact_name,
+             cr.action, cr.method, cr.detail, cr.message_sid, ag.name AS recorded_by
+      FROM consent_records cr
+      LEFT JOIN contacts ct ON ct.id = cr.contact_id
+      LEFT JOIN agents   ag ON ag.id = cr.recorded_by
+      ORDER BY cr.created_at ASC
+    `);
+    const esc = (v) => v == null ? '' : `"${String(v).replace(/"/g, '""')}"`;
+    const header = 'id,timestamp_utc,phone_number,contact_name,action,method,detail,message_sid,recorded_by';
+    const lines = rows.map(r => [
+      r.id, new Date(r.created_at).toISOString(), r.phone_number, r.contact_name,
+      r.action, r.method, r.detail, r.message_sid, r.recorded_by,
+    ].map(esc).join(','));
+    res.set('Content-Type', 'text/csv');
+    res.set('Content-Disposition', `attachment; filename="consent-log-${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.send([header, ...lines].join('\r\n'));
+  } catch (e) {
+    console.error('[contacts GET /consent/export]', e.message);
+    res.status(500).json({ error: 'Failed to export consent log' });
+  }
+});
+
+// ── GET /:id/consent — consent history for one contact ────────────────────────
+router.get('/:id/consent', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT cr.*, ag.name AS recorded_by_name
+      FROM consent_records cr
+      LEFT JOIN agents ag ON ag.id = cr.recorded_by
+      WHERE cr.contact_id = $1
+      ORDER BY cr.created_at DESC
+    `, [req.params.id]);
+    res.json(rows);
+  } catch (e) {
+    console.error('[contacts GET /:id/consent]', e.message);
+    res.status(500).json({ error: 'Failed to fetch consent history' });
+  }
+});
+
+// ── POST /:id/consent — manually record consent (verbal, web form, written) ───
+// Manual opt_out also blocks sends. Manual opt_in only clears the block if the
+// existing opt-out was itself manual — a STOP/carrier opt-out is enforced by
+// Twilio and can only be undone by the contact texting START.
+router.post('/:id/consent', async (req, res) => {
+  const { action, method, detail } = req.body;
+  const MANUAL_METHODS = ['verbal', 'web_form', 'written', 'other'];
+  if (!['opt_in', 'opt_out'].includes(action)) return res.status(400).json({ error: 'action must be opt_in or opt_out' });
+  if (!MANUAL_METHODS.includes(method)) return res.status(400).json({ error: `method must be one of: ${MANUAL_METHODS.join(', ')}` });
+  if (!detail || !detail.trim()) return res.status(400).json({ error: 'detail is required — describe how consent was given/revoked (for the audit trail)' });
+
+  try {
+    const { rows: [contact] } = await pool.query('SELECT * FROM contacts WHERE id = $1', [req.params.id]);
+    if (!contact) return res.status(404).json({ error: 'Contact not found' });
+
+    const rec = await recordConsent({
+      contactId: contact.id, phone: contact.phone_number,
+      action, method, detail: detail.trim(), agentId: req.agent.id,
+    });
+    if (!rec) return res.status(500).json({ error: 'Failed to record consent' });
+
+    let warning = null;
+    if (action === 'opt_out' && !contact.opted_out) {
+      await pool.query('UPDATE contacts SET opted_out = true, opted_out_at = NOW() WHERE id = $1', [contact.id]);
+    } else if (action === 'opt_in' && contact.opted_out) {
+      const { rows: [lastOut] } = await pool.query(
+        `SELECT method FROM consent_records
+         WHERE contact_id = $1 AND action = 'opt_out' AND id <> $2
+         ORDER BY created_at DESC LIMIT 1`, [contact.id, rec.id]
+      );
+      if (lastOut && ['sms_keyword', 'carrier_block'].includes(lastOut.method)) {
+        warning = 'Consent recorded, but this contact opted out by texting STOP — Twilio will keep blocking sends until they text START.';
+      } else {
+        await pool.query('UPDATE contacts SET opted_out = false, opted_out_at = NULL WHERE id = $1', [contact.id]);
+      }
+    }
+    res.json({ record: rec, warning });
+  } catch (e) {
+    console.error('[contacts POST /:id/consent]', e.message);
+    res.status(500).json({ error: 'Failed to record consent' });
   }
 });
 
