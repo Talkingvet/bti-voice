@@ -1,4 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { BRAND } from './brand'
+
+document.title = BRAND
 import { Device } from '@twilio/voice-sdk'
 import { ThemeProvider, useTheme } from './ThemeContext'
 import { ToastProvider } from './components/Toast'
@@ -529,7 +532,7 @@ function AppInner() {
       <div style={{ ...S.splash, background: isDark ? '#161b24' : '#f4f6f9' }}>
         <div style={S.spinWrap}>
           <div style={S.logoMark}>B</div>
-          <div style={{ ...S.splashText, color: isDark ? 'white' : '#1e293b' }}>BTI Voice</div>
+          <div style={{ ...S.splashText, color: isDark ? 'white' : '#1e293b' }}>{BRAND}</div>
         </div>
       </div>
     )

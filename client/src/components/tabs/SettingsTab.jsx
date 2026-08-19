@@ -1,5 +1,6 @@
 /* Settings tab — single scrollable page, sections grouped */
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { BRAND } from '../../brand'
 import { useTheme }    from '../../ThemeContext'
 import { useColors }   from '../../useColors'
 import { api }         from '../../api'
@@ -564,7 +565,7 @@ function StartupCard({ C }) {
   }
   return (
     <Card C={C}>
-      <ToggleRow label="Launch at login" desc="Open BTI Voice automatically when you log in to Windows" value={autoLaunch} onChange={toggle} C={C} last />
+      <ToggleRow label="Launch at login" desc={`Open ${BRAND} automatically when you log in to Windows`} value={autoLaunch} onChange={toggle} C={C} last />
     </Card>
   )
 }
@@ -1746,7 +1747,7 @@ function AboutSection({ C }) {
       <Card C={C}>
         <div style={S.aboutHero}>
           <div style={S.aboutLogo}>B</div>
-          <div style={{ ...S.rowLabel, color: C.text, fontSize: 15, fontWeight: 700 }}>BTI Voice</div>
+          <div style={{ ...S.rowLabel, color: C.text, fontSize: 15, fontWeight: 700 }}>{BRAND}</div>
           <div style={{ ...S.rowDesc, color: C.textMuted }}>Version {version}</div>
           <div style={{ ...S.rowDesc, color: C.textMuted, marginTop: 4 }}>
             Created by Danny Roche · Business Technology Insight, LLC

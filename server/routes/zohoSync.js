@@ -135,7 +135,7 @@ router.post('/log-call', async (req, res) => {
       .toISOString().replace(/\.\d{3}Z$/, '+00:00');
 
     const subject     = callType + ' call - ' + (call.contact_name || call.phone_number);
-    const description = 'Logged by BTI Voice. Agent: ' + (call.agent_name || 'Unknown') +
+    const description = `Logged by ${process.env.BRAND_NAME || 'BTI Voice'}. Agent: ` + (call.agent_name || 'Unknown') +
                         '. Status: ' + (call.status || 'completed') + '.';
 
     const payload = {

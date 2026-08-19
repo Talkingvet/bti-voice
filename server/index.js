@@ -84,7 +84,7 @@ const PORT = process.env.PORT || 3000;
     startWrapUpSweep(); // v1.4.0: catches calls the agent skipped wrap-up on
     startScheduledSmsSweep(); // v1.5.x: sends due scheduled SMS
     server.listen(PORT, () => {
-      console.log(`\n🚀 BTI Voice running on port ${PORT}`);
+      console.log(`\n🚀 ${process.env.BRAND_NAME || 'BTI Voice'} running on port ${PORT}`);
       console.log(`   Local:   http://localhost:${PORT}`);
       console.log(`   Twilio webhook URLs (set in Twilio console):`);
       console.log(`     SMS:   https://YOUR-DOMAIN/webhooks/sms`);

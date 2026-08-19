@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>App Audit</title>
+<style>
+  :root {
+    --bg: #0f1420; --panel: #171e2e; --panel2: #1e2739; --border: #2a3550;
+    --text: #e8ecf4; --muted: #93a0b8; --accent: #4f8ef7; --accent2: #7bb0ff;
+    --green: #3ecf8e; --amber: #f5b451; --red: #f36c6c;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+  a { color: var(--accent2); }
+
+  header { display: flex; align-items: center; gap: 14px; padding: 16px 24px; border-bottom: 1px solid var(--border); background: var(--panel); position: sticky; top: 0; z-index: 10; flex-wrap: wrap; }
+  header h1 { font-size: 19px; font-weight: 700; }
+  header .sub { color: var(--muted); font-size: 12.5px; }
+  .spacer { flex: 1; }
+  .btn { background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 8px 14px; font-size: 13px; cursor: pointer; }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.danger { color: var(--red); }
+  #searchBox { background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; color: var(--text); font-size: 13px; width: 220px; }
+
+  .layout { display: flex; min-height: calc(100vh - 61px); }
+  nav.sidebar { width: 230px; border-right: 1px solid var(--border); background: var(--panel); padding: 16px 10px; flex-shrink: 0; }
+  .sidebar h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); padding: 0 8px 8px; }
+  .app-item { padding: 10px 12px; border-radius: 8px; cursor: pointer; font-size: 14px; margin-bottom: 4px; }
+  .app-item.active { background: var(--accent); color: #fff; }
+  .app-item:not(.active):hover { background: var(--panel2); }
+  .app-item .app-status { display: block; font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .app-item.active .app-status { color: #dce9ff; }
+
+  main { flex: 1; padding: 24px; max-width: 1050px; }
+  .app-header { margin-bottom: 6px; }
+  .app-header h2 { font-size: 24px; }
+  .app-header .tagline { color: var(--muted); margin-top: 4px; font-size: 14px; }
+
+  .tabs { display: flex; gap: 6px; margin: 18px 0; flex-wrap: wrap; }
+  .tab { padding: 8px 14px; border-radius: 8px; font-size: 13.5px; cursor: pointer; border: 1px solid var(--border); background: var(--panel); color: var(--muted); }
+  .tab.active { background: var(--panel2); color: var(--text); border-color: var(--accent); }
+
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; margin-bottom: 16px; }
+  .card h3 { font-size: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+  .card h3 .copy-btn { font-size: 11px; padding: 3px 8px; margin-left: auto; }
+  .row { display: flex; gap: 14px; padding: 8px 0; border-bottom: 1px solid rgba(42,53,80,.5); font-size: 13.5px; align-items: baseline; }
+  .row:last-child { border-bottom: none; }
+  .row .lbl { width: 220px; flex-shrink: 0; color: var(--muted); }
+  .row .val { flex: 1; white-space: pre-wrap; word-break: break-word; line-height: 1.45; }
+  .row .del { display: none; }
+  body.editing .row .del { display: inline-block; background: none; border: none; color: var(--red); cursor: pointer; font-size: 14px; }
+  body.editing [contenteditable="true"] { outline: 1px dashed var(--accent); outline-offset: 2px; border-radius: 3px; min-width: 30px; }
+  .add-row-btn { display: none; margin-top: 10px; }
+  body.editing .add-row-btn { display: inline-block; }
+  .chk { width: 16px; height: 16px; accent-color: var(--green); cursor: pointer; flex-shrink: 0; align-self: flex-start; margin-top: 2px; }
+  .row.done .lbl, .row.done .val { opacity: .55; }
+  .row.done .lbl { text-decoration: line-through; }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+  .pill.ok { background: rgba(62,207,142,.15); color: var(--green); }
+  .pill.warn { background: rgba(245,180,81,.15); color: var(--amber); }
+  .pill.crit { background: rgba(243,108,108,.15); color: var(--red); }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 14px; line-height: 1.5; }
+  mark { background: rgba(245,180,81,.4); color: inherit; border-radius: 2px; }
+
+  @media print {
+    body { background: #fff; color: #111; }
+    nav.sidebar, header .btn, #searchBox, .tabs { display: none !important; }
+    .card { border-color: #ccc; background: #fff; page-break-inside: avoid; }
+    .section-panel { display: block !important; }
+    .row .lbl { color: #555; }
+  }
+  @media (max-width: 760px) {
+    .layout { flex-direction: column; }
+    nav.sidebar { width: 100%; border-right: none; border-bottom: 1px solid var(--border); }
+    .row { flex-direction: column; gap: 2px; }
+    .row .lbl { width: auto; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>App Audit</h1>
+  <span class="sub" id="lastUpdated"></span>
+  <span class="spacer"></span>
+  <input id="searchBox" type="search" placeholder="Search everything...">
+  <button class="btn" id="editBtn">Edit</button>
+  <button class="btn" id="addAppBtn">+ Add App</button>
+  <button class="btn" onclick="window.print()">Print / PDF</button>
+  <button class="btn primary" id="exportBtn">Save Changes to File</button>
+</header>
+
+<div class="layout">
+  <nav class="sidebar">
+    <h2>My Apps</h2>
+    <div id="appList"></div>
+  </nav>
+  <main id="mainContent"></main>
+</div>
+
+<script id="app-data" type="application/json">
+{
+  "lastUpdated": "2026-08-12",
+  "dataVersion": 2,
+  "apps": [
+    {
+      "name": "BTI Voice",
+      "tagline": "Internal VOIP + SMS desktop app used by BTI / Talkingvet staff to call and text leads, prospects, and customers. Internal tool only — not a product for sale.",
+      "status": "Active — v1.5.0",
+      "sections": [
+        {
+          "id": "overview",
+          "title": "Overview",
+          "cards": [
+            {
+              "title": "The Basics",
+              "rows": [
+                { "l": "App name", "v": "BTI Voice" },
+                { "l": "What it does", "v": "Shared SMS + VOIP softphone: calling, texting (SMS/MMS), voicemail, call recording with AI transcription and summaries, scheduled texts, after-hours auto-replies, and deep Zoho CRM integration." },
+                { "l": "Who uses it", "v": "BTI / Talkingvet staff (internal only). Talkingvet sells AI scribing to veterinarians — this app is how staff communicate with leads and customers." },
+                { "l": "Built by", "v": "Danny at Business Technology Insight (Paul assists with Mac port and testing)" },
+                { "l": "Current version", "v": "1.5.0 (Windows installer + Mac DMGs released 2026-08-11; server continuously deployed)" },
+                { "l": "Platforms", "v": "Windows (NSIS installer), macOS (Apple Silicon + Intel DMGs — port in final testing), any web browser via the Railway URL, iOS via Capacitor (built, not yet device-tested)" },
+                { "l": "App ID", "v": "com.businesstechnologyinsight.bti-voice" }
+              ]
+            },
+            {
+              "title": "Key Links",
+              "rows": [
+                { "l": "Code repository", "v": "https://github.com/Talkingvet/bti-voice (private). Pushing to main auto-deploys the server + web client to Railway." },
+                { "l": "Production server / web app", "v": "https://bti-voice-production.up.railway.app" },
+                { "l": "Releases / installers", "v": "GitHub Releases on the repo (Windows .exe + Mac .dmg files attached per version tag)" },
+                { "l": "Mac working copy", "v": "~/Documents/Claude/Projects/BTI Voice/bti-voice" },
+                { "l": "Windows working copy", "v": "C:\\Users\\Doero\\OneDrive\\Documents\\Claude\\Projects\\Talkingvet Help\\bti-voice (careful: OneDrive sync can corrupt git)" }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "stack",
+          "title": "Tech Specs & Stack",
+          "cards": [
+            {
+              "title": "Frontend (client/)",
+              "rows": [
+                { "l": "Framework", "v": "React 18.2 with Vite 5.1 build tool" },
+                { "l": "Calling in the browser", "v": "@twilio/voice-sdk 2.10 (WebRTC softphone)" },
+                { "l": "Real-time updates", "v": "socket.io-client 4.7 (live messages, call events, badges)" },
+                { "l": "iOS wrapper", "v": "Capacitor 6 (@capacitor/core, @capacitor/ios)" }
+              ]
+            },
+            {
+              "title": "Desktop Shell (electron/)",
+              "rows": [
+                { "l": "Framework", "v": "Electron 41.2, packaged with electron-builder 26.8" },
+                { "l": "How it works", "v": "The desktop app is a thin shell that loads the React client from Railway — so most fixes ship with a server push, no new installer needed. New installers only when Electron files change." },
+                { "l": "Special windows", "v": "Floating incoming-call banner (appears without stealing focus, works over fullscreen apps) and a call widget window" },
+                { "l": "Mac build", "v": "bash electron/build-mac.sh on a Mac → arm64 + x64 DMGs in dist-electron/. Developer ID signing + notarization support added. Must be built on a real Mac." },
+                { "l": "Windows build", "v": "cd electron && npm run build:win → NSIS installer in dist-electron/" },
+                { "l": "Auto-updates", "v": "Checks GitHub Releases. KNOWN ISSUE: updater is Windows-only aware — must stay disabled/hidden on Mac until per-platform update logic ships." }
+              ]
+            },
+            {
+              "title": "Backend (server/)",
+              "rows": [
+                { "l": "Runtime", "v": "Node.js 18+ with Express 4.18" },
+                { "l": "Database", "v": "PostgreSQL on Railway (pg driver). Tables include contacts, conversations, messages, message_media, scheduled_messages, canned_responses, ivr_settings, notifications." },
+                { "l": "Auth", "v": "JWT tokens (jsonwebtoken 9), passwords hashed with bcryptjs" },
+                { "l": "Real-time", "v": "Socket.io 4.7" },
+                { "l": "Background jobs", "v": "Scheduled-SMS sweep (30s, uses a proper distributed lock) and Zoho wrap-up sweep (with exponential backoff)" },
+                { "l": "Hosting", "v": "Railway — auto-deploys on every push to main. Nixpacks build." }
+              ]
+            },
+            {
+              "title": "Third-Party Services & Integrations",
+              "rows": [
+                { "l": "Twilio", "v": "All calling, SMS, and MMS. Server SDK 4.23. A2P 10DLC registered (see Security tab). Currently one test number: +1 239-666-7033, assigned to agent 'danny'. Real numbers still live in Zoho Voice and will be ported after testing proves the app out." },
+                { "l": "Zoho CRM", "v": "Deep two-way integration: contact lookup/sync, call notes, tasks. Uses a Self Client refresh token, scopes ZohoCRM.modules.ALL + ZohoCRM.users.READ. Do NOT revoke this token — it powers all sync." },
+                { "l": "OpenAI", "v": "Call transcription and AI summaries (openai SDK 4.47). AI-suggested replies is the next feature planned." },
+                { "l": "GitHub", "v": "Private repo hosting + Releases used for desktop app updates" }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "security",
+          "title": "Security & Compliance",
+          "cards": [
+            {
+              "title": "Security Posture (for when people ask)",
+              "rows": [
+                { "l": "Authentication", "v": "Every agent logs in with a username/password. Passwords are hashed with bcrypt; sessions use JWT tokens (7-day expiry). Server refuses to run with default secrets (hardened 2026-08-12)." },
+                { "l": "Data in transit", "v": "All traffic is HTTPS/WSS to Railway. The Electron shell rejects invalid TLS certificates." },
+                { "l": "Data at rest", "v": "PostgreSQL hosted on Railway. Secrets (DB URL, Twilio keys, JWT secret, Zoho + OpenAI tokens) live in Railway environment variables, never in code." },
+                { "l": "SQL injection", "v": "Parameterized queries throughout — a full 2026-08-12 code audit found zero SQL injection." },
+                { "l": "Webhook security", "v": "Twilio webhook signature validation enforced on SMS + voice webhooks (audit batch A, 2026-08-12) — forged webhook requests are rejected." },
+                { "l": "Real-time (Socket.io) security", "v": "Socket connections authenticate the JWT and verify conversation access before joining rooms (audit batch A, 2026-08-12)." },
+                { "l": "Electron hardening", "v": "nodeIntegration disabled, contextIsolation enabled, least-privilege preload scripts per window." },
+                { "l": "Media/MMS handling", "v": "Inbound MMS content-types allow-listed to images; attachments served with nosniff headers (audit batch A). Public media tokens are unguessable (192-bit) and scoped." },
+                { "l": "What data the app holds", "v": "Customer/lead names + phone numbers, SMS/MMS message content, call recordings + AI transcriptions, voicemails, and CRM notes. No payment data, no health records." }
+              ]
+            },
+            {
+              "title": "SMS Compliance (A2P 10DLC / TCPA)",
+              "rows": [
+                { "l": "A2P 10DLC status", "v": "APPROVED 2026-08-10. Campaign CMfd0e9fce40b23947271a9a25913af389, Brand BN640d79e8132a73b58d9bfc2224bfde54, Messaging Service MG72b937a8bdfdb4948e7ce808774b3765 (Low Volume Mixed, ~200 msgs/day/number)." },
+                { "l": "Opt-out (STOP/START)", "v": "Full keyword handling; opted-out contacts are blocked across all send paths, including phone-number format variants and duplicate contact rows (hardened in audit batch B, 2026-08-12). Carrier-level opt-outs (Twilio error 21610) self-heal automatically." },
+                { "l": "Quiet hours", "v": "Scheduled sends respect a quiet-hours window in the business timezone (audit batch B)." },
+                { "l": "Recording consent", "v": "Spoken consent notice before call recording (required in two-party-consent states like FL/CA) — added in audit batch B." },
+                { "l": "Message templates", "v": "6 compliant canned templates seeded ('Talkingvet:' prefix, STOP/HELP suffix)." },
+                { "l": "Privacy policy", "v": "SMS disclosure lives in talkingvet.com Privacy Policy section 12 — must stay intact (the A2P campaign references it; editing the campaign costs ~$15 + days of re-vetting)." }
+              ]
+            },
+            {
+              "title": "Known Open Security/Quality Items",
+              "rows": [
+                { "l": "Audit reference", "v": "Full pre-production audit: BTI-Voice-Preprod-Audit.md (2026-08-12, 26 findings + medium list). Batches A (security), B (compliance), and C (client bugs) committed 2026-08-12." },
+                { "l": "Still open — Electron items", "v": "Mac updater must stay disabled (downloads a Windows .exe); Windows installer runs without an integrity check; no navigation guardrails on window-open/navigate; Mac mic usage-description strings need the extendInfo block. These need a new installer to ship." },
+                { "l": "Still open — misc", "v": "Medium-severity list in the audit doc (pagination at scale, race conditions, 401 handling, etc.). Nothing blocks internal use; rollout gate items are in the audit's last section." }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "punchlist",
+          "title": "Punchlist",
+          "cards": [
+            {
+              "title": "Feature Security Punchlist — every feature checked for risk",
+              "rows": [
+                { "done": true,  "l": "Login & passwords", "v": "bcrypt hashing, 7-day JWT sessions, default-secret fallbacks removed — server refuses to boot without real secrets (audit batch A)." },
+                { "done": true,  "l": "Zoho API routes", "v": "Were completely unauthenticated (anyone could read/write CRM data). Auth required as of audit batch A." },
+                { "done": true,  "l": "Real-time sockets", "v": "Were open to any origin with no auth. Now verify JWT and conversation access before joining rooms (batch A)." },
+                { "done": true,  "l": "Twilio webhooks (SMS + voice)", "v": "Signature validation enforced — forged inbound messages/opt-out flips rejected (batch A)." },
+                { "done": true,  "l": "MMS attachments", "v": "Inbound content-types allow-listed to images, served with nosniff — blocks the HTML-in-MMS script-execution attack (batch A)." },
+                { "done": true,  "l": "SMS opt-out (STOP)", "v": "Matches all phone-number format variants across webhook, sweep, and auto-text paths (batch B)." },
+                { "done": true,  "l": "Missed-call auto-text", "v": "Per-number cooldown + call-SID dedupe — no more double or repeat texts (batch B)." },
+                { "done": true,  "l": "Scheduled SMS", "v": "Quiet-hours window enforced in business timezone — no 3 a.m. deliveries (batch B)." },
+                { "done": true,  "l": "Call recording", "v": "Spoken consent notice before recording — required in two-party-consent states like FL/CA (batch B)." },
+                { "done": false, "l": "Media & recording links", "v": "OPEN (audit #20): login token still travels in URLs (logs/history/referer) and media access isn't ownership-checked. Needs short-lived per-resource tokens." },
+                { "done": false, "l": "Agent impersonation", "v": "OPEN (audit #21): compose accepts a from_agent_id so any agent can send as another; calls controllable by SID without ownership check." },
+                { "done": false, "l": "Auto-updater", "v": "OPEN (audit #4, #7, #9): update endpoints unauthenticated; Mac updater downloads a Windows .exe (keep the button hidden on Mac!); Windows installer runs with no integrity check." },
+                { "done": false, "l": "Electron navigation guardrails", "v": "OPEN (audit #10): no window-open/navigate restrictions — a malicious link could open a privileged window. Needs setWindowOpenHandler + will-navigate deny." },
+                { "done": false, "l": "Mac microphone permissions", "v": "OPEN (audit #22): NSMicrophoneUsageDescription extendInfo block still needed in builder config; mic permission should be restricted to the app origin." },
+                { "done": false, "l": "Server crash resistance", "v": "OPEN (audit #23-24): unhandled promise rejections can crash the whole server mid-call; Electron main has no crash handler or offline retry page." },
+                { "done": false, "l": "Seeded accounts", "v": "OPEN (audit #25): seed() runs on every boot, recreating 5 accounts with committed passwords printed to logs — deactivating an agent is undone on next deploy." },
+                { "done": false, "l": "Database credentials exposure", "v": "OPEN (new catch): BTI-Voice-Session-Handoff.md contains the full Railway Postgres URL with password in plain text. Fine while private, but rotate the DB password if that doc is ever shared or committed anywhere public." },
+                { "done": false, "l": "Duplicate contact cleanup", "v": "OPEN (audit #11 follow-up): one-time DB cleanup still needed to merge existing duplicate contact rows so historical opt-outs can't be bypassed." }
+              ]
+            },
+            {
+              "title": "Complete Inventory — everything this software uses",
+              "rows": [
+                { "done": true,  "l": "Runtimes & frameworks", "v": "Node.js 18+, React 18, Vite 5, Electron 41, electron-builder 26, Capacitor 6 — all documented in the Tech tab with versions." },
+                { "done": true,  "l": "Server libraries", "v": "express, socket.io, pg, bcryptjs, jsonwebtoken, twilio, openai, node-fetch, form-data, cors, dotenv, geoip-lite, nodemon (dev)." },
+                { "done": true,  "l": "Client libraries", "v": "@twilio/voice-sdk, socket.io-client, react-dom, @capacitor/core + ios, cross-env (dev), @vitejs/plugin-react (dev)." },
+                { "done": true,  "l": "Paid/external accounts", "v": "Twilio, Zoho (CRM + Voice), OpenAI, Railway, GitHub (Talkingvet org), Apple Developer — all listed with purpose in Contacts & Accounts tab." },
+                { "done": true,  "l": "talkingvet.com dependency", "v": "The A2P campaign legally depends on the website: Contact Us form (Gravity Forms ID 5, mobile field + SMS consent) and Privacy Policy section 12. Documented — do not remove either." },
+                { "done": true,  "l": "geoip-lite — purpose verified", "v": "Used in server/helpers/logActivity.js to tag agent activity-log entries with city/country from the login IP. Offline lookup (no data sent to a third party). Verified 2026-08-12." },
+                { "done": false, "l": ".env.example is incomplete", "v": "It lists DATABASE_URL, JWT_SECRET, and Twilio vars — but not OPENAI/Zoho credentials, TWILIO_MESSAGING_SERVICE_SID, LATEST_VERSION, or the admin key, all of which the server actually uses. Update it so the full env inventory lives in one place." },
+                { "done": false, "l": "Database tables documented", "v": "Main tables are listed in the Tech tab, but there's no full schema doc. Consider generating one (a pg_dump --schema-only) so nothing in the DB is a mystery." }
+              ]
+            },
+            {
+              "title": "Compliance Punchlist (SMS / calling rules)",
+              "rows": [
+                { "done": true,  "l": "A2P 10DLC registration", "v": "Brand + campaign approved 2026-08-10; Messaging Service routing live on all send paths." },
+                { "done": true,  "l": "STOP/HELP keywords + templates", "v": "Keyword handling live; 6 compliant templates with Talkingvet prefix and STOP/HELP suffix." },
+                { "done": true,  "l": "Recording consent & quiet hours", "v": "Both enforced as of audit batch B." },
+                { "done": false, "l": "Privacy Policy section 12 — recurring check", "v": "Must stay intact on talkingvet.com (campaign references it; edits cost ~$15 + days of re-vetting). Re-verify after any website change." },
+                { "done": false, "l": "Consent-only texting — standing rule", "v": "Only text people who consented via the form or texted first. No cold lists, ever. Re-confirm whenever a new agent starts using the app." },
+                { "done": false, "l": "911 emergency address", "v": "Not yet added to the Twilio test number — required for VOIP emergency calling." }
+              ]
+            },
+            {
+              "title": "Rollout Gate — before anyone outside the team relies on it",
+              "rows": [
+                { "done": true,  "l": "Six security criticals (audit #1-6)", "v": "Fixed in batch A except the updater-endpoint auth (tracked above)." },
+                { "done": true,  "l": "Opt-out compliance gap (audit #11)", "v": "Send-path matching fixed in batch B; DB duplicate cleanup still tracked above." },
+                { "done": false, "l": "Mac banner Accept/Decline (audit #8)", "v": "Banner buttons did nothing — verify the fix end-to-end with the smoke test: log in as danny, call +1 239-666-7033 from a cell, banner appears without stealing focus, Accept and Decline both work." },
+                { "done": false, "l": "Mac update button hidden (audit #7)", "v": "Confirm the DMG being distributed has the updater gated off on macOS." },
+                { "done": false, "l": "New installers built after Electron fixes", "v": "The Electron-side items (#7, #8, #10, #22, #24) only reach users via a new installer — everything else ships with a Railway push." }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "roadmap",
+          "title": "Status & Roadmap",
+          "cards": [
+            {
+              "title": "Where Things Stand (2026-08-12)",
+              "rows": [
+                { "l": "Released", "v": "v1.5.0 — Windows installer live; Mac DMGs (both architectures) built, signed-build support added, and attached to the GitHub release." },
+                { "l": "Just landed (2026-08-12)", "v": "Audit fix batches A/B/C: security hardening (auth on Zoho routes + sockets, webhook validation, MMS hardening, no default secrets), compliance (opt-out variants, missed-call throttle, quiet hours, recording notice), and client bugs (socket leaks, reconnect re-join, failed-send message recovery, light theme, bell badge)." },
+                { "l": "Mac port status", "v": "App installs and runs on macOS. Remaining: finish the incoming-call banner smoke test (call the test number, verify banner Accept/Decline), and keep the update button hidden on Mac." },
+                { "l": "Waiting on Danny", "v": "Attach the Windows BTI-Voice-Setup-1.5.0.exe to the v1.5.0 GitHub release; confirm Railway LATEST_VERSION = 1.5.0." }
+              ]
+            },
+            {
+              "title": "Backlog (rough priority)",
+              "rows": [
+                { "l": "1. Mac banner smoke test", "v": "Finish verifying the floating incoming-call banner end-to-end on the Mac (Paul, in progress)." },
+                { "l": "2. AI-suggested replies", "v": "2-3 GPT-4 reply suggestions above the compose box (OpenAI already wired). Next feature up." },
+                { "l": "3. Zoho hardening", "v": "Re-enable the contact-ID cache, add retry logic for wrap-up note/task pushes, verify refresh-token rotation." },
+                { "l": "4. Agent number assignment UI", "v": "Admin settings screen (currently done via API/DB; only 'danny' has a number)." },
+                { "l": "5. UI polish round", "v": "Remaining items from BTI-Voice-macOS-UI-Review.md: split view for wide windows, real app icon, Esc closes popovers, Zoho panel loading state, tab-switch performance." },
+                { "l": "6. Later", "v": "Conversation filters, bulk/broadcast SMS (needs campaign upgrade past ~200/day cap), editable disposition codes, iOS device testing, Twilio console tidying (delete 2 dead messaging services, add 911 address to test number), port real numbers from Zoho Voice." }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "contacts",
+          "title": "Contacts & Accounts",
+          "cards": [
+            {
+              "title": "Who to Ask",
+              "rows": [
+                { "l": "Danny", "v": "Builder/lead developer. Windows machine. Owns releases, Railway config, Twilio + Zoho accounts." },
+                { "l": "Paul", "v": "Mac port, testing, documentation. paulm@businesstechnologyinsight.com" }
+              ]
+            },
+            {
+              "title": "Accounts & Services in Use (no passwords stored here)",
+              "rows": [
+                { "l": "GitHub", "v": "Org: Talkingvet — private repo bti-voice. Mac has push credentials in the keychain." },
+                { "l": "Railway", "v": "Hosts server + Postgres + web client. Auto-deploys from main. Key env vars: DATABASE_URL, JWT_SECRET, TWILIO_* (SID, token, API key/secret, TwiML app, Messaging Service SID), LATEST_VERSION." },
+                { "l": "Twilio", "v": "Calls/SMS/MMS. One test number (+1 239-666-7033). A2P brand + campaign registered under Talkingvet. Two dead duplicate messaging services in the console are harmless leftovers." },
+                { "l": "Zoho", "v": "Zoho CRM (deep integration via Self Client token) + Zoho Voice (still holds the real phone numbers until porting)." },
+                { "l": "OpenAI", "v": "API account for transcription/summaries." },
+                { "l": "Apple Developer", "v": "Company Apple Developer account used for Mac code signing + notarization." }
+              ]
+            },
+            {
+              "title": "Key Reference Docs (in the BTI Voice folder)",
+              "rows": [
+                { "l": "BTI-Voice-Session-Handoff.md", "v": "The living handoff doc — full context, gotchas, and backlog. Point any Claude session at it first." },
+                { "l": "BTI-Voice-Preprod-Audit.md", "v": "Full security/quality audit (2026-08-12), 26 findings with severity and fix status." },
+                { "l": "BTI-Voice-macOS-UI-Review.md", "v": "16-finding UI review of the Mac app (2026-08-11)." }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+</script>
+
+<script>
+(function () {
+  var dataEl = document.getElementById('app-data');
+  var DATA = JSON.parse(dataEl.textContent);
+  var state = { app: 0, tab: 0, editing: false, search: '' };
+
+  // Load any locally saved edits (browser storage) — newer than the file wins
+  try {
+    var saved = localStorage.getItem('bti-app-tracker');
+    if (saved) {
+      var parsed = JSON.parse(saved);
+      // Only use browser-saved edits if they're from the same or newer file version
+      if (parsed && parsed.apps && (parsed.dataVersion || 0) >= (DATA.dataVersion || 0)) DATA = parsed;
+    }
+  } catch (e) {}
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function linkify(escaped) {
+    return escaped.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+  }
+
+  function highlight(escaped, q) {
+    if (!q) return escaped;
+    var i = escaped.toLowerCase().indexOf(q.toLowerCase());
+    if (i < 0) return escaped;
+    return escaped.slice(0, i) + '<mark>' + escaped.slice(i, i + q.length) + '</mark>' + escaped.slice(i + q.length);
+  }
+
+  function statusPill(s) {
+    var cls = 'ok';
+    var low = String(s).toLowerCase();
+    if (low.indexOf('open') >= 0 || low.indexOf('progress') >= 0 || low.indexOf('review') >= 0) cls = 'warn';
+    if (low.indexOf('block') >= 0 || low.indexOf('critical') >= 0) cls = 'crit';
+    return '<span class="pill ' + cls + '">' + esc(s) + '</span>';
+  }
+
+  function rowMatches(r, q) {
+    q = q.toLowerCase();
+    return (r.l + ' ' + r.v).toLowerCase().indexOf(q) >= 0;
+  }
+
+  function render() {
+    document.getElementById('lastUpdated').textContent = 'Last updated ' + (DATA.lastUpdated || '');
+    document.body.classList.toggle('editing', state.editing);
+    document.getElementById('editBtn').textContent = state.editing ? 'Done Editing' : 'Edit';
+
+    // Sidebar
+    var listHtml = '';
+    DATA.apps.forEach(function (app, i) {
+      listHtml += '<div class="app-item' + (i === state.app ? ' active' : '') + '" data-app="' + i + '">' +
+        esc(app.name) + '<span class="app-status">' + esc(app.status || '') + '</span></div>';
+    });
+    document.getElementById('appList').innerHTML = listHtml;
+
+    var app = DATA.apps[state.app];
+    if (!app) { document.getElementById('mainContent').innerHTML = ''; return; }
+    if (state.tab >= app.sections.length) state.tab = 0;
+    var q = state.search.trim();
+
+    var html = '<div class="app-header"><h2><span data-edit="app.name" contenteditable="' + state.editing + '">' + esc(app.name) + '</span> ' + statusPill(app.status || '') + '</h2>' +
+      '<div class="tagline" data-edit="app.tagline" contenteditable="' + state.editing + '">' + esc(app.tagline || '') + '</div>';
+    if (state.editing) {
+      html += '<div class="tagline">Status label: <span data-edit="app.status" contenteditable="true" style="color:var(--text)">' + esc(app.status || '') + '</span></div>';
+    }
+    html += '</div>';
+
+    html += '<div class="tabs">';
+    app.sections.forEach(function (sec, si) {
+      html += '<div class="tab' + (si === state.tab && !q ? ' active' : '') + '" data-tab="' + si + '">' + esc(sec.title) + '</div>';
+    });
+    html += '</div>';
+
+    app.sections.forEach(function (sec, si) {
+      var show = q ? true : si === state.tab;
+      if (!show) return;
+      var secHtml = '';
+      sec.cards.forEach(function (card, ci) {
+        var rows = card.rows;
+        var visible = q ? rows.filter(function (r) { return rowMatches(r, q); }) : rows;
+        if (q && visible.length === 0) return;
+        var checkable = rows.filter(function (r) { return typeof r.done === 'boolean'; });
+        var progress = '';
+        if (checkable.length) {
+          var doneCount = checkable.filter(function (r) { return r.done; }).length;
+          progress = ' <span class="pill ' + (doneCount === checkable.length ? 'ok' : 'warn') + '">' + doneCount + '/' + checkable.length + ' done</span>';
+        }
+        secHtml += '<div class="card"><h3>' + esc(card.title) + progress +
+          '<button class="btn copy-btn" data-copy="' + si + ':' + ci + '">Copy</button></h3>';
+        rows.forEach(function (r, ri) {
+          if (q && !rowMatches(r, q)) return;
+          var chk = '';
+          if (typeof r.done === 'boolean') {
+            chk = '<input type="checkbox" class="chk" data-chk="' + si + ':' + ci + ':' + ri + '"' + (r.done ? ' checked' : '') + '>';
+          }
+          secHtml += '<div class="row' + (r.done === true ? ' done' : '') + '">' + chk +
+            '<div class="lbl" data-edit="row.l" data-path="' + si + ':' + ci + ':' + ri + '" contenteditable="' + state.editing + '">' + highlight(esc(r.l), q) + '</div>' +
+            '<div class="val" data-edit="row.v" data-path="' + si + ':' + ci + ':' + ri + '" contenteditable="' + state.editing + '">' + linkify(highlight(esc(r.v), q)) + '</div>' +
+            '<button class="del" data-delrow="' + si + ':' + ci + ':' + ri + '" title="Delete row">✕</button>' +
+            '</div>';
+        });
+        secHtml += '<button class="btn add-row-btn" data-addrow="' + si + ':' + ci + '">+ Add row</button>';
+        secHtml += '</div>';
+      });
+      if (secHtml) {
+        html += '<div class="section-panel">' + (q ? '<h3 style="margin:10px 0;color:var(--muted);font-size:13px">' + esc(sec.title) + '</h3>' : '') + secHtml + '</div>';
+      }
+    });
+
+    if (q && html.indexOf('class="card"') < 0) {
+      html += '<div class="card"><p style="color:var(--muted)">No matches for "' + esc(q) + '" in this app.</p></div>';
+    }
+
+    html += '<p class="hint">Tip: click <b>Edit</b> to change any text in place, then <b>Save Changes to File</b> to download an updated copy of this tracker — replace the old App-Tracker.html with it so your edits are permanent. Edits also auto-save in this browser in the meantime. <b>Print / PDF</b> gives you a clean document to send to developers or anyone with security questions.</p>';
+
+    document.getElementById('mainContent').innerHTML = html;
+    bindEdits();
+  }
+
+  function persist() {
+    try { localStorage.setItem('bti-app-tracker', JSON.stringify(DATA)); } catch (e) {}
+  }
+
+  function bindEdits() {
+    var main = document.getElementById('mainContent');
+    var edits = main.querySelectorAll('[contenteditable="true"]');
+    for (var i = 0; i < edits.length; i++) {
+      edits[i].addEventListener('blur', function () {
+        var app = DATA.apps[state.app];
+        var kind = this.getAttribute('data-edit');
+        var txt = this.innerText.replace(/\n+$/, '');
+        if (kind === 'app.name') app.name = txt;
+        else if (kind === 'app.tagline') app.tagline = txt;
+        else if (kind === 'app.status') app.status = txt;
+        else if (kind === 'row.l' || kind === 'row.v') {
+          var p = this.getAttribute('data-path').split(':');
+          var row = app.sections[p[0]].cards[p[1]].rows[p[2]];
+          if (kind === 'row.l') row.l = txt; else row.v = txt;
+        }
+        persist();
+      });
+    }
+  }
+
+  document.body.addEventListener('click', function (e) {
+    var t = e.target;
+    var appEl = t.closest ? t.closest('.app-item') : null;
+    if (appEl) { state.app = +appEl.getAttribute('data-app'); state.tab = 0; render(); return; }
+    if (t.classList.contains('tab')) {
+      state.tab = +t.getAttribute('data-tab');
+      state.search = ''; document.getElementById('searchBox').value = '';
+      render(); return;
+    }
+    if (t.hasAttribute && t.hasAttribute('data-copy')) {
+      var p = t.getAttribute('data-copy').split(':');
+      var card = DATA.apps[state.app].sections[p[0]].cards[p[1]];
+      var text = card.title + '\n' + card.rows.map(function (r) {
+        var mark = (typeof r.done === 'boolean') ? (r.done ? '[x] ' : '[ ] ') : '';
+        return mark + r.l + ': ' + r.v;
+      }).join('\n');
+      navigator.clipboard.writeText(text).then(function () {
+        t.textContent = 'Copied!'; setTimeout(function () { t.textContent = 'Copy'; }, 1500);
+      });
+      return;
+    }
+    if (t.hasAttribute && t.hasAttribute('data-addrow')) {
+      var p2 = t.getAttribute('data-addrow').split(':');
+      var targetCard = DATA.apps[state.app].sections[p2[0]].cards[p2[1]];
+      var isChecklist = targetCard.rows.some(function (r) { return typeof r.done === 'boolean'; });
+      var newRow = { l: 'New label', v: 'New value' };
+      if (isChecklist) newRow.done = false;
+      targetCard.rows.push(newRow);
+      persist(); render(); return;
+    }
+    if (t.classList.contains('chk')) {
+      var p4 = t.getAttribute('data-chk').split(':');
+      DATA.apps[state.app].sections[p4[0]].cards[p4[1]].rows[p4[2]].done = t.checked;
+      persist(); render(); return;
+    }
+    if (t.hasAttribute && t.hasAttribute('data-delrow')) {
+      if (!confirm('Delete this row?')) return;
+      var p3 = t.getAttribute('data-delrow').split(':');
+      DATA.apps[state.app].sections[p3[0]].cards[p3[1]].rows.splice(p3[2], 1);
+      persist(); render(); return;
+    }
+  });
+
+  document.getElementById('editBtn').addEventListener('click', function () {
+    state.editing = !state.editing;
+    if (!state.editing) persist();
+    render();
+  });
+
+  document.getElementById('addAppBtn').addEventListener('click', function () {
+    var name = prompt('Name of the new app?');
+    if (!name) return;
+    DATA.apps.push({
+      name: name,
+      tagline: 'Describe what this app does.',
+      status: 'Planning',
+      sections: [
+        { id: 'overview', title: 'Overview', cards: [ { title: 'The Basics', rows: [ { l: 'App name', v: name }, { l: 'What it does', v: '' }, { l: 'Who uses it', v: '' }, { l: 'Platforms', v: '' } ] }, { title: 'Key Links', rows: [ { l: 'Code repository', v: '' }, { l: 'Production URL', v: '' } ] } ] },
+        { id: 'stack', title: 'Tech Specs & Stack', cards: [ { title: 'Stack', rows: [ { l: 'Frontend', v: '' }, { l: 'Backend', v: '' }, { l: 'Database', v: '' }, { l: 'Hosting', v: '' } ] }, { title: 'Third-Party Services', rows: [ { l: '', v: '' } ] } ] },
+        { id: 'security', title: 'Security & Compliance', cards: [ { title: 'Security Posture', rows: [ { l: 'Authentication', v: '' }, { l: 'Data in transit', v: '' }, { l: 'Data at rest', v: '' }, { l: 'What data the app holds', v: '' } ] } ] },
+        { id: 'punchlist', title: 'Punchlist', cards: [ { title: 'Feature Security Punchlist', rows: [ { l: 'Authentication reviewed', v: '', done: false }, { l: 'Third-party services reviewed', v: '', done: false } ] }, { title: 'Complete Inventory', rows: [ { l: 'All libraries documented', v: '', done: false }, { l: 'All accounts & credentials listed', v: '', done: false } ] } ] },
+        { id: 'roadmap', title: 'Status & Roadmap', cards: [ { title: 'Where Things Stand', rows: [ { l: 'Current status', v: '' } ] }, { title: 'Backlog', rows: [ { l: '1.', v: '' } ] } ] },
+        { id: 'contacts', title: 'Contacts & Accounts', cards: [ { title: 'Who to Ask', rows: [ { l: '', v: '' } ] }, { title: 'Accounts & Services (no passwords here)', rows: [ { l: '', v: '' } ] } ] }
+      ]
+    });
+    state.app = DATA.apps.length - 1; state.tab = 0; state.editing = true;
+    persist(); render();
+  });
+
+  document.getElementById('searchBox').addEventListener('input', function () {
+    state.search = this.value; render();
+  });
+
+  document.getElementById('exportBtn').addEventListener('click', function () {
+    DATA.lastUpdated = new Date().toISOString().slice(0, 10);
+    persist();
+    var docClone = document.documentElement.cloneNode(true);
+    var dataScript = docClone.querySelector('#app-data');
+    dataScript.textContent = '\n' + JSON.stringify(DATA, null, 2) + '\n';
+    var mainClone = docClone.querySelector('#mainContent');
+    if (mainClone) mainClone.innerHTML = '';
+    var listClone = docClone.querySelector('#appList');
+    if (listClone) listClone.innerHTML = '';
+    var body = docClone.querySelector('body');
+    if (body) body.classList.remove('editing');
+    var html = '<!DOCTYPE html>\n' + docClone.outerHTML;
+    var blob = new Blob([html], { type: 'text/html' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'App-Audit.html';
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
+    alert('Downloaded App-Audit.html with your latest edits.\n\nMove it from Downloads into your BTI Voice folder, replacing the old file, to make the changes permanent.');
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
