@@ -68,6 +68,7 @@ export default function SettingsTab({ agent, onLogout }) {
         {activeTab === 'calls' && (
           <>
             <IVRSection C={C} />
+            <NumberRoutingSection C={C} />
             <MissedCallAutoTextSection C={C} />
             <AfterHoursSMSSection C={C} />
             <ComplianceSection C={C} />
@@ -1141,6 +1142,149 @@ function ZohoCRMSection({ C }) {
 }
 
 /* ── Missed Call Auto-Text section ─────────────────────────────────────────── */
+/* ── Per-number inbound call routing ───────────────────────────────────────── */
+function NumberRoutingSection({ C }) {
+  const { toast } = useToast()
+  const [rules,  setRules]  = useState([])
+  const [agents, setAgents] = useState([])
+  const [adding, setAdding] = useState(false)
+  const [form,   setForm]   = useState({ phone_number: '', label: '', destination_type: 'agent', destination_value: '' })
+
+  useEffect(() => {
+    Promise.all([api.numberRouting(), api.agents()])
+      .then(([r, a]) => { setRules(r); setAgents(a.filter(x => x.is_active)) })
+      .catch(console.error)
+  }, [])
+
+  const TYPE_LABELS = { ivr: 'Phone tree (IVR)', agent: 'Ring one agent', all_agents: 'Ring all agents', voicemail: 'Straight to voicemail' }
+
+  function ruleDesc(r) {
+    if (r.destination_type === 'agent') return `Rings ${r.agent_name || `agent #${r.destination_value}`}`
+    return TYPE_LABELS[r.destination_type] || r.destination_type
+  }
+
+  async function save() {
+    if (!form.phone_number.trim()) { toast.error('Enter the Twilio number this rule applies to'); return }
+    if (form.destination_type === 'agent' && !form.destination_value) { toast.error('Pick an agent'); return }
+    try {
+      const saved = await api.saveNumberRouting(form)
+      setRules(rs => {
+        const others = rs.filter(r => r.id !== saved.id)
+        const agent = agents.find(a => String(a.id) === String(saved.destination_value))
+        return [...others, { ...saved, agent_name: agent?.name }].sort((a, b) => a.phone_number.localeCompare(b.phone_number))
+      })
+      setAdding(false)
+      setForm({ phone_number: '', label: '', destination_type: 'agent', destination_value: '' })
+      toast.success('Routing rule saved')
+    } catch (e) {
+      toast.error(e.message)
+    }
+  }
+
+  async function remove(id) {
+    try {
+      await api.deleteNumberRouting(id)
+      setRules(rs => rs.filter(r => r.id !== id))
+      toast.success('Rule removed — number falls back to the phone tree')
+    } catch (e) {
+      toast.error(e.message)
+    }
+  }
+
+  const inputStyle = {
+    background: C.surface, color: C.text, border: `1px solid ${C.border}`,
+    borderRadius: 8, padding: '7px 10px', fontSize: 13, outline: 'none',
+  }
+
+  return (
+    <>
+      <SectionHeader title="Number Routing" C={C} />
+      <Card C={C}>
+        <div style={{ padding: '12px 14px' }}>
+          <div style={{ fontSize: 12, color: C.textSec, marginBottom: 10 }}>
+            Route inbound calls per company number. Numbers without a rule use the phone tree / default routing above.
+          </div>
+
+          {rules.length === 0 && !adding && (
+            <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 10 }}>No routing rules yet — every number uses the shared phone tree.</div>
+          )}
+
+          {rules.map(r => (
+            <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: `1px solid ${C.borderSoft}` }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>
+                  {r.phone_number}{r.label ? ` — ${r.label}` : ''}
+                </div>
+                <div style={{ fontSize: 12, color: C.textSec }}>{ruleDesc(r)}</div>
+              </div>
+              <button
+                onClick={() => remove(r.id)}
+                style={{ background: 'none', border: 'none', color: '#f87171', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+              >Remove</button>
+            </div>
+          ))}
+
+          {adding ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  value={form.phone_number}
+                  onChange={e => setForm(f => ({ ...f, phone_number: e.target.value }))}
+                  placeholder="Twilio number, e.g. +12394755114"
+                  style={{ ...inputStyle, flex: 1.2 }}
+                />
+                <input
+                  value={form.label}
+                  onChange={e => setForm(f => ({ ...f, label: e.target.value }))}
+                  placeholder="Label (optional)"
+                  style={{ ...inputStyle, flex: 1 }}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <select
+                  value={form.destination_type}
+                  onChange={e => setForm(f => ({ ...f, destination_type: e.target.value }))}
+                  style={{ ...inputStyle, flex: 1 }}
+                >
+                  <option value="agent">Ring one agent</option>
+                  <option value="all_agents">Ring all agents</option>
+                  <option value="voicemail">Straight to voicemail</option>
+                  <option value="ivr">Phone tree (IVR)</option>
+                </select>
+                {form.destination_type === 'agent' && (
+                  <select
+                    value={form.destination_value}
+                    onChange={e => setForm(f => ({ ...f, destination_value: e.target.value }))}
+                    style={{ ...inputStyle, flex: 1 }}
+                  >
+                    <option value="">Pick an agent…</option>
+                    {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  </select>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button
+                  style={{ background: 'none', border: 'none', color: C.textSec, fontSize: 12, cursor: 'pointer' }}
+                  onClick={() => setAdding(false)}
+                >Cancel</button>
+                <button
+                  style={{ background: '#4f9cf9', border: 'none', color: '#fff', fontSize: 12, fontWeight: 600, borderRadius: 8, padding: '6px 14px', cursor: 'pointer' }}
+                  onClick={save}
+                >Save rule</button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => setAdding(true)}
+              style={{ marginTop: 10, border: '1px solid rgba(79,156,249,0.4)', background: 'rgba(79,156,249,0.12)', color: '#4f9cf9', borderRadius: 9, padding: '7px 14px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}
+            >+ Add routing rule</button>
+          )}
+        </div>
+      </Card>
+    </>
+  )
+}
+
 function MissedCallAutoTextSection({ C }) {
   const [settings, setSettings] = useState({ auto_text_enabled: false, auto_text_message: '' })
   const [loading,  setLoading]  = useState(true)

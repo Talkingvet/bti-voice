@@ -88,6 +88,9 @@ export const api = {
   ivrAddItem:        (data)       => request('/ivr/menu', { method: 'POST', body: data }),
   ivrUpdateItem:     (id, data)   => request(`/ivr/menu/${id}`, { method: 'PUT', body: data }),
   ivrDeleteItem:     (id)         => request(`/ivr/menu/${id}`, { method: 'DELETE' }),
+  numberRouting:     ()           => request('/ivr/number-routing'),
+  saveNumberRouting: (data)       => request('/ivr/number-routing', { method: 'POST', body: data }),
+  deleteNumberRouting: (id)       => request(`/ivr/number-routing/${id}`, { method: 'DELETE' }),
 
   // Contacts CRUD + Zoho sync
   contacts:          ()           => request('/contacts'),

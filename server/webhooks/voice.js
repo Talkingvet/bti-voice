@@ -184,6 +184,36 @@ router.post('/inbound', async (req, res) => {
     );
     const settings = settingsRows[0];
 
+    // ── Per-number routing override ──────────────────────────────────────────
+    // If the dialed Twilio number has an active routing rule, it wins over the
+    // shared IVR. Lets each number ring its own agent (or voicemail) while the
+    // main number keeps the phone tree.
+    const calledNumber = (req.body.To || '').trim();
+    if (calledNumber) {
+      const { rows: [rule] } = await pool.query(
+        'SELECT * FROM number_routing WHERE phone_number = $1 AND is_active = true LIMIT 1',
+        [calledNumber]
+      );
+      if (rule && rule.destination_type !== 'ivr') {
+        const nrVoice = settings?.voice || 'Polly.Joanna-Neural';
+        console.log(`[inbound] number_routing ${calledNumber} → ${rule.destination_type}${rule.destination_value ? ':' + rule.destination_value : ''}`);
+        switch (rule.destination_type) {
+          case 'agent':
+            await dialAgent(twiml, rule.destination_value);
+            break;
+          case 'voicemail':
+            sendToVoicemail(twiml, nrVoice, req.body.From || '');
+            break;
+          case 'all_agents':
+          default:
+            await ringAllAgents(twiml);
+            break;
+        }
+        res.set('Content-Type', 'text/xml');
+        return res.send(twiml.toString());
+      }
+    }
+
     if (settings?.enabled) {
       const { rows: menu } = await pool.query(
         'SELECT * FROM ivr_menus WHERE is_active = true ORDER BY sort_order, digit'
@@ -319,23 +349,7 @@ router.post('/ivr-gather', async (req, res) => {
       }
 
       case 'voicemail': {
-        const serverUrl = process.env.SERVER_URL || '';
-        // Twilio's recordingStatusCallback payload does NOT include From/To, so
-        // carry the caller number through on the callback URL query string.
-        // Without this every voicemail resolved to the literal string 'unknown'
-        // and got filed against a single junk contact.
-        const callerNum = req.body.From || '';
-        const vmCallback = `${serverUrl}/webhooks/voice/recording-complete?vm=1`
-          + (callerNum ? `&from=${encodeURIComponent(callerNum)}` : '');
-        twiml.say({ voice }, 'Please leave a message after the tone. Press pound when finished.');
-        twiml.record({
-          maxLength:               120,
-          finishOnKey:             '#',
-          transcribe:              false,
-          recordingStatusCallback: vmCallback,
-          recordingStatusCallbackMethod: 'POST',
-        });
-        twiml.say({ voice }, 'Thank you for your message. Goodbye.');
+        sendToVoicemail(twiml, voice, req.body.From || '');
         break;
       }
 
@@ -870,6 +884,25 @@ function recordingOpts() {
 // dialAgent: dials a specific Twilio Client browser endpoint.
 // IMPORTANT: the action URL is required — without it, Twilio silently ends the
 // call when the client is unavailable (no-answer, busy, not registered).
+// Voicemail TwiML. Twilio's recordingStatusCallback payload does NOT include
+// From/To, so carry the caller number through on the callback URL query string.
+// Without this every voicemail resolved to the literal string 'unknown' and
+// got filed against a single junk contact.
+function sendToVoicemail(twiml, voice, callerNum) {
+  const serverUrl = process.env.SERVER_URL || '';
+  const vmCallback = `${serverUrl}/webhooks/voice/recording-complete?vm=1`
+    + (callerNum ? `&from=${encodeURIComponent(callerNum)}` : '');
+  twiml.say({ voice }, 'Please leave a message after the tone. Press pound when finished.');
+  twiml.record({
+    maxLength:               120,
+    finishOnKey:             '#',
+    transcribe:              false,
+    recordingStatusCallback: vmCallback,
+    recordingStatusCallbackMethod: 'POST',
+  });
+  twiml.say({ voice }, 'Thank you for your message. Goodbye.');
+}
+
 async function dialAgent(twiml, agentId, timeout = 30) {
   // Validate the agent ID before dialing — parseInt('') === NaN
   const id = parseInt(agentId, 10);

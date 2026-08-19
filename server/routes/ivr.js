@@ -121,4 +121,66 @@ router.delete('/menu/:id', requireAuth, async (req, res) => {
   }
 });
 
+// ── Per-number inbound routing rules ──────────────────────────────────────────
+const NR_TYPES = ['ivr', 'agent', 'all_agents', 'voicemail'];
+
+function normalizeE164(input) {
+  const digits = (input || '').replace(/\D/g, '');
+  if (digits.length === 10) return '+1' + digits;
+  if (digits.length === 11 && digits.startsWith('1')) return '+' + digits;
+  return (input || '').trim();
+}
+
+router.get('/number-routing', requireAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT nr.*, ag.name AS agent_name
+      FROM number_routing nr
+      LEFT JOIN agents ag ON ag.id = NULLIF(regexp_replace(nr.destination_value, '\\D', '', 'g'), '')::int AND nr.destination_type = 'agent'
+      ORDER BY nr.phone_number
+    `);
+    res.json(rows);
+  } catch (e) {
+    console.error('[ivr GET /number-routing]', e.message);
+    res.status(500).json({ error: 'Failed to fetch number routing' });
+  }
+});
+
+router.post('/number-routing', requireAuth, async (req, res) => {
+  const { phone_number, label, destination_type, destination_value } = req.body;
+  const phone = normalizeE164(phone_number);
+  if (!/^\+\d{10,15}$/.test(phone)) return res.status(400).json({ error: 'phone_number must be a valid number (E.164)' });
+  if (!NR_TYPES.includes(destination_type)) return res.status(400).json({ error: `destination_type must be one of: ${NR_TYPES.join(', ')}` });
+  if (destination_type === 'agent' && !parseInt(destination_value, 10)) {
+    return res.status(400).json({ error: 'destination_value must be an agent id when destination_type is agent' });
+  }
+  try {
+    const { rows: [row] } = await pool.query(`
+      INSERT INTO number_routing (phone_number, label, destination_type, destination_value)
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (phone_number) DO UPDATE SET
+        label = EXCLUDED.label,
+        destination_type = EXCLUDED.destination_type,
+        destination_value = EXCLUDED.destination_value,
+        is_active = true,
+        updated_at = NOW()
+      RETURNING *
+    `, [phone, label || null, destination_type, destination_type === 'agent' ? String(parseInt(destination_value, 10)) : null]);
+    res.json(row);
+  } catch (e) {
+    console.error('[ivr POST /number-routing]', e.message);
+    res.status(500).json({ error: 'Failed to save routing rule' });
+  }
+});
+
+router.delete('/number-routing/:id', requireAuth, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM number_routing WHERE id = $1', [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[ivr DELETE /number-routing/:id]', e.message);
+    res.status(500).json({ error: 'Failed to delete routing rule' });
+  }
+});
+
 module.exports = router;

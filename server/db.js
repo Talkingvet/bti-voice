@@ -288,6 +288,21 @@ async function migrate() {
     CREATE INDEX IF NOT EXISTS idx_consent_contact ON consent_records (contact_id);
   `);
 
+  // Per-number inbound call routing (multi-number support).
+  // destination_type: 'ivr' (default shared IVR) | 'agent' | 'all_agents' | 'voicemail'
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS number_routing (
+      id                SERIAL PRIMARY KEY,
+      phone_number      VARCHAR(20) UNIQUE NOT NULL,
+      label             VARCHAR(100),
+      destination_type  VARCHAR(20) NOT NULL DEFAULT 'ivr',
+      destination_value VARCHAR(100),
+      is_active         BOOLEAN DEFAULT true,
+      created_at        TIMESTAMPTZ DEFAULT NOW(),
+      updated_at        TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
+
   console.log('[db] Migrations complete.');
 }
 
