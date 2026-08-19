@@ -1153,7 +1153,7 @@ function NumberRoutingSection({ C }) {
 
   useEffect(() => {
     Promise.all([api.numberRouting(), api.agents()])
-      .then(([r, a]) => { setRules(r); setAgents(a.filter(x => x.is_active)) })
+      .then(([r, a]) => { setRules(r); setAgents(a) })  // /api/agents already returns only active agents
       .catch(console.error)
   }, [])
 
