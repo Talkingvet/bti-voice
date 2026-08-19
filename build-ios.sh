@@ -24,7 +24,7 @@ npm install
 
 # Step 2: Build the React app pointed at Railway
 echo "[2/5] Building React app..."
-VITE_API_URL=https://bti-voice-production.up.railway.app npm run build
+VITE_API_URL=https://bti-voice-production.up.railway.app npm run build -- --outDir dist --emptyOutDir
 
 # Step 3: Add iOS platform (first run only)
 if [ ! -d "ios" ]; then
