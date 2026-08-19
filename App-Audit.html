@@ -102,13 +102,13 @@
 
 <script id="app-data" type="application/json">
 {
-  "lastUpdated": "2026-08-12",
-  "dataVersion": 2,
+  "lastUpdated": "2026-08-19",
+  "dataVersion": 3,
   "apps": [
     {
       "name": "BTI Voice",
-      "tagline": "Internal VOIP + SMS desktop app used by BTI / Talkingvet staff to call and text leads, prospects, and customers. Internal tool only — not a product for sale.",
-      "status": "Active — v1.5.0",
+      "tagline": "VOIP + SMS app built by BTI. Used daily by BTI/Talkingvet staff to call and text leads, prospects, and customers — and now being productized for sale to BTI's MSP clients (single-tenant deploy per customer, $35/user/mo).",
+      "status": "Active — v1.5.0 + continuous web deploys",
       "sections": [
         {
           "id": "overview",
@@ -117,23 +117,67 @@
             {
               "title": "The Basics",
               "rows": [
-                { "l": "App name", "v": "BTI Voice" },
-                { "l": "What it does", "v": "Shared SMS + VOIP softphone: calling, texting (SMS/MMS), voicemail, call recording with AI transcription and summaries, scheduled texts, after-hours auto-replies, and deep Zoho CRM integration." },
-                { "l": "Who uses it", "v": "BTI / Talkingvet staff (internal only). Talkingvet sells AI scribing to veterinarians — this app is how staff communicate with leads and customers." },
-                { "l": "Built by", "v": "Danny at Business Technology Insight (Paul assists with Mac port and testing)" },
-                { "l": "Current version", "v": "1.5.0 (Windows installer + Mac DMGs released 2026-08-11; server continuously deployed)" },
-                { "l": "Platforms", "v": "Windows (NSIS installer), macOS (Apple Silicon + Intel DMGs — port in final testing), any web browser via the Railway URL, iOS via Capacitor (built, not yet device-tested)" },
-                { "l": "App ID", "v": "com.businesstechnologyinsight.bti-voice" }
+                {
+                  "l": "App name",
+                  "v": "BTI Voice (name confirmed 2026-08-19, keeping for the foreseeable future; UI brand is configurable per customer via VITE_BRAND_NAME)"
+                },
+                {
+                  "l": "What it does",
+                  "v": "Shared SMS + VOIP softphone: calling, texting (SMS/MMS), voicemail, call recording with AI transcription and summaries, scheduled texts, after-hours auto-replies, missed-call auto-text, IVR phone tree, per-number call routing, canned responses, consent audit log, and deep Zoho CRM integration (optional add-on)."
+                },
+                {
+                  "l": "Who uses it",
+                  "v": "BTI / Talkingvet staff today (6 active agents). DIRECTION CHANGE 2026-08-18: BTI Voice will be SOLD to external customers — target is BTI's MSP clients, 1-5 pilots in year one."
+                },
+                {
+                  "l": "Built by",
+                  "v": "Danny at Business Technology Insight (Paul assists with Mac port and testing)"
+                },
+                {
+                  "l": "Current version",
+                  "v": "1.5.0 installers (Windows .exe + both Mac DMGs, released 2026-08-13). The web client + server deploy continuously — most features ship without a new installer."
+                },
+                {
+                  "l": "Platforms",
+                  "v": "Any web browser (primary, and the pilot-customer plan), Windows (NSIS installer), macOS (signed + notarized DMGs), iOS via Capacitor 6 (TestFlight push in progress as of 2026-08-19)"
+                },
+                {
+                  "l": "App ID",
+                  "v": "com.businesstechnologyinsight.btivoice (Capacitor); demo video recorded + uploaded 2026-08-19"
+                }
               ]
             },
             {
               "title": "Key Links",
               "rows": [
-                { "l": "Code repository", "v": "https://github.com/Talkingvet/bti-voice (private). Pushing to main auto-deploys the server + web client to Railway." },
-                { "l": "Production server / web app", "v": "https://bti-voice-production.up.railway.app" },
-                { "l": "Releases / installers", "v": "GitHub Releases on the repo (Windows .exe + Mac .dmg files attached per version tag)" },
-                { "l": "Mac working copy", "v": "~/Documents/Claude/Projects/BTI Voice/bti-voice" },
-                { "l": "Windows working copy", "v": "C:\\Users\\Doero\\OneDrive\\Documents\\Claude\\Projects\\Talkingvet Help\\bti-voice (careful: OneDrive sync can corrupt git)" }
+                {
+                  "l": "Code repository",
+                  "v": "https://github.com/Talkingvet/bti-voice (private). Pushing to main auto-deploys the server + web client to Railway."
+                },
+                {
+                  "l": "Production server / web app",
+                  "v": "https://bti-voice-production.up.railway.app"
+                },
+                {
+                  "l": "Releases / installers",
+                  "v": "GitHub Releases on the repo (Windows .exe + Mac .dmg files attached per version tag)"
+                },
+                {
+                  "l": "Per-customer deploy runbook",
+                  "v": "bti-voice/docs/DEPLOY-RUNBOOK.md + server/.env.example (written 2026-08-19) — the operational checklist for standing up a new customer"
+                },
+                {
+                  "l": "Business plan",
+                  "v": "BTI-Voice-Productization-Plan.md — tenancy decision, per-customer Twilio/A2P mechanics, pricing vs competitors, telecom-tax research"
+                },
+                {
+                  "l": "Mac working copy",
+                  "v": "~/Documents/Claude/Projects/BTI Voice/bti-voice"
+                },
+                {
+                  "l": "Windows working copy",
+                  "v": "C:\\Users\\Doero\\OneDrive\\Documents\\Claude\\Projects\\Talkingvet Help\\bti-voice (careful: OneDrive sync can corrupt git — locks that won't rm will mv)"
+                }
               ]
             }
           ]
@@ -145,41 +189,109 @@
             {
               "title": "Frontend (client/)",
               "rows": [
-                { "l": "Framework", "v": "React 18.2 with Vite 5.1 build tool" },
-                { "l": "Calling in the browser", "v": "@twilio/voice-sdk 2.10 (WebRTC softphone)" },
-                { "l": "Real-time updates", "v": "socket.io-client 4.7 (live messages, call events, badges)" },
-                { "l": "iOS wrapper", "v": "Capacitor 6 (@capacitor/core, @capacitor/ios)" }
+                {
+                  "l": "Framework",
+                  "v": "React 18.2 with Vite 5.1 build tool"
+                },
+                {
+                  "l": "Calling in the browser",
+                  "v": "@twilio/voice-sdk 2.10 (WebRTC softphone)"
+                },
+                {
+                  "l": "Real-time updates",
+                  "v": "socket.io-client 4.7 (live messages, call events, badges)"
+                },
+                {
+                  "l": "iOS wrapper",
+                  "v": "Capacitor 6 (@capacitor/core, @capacitor/ios); build-ios.sh scaffolds the Xcode project, generates icons/splash from client/resources/"
+                },
+                {
+                  "l": "Branding",
+                  "v": "client/src/brand.js — VITE_BRAND_NAME env at build time, falls back to 'BTI Voice' (added 2026-08-19 for white-label customer deploys)"
+                },
+                {
+                  "l": "Desktop layouts",
+                  "v": "Split views at ≥900px on SMS / Calls / Contacts tabs; compact dialpad below 660px height; responsive title bar (2026-08-18)"
+                }
               ]
             },
             {
               "title": "Desktop Shell (electron/)",
               "rows": [
-                { "l": "Framework", "v": "Electron 41.2, packaged with electron-builder 26.8" },
-                { "l": "How it works", "v": "The desktop app is a thin shell that loads the React client from Railway — so most fixes ship with a server push, no new installer needed. New installers only when Electron files change." },
-                { "l": "Special windows", "v": "Floating incoming-call banner (appears without stealing focus, works over fullscreen apps) and a call widget window" },
-                { "l": "Mac build", "v": "bash electron/build-mac.sh on a Mac → arm64 + x64 DMGs in dist-electron/. Developer ID signing + notarization support added. Must be built on a real Mac." },
-                { "l": "Windows build", "v": "cd electron && npm run build:win → NSIS installer in dist-electron/" },
-                { "l": "Auto-updates", "v": "Checks GitHub Releases. KNOWN ISSUE: updater is Windows-only aware — must stay disabled/hidden on Mac until per-platform update logic ships." }
+                {
+                  "l": "Framework",
+                  "v": "Electron 41.2, packaged with electron-builder 26.8"
+                },
+                {
+                  "l": "How it works",
+                  "v": "The desktop app is a thin shell that loads the React client from Railway — so most fixes ship with a server push, no new installer needed. New installers only when Electron files change (pending shell changes: default window 470x805, min 330x560)."
+                },
+                {
+                  "l": "Special windows",
+                  "v": "Floating incoming-call banner (appears without stealing focus, works over fullscreen apps) and a call widget window"
+                },
+                {
+                  "l": "Mac build",
+                  "v": "bash electron/build-mac.sh on a Mac → arm64 + x64 DMGs, Developer ID signed + notarized (inside-out signing recipe). Must be built on a real Mac."
+                },
+                {
+                  "l": "Windows build",
+                  "v": "cd electron && npm run build:win in Git Bash → NSIS installer in dist-electron/"
+                },
+                {
+                  "l": "Auto-updates",
+                  "v": "Windows-only by design (Mac updater gated off since 1.5.0). Settings → About has a manual check/download/install button. Railway LATEST_VERSION drives the update prompt."
+                }
               ]
             },
             {
               "title": "Backend (server/)",
               "rows": [
-                { "l": "Runtime", "v": "Node.js 18+ with Express 4.18" },
-                { "l": "Database", "v": "PostgreSQL on Railway (pg driver). Tables include contacts, conversations, messages, message_media, scheduled_messages, canned_responses, ivr_settings, notifications." },
-                { "l": "Auth", "v": "JWT tokens (jsonwebtoken 9), passwords hashed with bcryptjs" },
-                { "l": "Real-time", "v": "Socket.io 4.7" },
-                { "l": "Background jobs", "v": "Scheduled-SMS sweep (30s, uses a proper distributed lock) and Zoho wrap-up sweep (with exponential backoff)" },
-                { "l": "Hosting", "v": "Railway — auto-deploys on every push to main. Nixpacks build." }
+                {
+                  "l": "Runtime",
+                  "v": "Node.js 18+ with Express 4.18"
+                },
+                {
+                  "l": "Database",
+                  "v": "PostgreSQL on Railway (pg driver). 18 tables incl. contacts, conversations, messages, message_media, scheduled_messages, calls, ivr_settings, ivr_menus, number_routing (2026-08-19), consent_records (2026-08-19), canned_responses, notifications, user_activity_logs."
+                },
+                {
+                  "l": "Auth",
+                  "v": "JWT tokens (7-day) + bcryptjs password hashes; separate 10-minute scope-limited media tokens for <img>/<audio> URLs (2026-08-19); per-process internal token for server self-calls; ZOHO_WIDGET_KEY shared secret for the Zoho widget."
+                },
+                {
+                  "l": "Real-time",
+                  "v": "Socket.io 4.7 with JWT handshake + conversation-access checks"
+                },
+                {
+                  "l": "Background jobs",
+                  "v": "Scheduled-SMS sweep (30s, distributed lock, quiet-hours guard) and Zoho wrap-up sweep (exponential backoff, 8-attempt cap)"
+                },
+                {
+                  "l": "Hosting",
+                  "v": "Railway — auto-deploys on every push to main. Nixpacks build. Single-tenant: each future customer gets their own Railway project + Postgres + env."
+                }
               ]
             },
             {
               "title": "Third-Party Services & Integrations",
               "rows": [
-                { "l": "Twilio", "v": "All calling, SMS, and MMS. Server SDK 4.23. A2P 10DLC registered (see Security tab). Currently one test number: +1 239-666-7033, assigned to agent 'danny'. Real numbers still live in Zoho Voice and will be ported after testing proves the app out." },
-                { "l": "Zoho CRM", "v": "Deep two-way integration: contact lookup/sync, call notes, tasks. Uses a Self Client refresh token, scopes ZohoCRM.modules.ALL + ZohoCRM.users.READ. Do NOT revoke this token — it powers all sync." },
-                { "l": "OpenAI", "v": "Call transcription and AI summaries (openai SDK 4.47). AI-suggested replies is the next feature planned." },
-                { "l": "GitHub", "v": "Private repo hosting + Releases used for desktop app updates" }
+                {
+                  "l": "Twilio",
+                  "v": "All calling, SMS, MMS. Three numbers: +1 239-666-7033 (danny/main, IVR), +1 239-475-5114 (Rick), +1 239-445-4227 (Paul) — the latter two route directly to their agents via number_routing (2026-08-19). A2P 10DLC approved; SHAKEN/STIR A-attestation on all 3 (assigned 2026-08-19). Toll-free +1 855-599-8716 RELEASED 2026-08-19. ISV Reseller/Partner identity flag requested via support ticket (approved profiles are read-only in console)."
+                },
+                {
+                  "l": "Zoho CRM",
+                  "v": "Optional add-on (runs fine without it). Contact lookup/sync with CRM-locked names, BTI_Voice custom module (SMS daily digests + one record per call, upsert on unique BTI_Ref), SMS conversation widget on Contacts + Leads, wrap-up notes. Self Client refresh token — do NOT revoke, it powers all sync."
+                },
+                {
+                  "l": "OpenAI",
+                  "v": "Call transcription and AI summaries (openai SDK 4.47). Prompts use COMPANY_NAME / AI_SUMMARY_CONTEXT env (no hardcoded Talkingvet strings since Phase 0). AI-suggested replies still planned."
+                },
+                {
+                  "l": "GitHub",
+                  "v": "Private repo hosting + Releases used for desktop app updates"
+                }
               ]
             }
           ]
@@ -191,34 +303,100 @@
             {
               "title": "Security Posture (for when people ask)",
               "rows": [
-                { "l": "Authentication", "v": "Every agent logs in with a username/password. Passwords are hashed with bcrypt; sessions use JWT tokens (7-day expiry). Server refuses to run with default secrets (hardened 2026-08-12)." },
-                { "l": "Data in transit", "v": "All traffic is HTTPS/WSS to Railway. The Electron shell rejects invalid TLS certificates." },
-                { "l": "Data at rest", "v": "PostgreSQL hosted on Railway. Secrets (DB URL, Twilio keys, JWT secret, Zoho + OpenAI tokens) live in Railway environment variables, never in code." },
-                { "l": "SQL injection", "v": "Parameterized queries throughout — a full 2026-08-12 code audit found zero SQL injection." },
-                { "l": "Webhook security", "v": "Twilio webhook signature validation enforced on SMS + voice webhooks (audit batch A, 2026-08-12) — forged webhook requests are rejected." },
-                { "l": "Real-time (Socket.io) security", "v": "Socket connections authenticate the JWT and verify conversation access before joining rooms (audit batch A, 2026-08-12)." },
-                { "l": "Electron hardening", "v": "nodeIntegration disabled, contextIsolation enabled, least-privilege preload scripts per window." },
-                { "l": "Media/MMS handling", "v": "Inbound MMS content-types allow-listed to images; attachments served with nosniff headers (audit batch A). Public media tokens are unguessable (192-bit) and scoped." },
-                { "l": "What data the app holds", "v": "Customer/lead names + phone numbers, SMS/MMS message content, call recordings + AI transcriptions, voicemails, and CRM notes. No payment data, no health records." }
+                {
+                  "l": "Authentication",
+                  "v": "Per-agent username/password, bcrypt hashed, 7-day JWT. Production refuses to boot without JWT_SECRET (Phase 0). Default-password nag banner until each agent changes theirs."
+                },
+                {
+                  "l": "Media/recording URLs",
+                  "v": "HARDENED 2026-08-19: image and recording URLs carry a 10-minute scope-limited media token instead of the 7-day login JWT; full login JWTs are rejected in query strings."
+                },
+                {
+                  "l": "Data in transit",
+                  "v": "All traffic is HTTPS/WSS to Railway. The Electron shell rejects invalid TLS certificates."
+                },
+                {
+                  "l": "Data at rest",
+                  "v": "PostgreSQL on Railway. All secrets live in Railway env vars, never in code. Full env inventory: server/.env.example."
+                },
+                {
+                  "l": "SQL injection",
+                  "v": "Parameterized queries throughout — 2026-08-12 audit found zero SQL injection."
+                },
+                {
+                  "l": "Webhook security",
+                  "v": "Twilio signature validation STRICT in production (TWILIO_STRICT_WEBHOOKS=true since 2026-08-17, strict-by-default in prod since Phase 0) — forged webhooks rejected. Proven under live traffic."
+                },
+                {
+                  "l": "Real-time (Socket.io) security",
+                  "v": "Socket connections authenticate the JWT and verify conversation access before joining rooms."
+                },
+                {
+                  "l": "Electron hardening",
+                  "v": "nodeIntegration disabled, contextIsolation enabled, least-privilege preloads, nav/window-open guards, crash handlers, offline retry page (batch D, 2026-08-12)."
+                },
+                {
+                  "l": "Seeding",
+                  "v": "Phase 0 (2026-08-18): demo/BTI agent seeding requires SEED_DEMO=true; fresh customer deploys bootstrap ONE admin from ADMIN_USERNAME/ADMIN_PASSWORD. No committed passwords, nothing logged."
+                },
+                {
+                  "l": "What data the app holds",
+                  "v": "Customer/lead names + phone numbers, SMS/MMS content, call recordings + AI transcriptions, voicemails, consent records, CRM notes. No payment data, no health records."
+                }
               ]
             },
             {
               "title": "SMS Compliance (A2P 10DLC / TCPA)",
               "rows": [
-                { "l": "A2P 10DLC status", "v": "APPROVED 2026-08-10. Campaign CMfd0e9fce40b23947271a9a25913af389, Brand BN640d79e8132a73b58d9bfc2224bfde54, Messaging Service MG72b937a8bdfdb4948e7ce808774b3765 (Low Volume Mixed, ~200 msgs/day/number)." },
-                { "l": "Opt-out (STOP/START)", "v": "Full keyword handling; opted-out contacts are blocked across all send paths, including phone-number format variants and duplicate contact rows (hardened in audit batch B, 2026-08-12). Carrier-level opt-outs (Twilio error 21610) self-heal automatically." },
-                { "l": "Quiet hours", "v": "Scheduled sends respect a quiet-hours window in the business timezone (audit batch B)." },
-                { "l": "Recording consent", "v": "Spoken consent notice before call recording (required in two-party-consent states like FL/CA) — added in audit batch B." },
-                { "l": "Message templates", "v": "6 compliant canned templates seeded ('Talkingvet:' prefix, STOP/HELP suffix)." },
-                { "l": "Privacy policy", "v": "SMS disclosure lives in talkingvet.com Privacy Policy section 12 — must stay intact (the A2P campaign references it; editing the campaign costs ~$15 + days of re-vetting)." }
+                {
+                  "l": "A2P 10DLC status",
+                  "v": "APPROVED 2026-08-10. Campaign CMfd0e9fce40b23947271a9a25913af389, Brand BN640d79e8132a73b58d9bfc2224bfde54, Messaging Service MG72b937a8bdfdb4948e7ce808774b3765 (Low Volume Mixed, ~200 msgs/day/number). Future customers each get their OWN brand + campaign under THEIR EIN (see DEPLOY-RUNBOOK)."
+                },
+                {
+                  "l": "Consent audit log",
+                  "v": "NEW 2026-08-19: append-only consent_records table — auto-captures inbound-initiated contact (implied opt-in), STOP/START keywords, and carrier blocks; agents can record verbal/web-form/written consent on any contact; CSV export in Settings → Calls → SMS Compliance for carrier/TCR audits."
+                },
+                {
+                  "l": "Opt-out (STOP/START)",
+                  "v": "Full keyword handling across all phone-number format variants; opted-out contacts blocked on every send path; carrier-level opt-outs (error 21610) self-heal and are consent-logged. Manual opt-in cannot override a carrier STOP (contact must text START)."
+                },
+                {
+                  "l": "Quiet hours",
+                  "v": "Scheduled sends blocked outside 8am-9pm in the business timezone."
+                },
+                {
+                  "l": "Recording consent",
+                  "v": "Spoken notice before recorded dials (two-party-consent states like FL/CA)."
+                },
+                {
+                  "l": "SHAKEN/STIR",
+                  "v": "Trust Product 'Talkingvet Dialer' approved; all 3 numbers assigned 2026-08-19 → A-level attestation on outbound calls."
+                },
+                {
+                  "l": "Privacy policy",
+                  "v": "SMS disclosure lives in talkingvet.com Privacy Policy section 12 — must stay intact (the A2P campaign references it; editing the campaign costs ~$15 + days of re-vetting)."
+                }
               ]
             },
             {
               "title": "Known Open Security/Quality Items",
               "rows": [
-                { "l": "Audit reference", "v": "Full pre-production audit: BTI-Voice-Preprod-Audit.md (2026-08-12, 26 findings + medium list). Batches A (security), B (compliance), and C (client bugs) committed 2026-08-12." },
-                { "l": "Still open — Electron items", "v": "Mac updater must stay disabled (downloads a Windows .exe); Windows installer runs without an integrity check; no navigation guardrails on window-open/navigate; Mac mic usage-description strings need the extendInfo block. These need a new installer to ship." },
-                { "l": "Still open — misc", "v": "Medium-severity list in the audit doc (pagination at scale, race conditions, 401 handling, etc.). Nothing blocks internal use; rollout gate items are in the audit's last section." }
+                {
+                  "l": "Audit reference",
+                  "v": "Full pre-production audit: BTI-Voice-Preprod-Audit.md (2026-08-12). All criticals/highs fixed in batches A-D. Media-token item closed 2026-08-19."
+                },
+                {
+                  "l": "Still open — agent impersonation",
+                  "v": "Compose accepts a from_agent_id so any agent can send as another; calls controllable by SID without ownership check. Acceptable internally; decide policy before any multi-agent CUSTOMER deploy."
+                },
+                {
+                  "l": "Still open — updater",
+                  "v": "Update endpoints unauthenticated + Windows installer has no integrity check (Windows-gated, lower risk; browser-only pilots unaffected)."
+                },
+                {
+                  "l": "Still open — misc",
+                  "v": "911 emergency addresses not set on the 3 numbers; medium-severity list in the audit doc (pagination at scale, race conditions); DB URL with password sits in the handoff doc (private folder — rotate if ever shared)."
+                }
               ]
             }
           ]
@@ -230,58 +408,221 @@
             {
               "title": "Feature Security Punchlist — every feature checked for risk",
               "rows": [
-                { "done": true,  "l": "Login & passwords", "v": "bcrypt hashing, 7-day JWT sessions, default-secret fallbacks removed — server refuses to boot without real secrets (audit batch A)." },
-                { "done": true,  "l": "Zoho API routes", "v": "Were completely unauthenticated (anyone could read/write CRM data). Auth required as of audit batch A." },
-                { "done": true,  "l": "Real-time sockets", "v": "Were open to any origin with no auth. Now verify JWT and conversation access before joining rooms (batch A)." },
-                { "done": true,  "l": "Twilio webhooks (SMS + voice)", "v": "Signature validation enforced — forged inbound messages/opt-out flips rejected (batch A)." },
-                { "done": true,  "l": "MMS attachments", "v": "Inbound content-types allow-listed to images, served with nosniff — blocks the HTML-in-MMS script-execution attack (batch A)." },
-                { "done": true,  "l": "SMS opt-out (STOP)", "v": "Matches all phone-number format variants across webhook, sweep, and auto-text paths (batch B)." },
-                { "done": true,  "l": "Missed-call auto-text", "v": "Per-number cooldown + call-SID dedupe — no more double or repeat texts (batch B)." },
-                { "done": true,  "l": "Scheduled SMS", "v": "Quiet-hours window enforced in business timezone — no 3 a.m. deliveries (batch B)." },
-                { "done": true,  "l": "Call recording", "v": "Spoken consent notice before recording — required in two-party-consent states like FL/CA (batch B)." },
-                { "done": false, "l": "Media & recording links", "v": "OPEN (audit #20): login token still travels in URLs (logs/history/referer) and media access isn't ownership-checked. Needs short-lived per-resource tokens." },
-                { "done": false, "l": "Agent impersonation", "v": "OPEN (audit #21): compose accepts a from_agent_id so any agent can send as another; calls controllable by SID without ownership check." },
-                { "done": false, "l": "Auto-updater", "v": "OPEN (audit #4, #7, #9): update endpoints unauthenticated; Mac updater downloads a Windows .exe (keep the button hidden on Mac!); Windows installer runs with no integrity check." },
-                { "done": false, "l": "Electron navigation guardrails", "v": "OPEN (audit #10): no window-open/navigate restrictions — a malicious link could open a privileged window. Needs setWindowOpenHandler + will-navigate deny." },
-                { "done": false, "l": "Mac microphone permissions", "v": "OPEN (audit #22): NSMicrophoneUsageDescription extendInfo block still needed in builder config; mic permission should be restricted to the app origin." },
-                { "done": false, "l": "Server crash resistance", "v": "OPEN (audit #23-24): unhandled promise rejections can crash the whole server mid-call; Electron main has no crash handler or offline retry page." },
-                { "done": false, "l": "Seeded accounts", "v": "OPEN (audit #25): seed() runs on every boot, recreating 5 accounts with committed passwords printed to logs — deactivating an agent is undone on next deploy." },
-                { "done": false, "l": "Database credentials exposure", "v": "OPEN (new catch): BTI-Voice-Session-Handoff.md contains the full Railway Postgres URL with password in plain text. Fine while private, but rotate the DB password if that doc is ever shared or committed anywhere public." },
-                { "done": false, "l": "Duplicate contact cleanup", "v": "OPEN (audit #11 follow-up): one-time DB cleanup still needed to merge existing duplicate contact rows so historical opt-outs can't be bypassed." }
+                {
+                  "done": true,
+                  "l": "Login & passwords",
+                  "v": "bcrypt hashing, 7-day JWT sessions, JWT_SECRET required in prod (Phase 0), default-password nag banner live."
+                },
+                {
+                  "done": true,
+                  "l": "Zoho API routes",
+                  "v": "Auth required since audit batch A (were completely open)."
+                },
+                {
+                  "done": true,
+                  "l": "Real-time sockets",
+                  "v": "JWT handshake + conversation-access checks (batch A)."
+                },
+                {
+                  "done": true,
+                  "l": "Twilio webhooks (SMS + voice)",
+                  "v": "Signature validation STRICT in production — verified under live traffic 2026-08-18."
+                },
+                {
+                  "done": true,
+                  "l": "MMS attachments",
+                  "v": "Content-types allow-listed to images, nosniff headers, unguessable public tokens."
+                },
+                {
+                  "done": true,
+                  "l": "SMS opt-out (STOP)",
+                  "v": "All format variants, all send paths + consent audit log (2026-08-19)."
+                },
+                {
+                  "done": true,
+                  "l": "Missed-call auto-text",
+                  "v": "Per-number cooldown + call-SID dedupe."
+                },
+                {
+                  "done": true,
+                  "l": "Scheduled SMS",
+                  "v": "Quiet-hours window enforced."
+                },
+                {
+                  "done": true,
+                  "l": "Call recording",
+                  "v": "Spoken consent notice before recording."
+                },
+                {
+                  "done": true,
+                  "l": "Media & recording links",
+                  "v": "CLOSED 2026-08-19: 10-min scope-limited media tokens; login JWTs rejected in URLs."
+                },
+                {
+                  "done": true,
+                  "l": "Electron navigation guardrails",
+                  "v": "setWindowOpenHandler + will-navigate deny shipped in batch D (2026-08-12)."
+                },
+                {
+                  "done": true,
+                  "l": "Mac microphone permissions",
+                  "v": "Usage strings + origin-scoped mic permission shipped in batch D."
+                },
+                {
+                  "done": true,
+                  "l": "Server crash resistance",
+                  "v": "Central error handler + process crash guards (batch A); Electron crash handlers + offline retry page (batch D)."
+                },
+                {
+                  "done": true,
+                  "l": "Seeded accounts",
+                  "v": "CLOSED by Phase 0 (2026-08-18): SEED_DEMO gate + single-admin bootstrap; no logged passwords."
+                },
+                {
+                  "done": true,
+                  "l": "Duplicate contact cleanup",
+                  "v": "DONE 2026-08-17/19: all malformed/duplicate contacts merged or removed; junk test contacts purged 2026-08-19."
+                },
+                {
+                  "done": false,
+                  "l": "Agent impersonation",
+                  "v": "OPEN: from_agent_id sends + call-control-by-SID lack ownership checks. Fine internally; lock down before multi-agent customer deploys."
+                },
+                {
+                  "done": false,
+                  "l": "Auto-updater",
+                  "v": "OPEN: update endpoints unauthenticated; installer integrity unchecked. Windows-gated; browser-only pilots unaffected."
+                },
+                {
+                  "done": false,
+                  "l": "Database credentials exposure",
+                  "v": "STANDING NOTE: handoff doc contains the Railway DB URL + password. Private folder only — rotate if ever shared."
+                }
               ]
             },
             {
               "title": "Complete Inventory — everything this software uses",
               "rows": [
-                { "done": true,  "l": "Runtimes & frameworks", "v": "Node.js 18+, React 18, Vite 5, Electron 41, electron-builder 26, Capacitor 6 — all documented in the Tech tab with versions." },
-                { "done": true,  "l": "Server libraries", "v": "express, socket.io, pg, bcryptjs, jsonwebtoken, twilio, openai, node-fetch, form-data, cors, dotenv, geoip-lite, nodemon (dev)." },
-                { "done": true,  "l": "Client libraries", "v": "@twilio/voice-sdk, socket.io-client, react-dom, @capacitor/core + ios, cross-env (dev), @vitejs/plugin-react (dev)." },
-                { "done": true,  "l": "Paid/external accounts", "v": "Twilio, Zoho (CRM + Voice), OpenAI, Railway, GitHub (Talkingvet org), Apple Developer — all listed with purpose in Contacts & Accounts tab." },
-                { "done": true,  "l": "talkingvet.com dependency", "v": "The A2P campaign legally depends on the website: Contact Us form (Gravity Forms ID 5, mobile field + SMS consent) and Privacy Policy section 12. Documented — do not remove either." },
-                { "done": true,  "l": "geoip-lite — purpose verified", "v": "Used in server/helpers/logActivity.js to tag agent activity-log entries with city/country from the login IP. Offline lookup (no data sent to a third party). Verified 2026-08-12." },
-                { "done": false, "l": ".env.example is incomplete", "v": "It lists DATABASE_URL, JWT_SECRET, and Twilio vars — but not OPENAI/Zoho credentials, TWILIO_MESSAGING_SERVICE_SID, LATEST_VERSION, or the admin key, all of which the server actually uses. Update it so the full env inventory lives in one place." },
-                { "done": false, "l": "Database tables documented", "v": "Main tables are listed in the Tech tab, but there's no full schema doc. Consider generating one (a pg_dump --schema-only) so nothing in the DB is a mystery." }
+                {
+                  "done": true,
+                  "l": "Runtimes & frameworks",
+                  "v": "Node.js 18+, React 18, Vite 5, Electron 41, electron-builder 26, Capacitor 6."
+                },
+                {
+                  "done": true,
+                  "l": "Server libraries",
+                  "v": "express, socket.io, pg, bcryptjs, jsonwebtoken, twilio, openai, node-fetch, form-data, cors, dotenv, geoip-lite, nodemon (dev)."
+                },
+                {
+                  "done": true,
+                  "l": "Client libraries",
+                  "v": "@twilio/voice-sdk, socket.io-client, react-dom, @capacitor/core + ios, cross-env (dev), @vitejs/plugin-react (dev)."
+                },
+                {
+                  "done": true,
+                  "l": "Paid/external accounts",
+                  "v": "Twilio, Zoho (CRM + Voice), OpenAI, Railway, GitHub (Talkingvet org), Apple Developer (Team U2Z95CX43X)."
+                },
+                {
+                  "done": true,
+                  "l": "talkingvet.com dependency",
+                  "v": "The A2P campaign legally depends on the website: Contact Us form (Gravity Forms ID 5, mobile field + SMS consent) and Privacy Policy section 12. Do not remove either."
+                },
+                {
+                  "done": true,
+                  "l": "geoip-lite — purpose verified",
+                  "v": "Offline city/country tagging of agent activity logs. No data sent to third parties."
+                },
+                {
+                  "done": true,
+                  "l": ".env.example complete",
+                  "v": "DONE 2026-08-19: server/.env.example now covers every env var with per-customer guidance."
+                },
+                {
+                  "done": false,
+                  "l": "Database tables documented",
+                  "v": "Main tables listed in the Tech tab; still no full schema doc (pg_dump --schema-only would close this)."
+                }
               ]
             },
             {
               "title": "Compliance Punchlist (SMS / calling rules)",
               "rows": [
-                { "done": true,  "l": "A2P 10DLC registration", "v": "Brand + campaign approved 2026-08-10; Messaging Service routing live on all send paths." },
-                { "done": true,  "l": "STOP/HELP keywords + templates", "v": "Keyword handling live; 6 compliant templates with Talkingvet prefix and STOP/HELP suffix." },
-                { "done": true,  "l": "Recording consent & quiet hours", "v": "Both enforced as of audit batch B." },
-                { "done": false, "l": "Privacy Policy section 12 — recurring check", "v": "Must stay intact on talkingvet.com (campaign references it; edits cost ~$15 + days of re-vetting). Re-verify after any website change." },
-                { "done": false, "l": "Consent-only texting — standing rule", "v": "Only text people who consented via the form or texted first. No cold lists, ever. Re-confirm whenever a new agent starts using the app." },
-                { "done": false, "l": "911 emergency address", "v": "Not yet added to the Twilio test number — required for VOIP emergency calling." }
+                {
+                  "done": true,
+                  "l": "A2P 10DLC registration",
+                  "v": "Brand + campaign approved; Messaging Service routing live on all send paths."
+                },
+                {
+                  "done": true,
+                  "l": "STOP/HELP keywords + templates",
+                  "v": "Keyword handling live; compliant canned templates."
+                },
+                {
+                  "done": true,
+                  "l": "Recording consent & quiet hours",
+                  "v": "Both enforced."
+                },
+                {
+                  "done": true,
+                  "l": "Consent-record storage",
+                  "v": "DONE 2026-08-19 — consent_records + CSV export (A2P audit requirement)."
+                },
+                {
+                  "done": true,
+                  "l": "SHAKEN/STIR attestation",
+                  "v": "DONE 2026-08-19 — all 3 numbers on the approved Trust Product."
+                },
+                {
+                  "done": false,
+                  "l": "Privacy Policy section 12 — recurring check",
+                  "v": "Must stay intact on talkingvet.com. Re-verify after any website change."
+                },
+                {
+                  "done": false,
+                  "l": "Consent-only texting — standing rule",
+                  "v": "Only text people who consented via the form or texted first. No cold lists, ever. Re-confirm when a new agent starts."
+                },
+                {
+                  "done": false,
+                  "l": "911 emergency addresses",
+                  "v": "Not yet set on the 3 numbers — required for VOIP emergency calling. Also mandatory per customer in the deploy runbook."
+                }
               ]
             },
             {
-              "title": "Rollout Gate — before anyone outside the team relies on it",
+              "title": "Selling-Track Gate — before the first customer deploy",
               "rows": [
-                { "done": true,  "l": "Six security criticals (audit #1-6)", "v": "Fixed in batch A except the updater-endpoint auth (tracked above)." },
-                { "done": true,  "l": "Opt-out compliance gap (audit #11)", "v": "Send-path matching fixed in batch B; DB duplicate cleanup still tracked above." },
-                { "done": false, "l": "Mac banner Accept/Decline (audit #8)", "v": "Banner buttons did nothing — verify the fix end-to-end with the smoke test: log in as danny, call +1 239-666-7033 from a cell, banner appears without stealing focus, Accept and Decline both work." },
-                { "done": false, "l": "Mac update button hidden (audit #7)", "v": "Confirm the DMG being distributed has the updater gated off on macOS." },
-                { "done": false, "l": "New installers built after Electron fixes", "v": "The Electron-side items (#7, #8, #10, #22, #24) only reach users via a new installer — everything else ships with a Railway push." }
+                {
+                  "done": true,
+                  "l": "Phase 0 hardening",
+                  "v": "SEED_DEMO gate, admin bootstrap, COMPANY_NAME/AI_SUMMARY_CONTEXT, no hardcoded secrets/fallbacks (2026-08-18)."
+                },
+                {
+                  "done": true,
+                  "l": "Brandable UI + deploy runbook + env template + consent log + per-number routing + media tokens",
+                  "v": "All shipped 2026-08-19."
+                },
+                {
+                  "done": true,
+                  "l": "Twilio ISV prerequisites",
+                  "v": "SHAKEN/STIR done; Create Secondary Profile available NOW (onboarding not blocked); ISV identity flag + Compliance Embeddable beta requested via support ticket 2026-08-19 (watch Ticket history)."
+                },
+                {
+                  "done": false,
+                  "l": "First pilot signed",
+                  "v": "Danny picking the pilot MSP client. Pricing approved: $35/user/mo + $250-500 onboarding."
+                },
+                {
+                  "done": false,
+                  "l": "Accountant consult",
+                  "v": "Telecom tax / agent-model questions (plan §8) before the first invoice."
+                },
+                {
+                  "done": false,
+                  "l": "Agent impersonation policy",
+                  "v": "Decide/lock down before any multi-agent customer deploy."
+                }
               ]
             }
           ]
@@ -291,23 +632,53 @@
           "title": "Status & Roadmap",
           "cards": [
             {
-              "title": "Where Things Stand (2026-08-12)",
+              "title": "Where Things Stand (2026-08-19)",
               "rows": [
-                { "l": "Released", "v": "v1.5.0 — Windows installer live; Mac DMGs (both architectures) built, signed-build support added, and attached to the GitHub release." },
-                { "l": "Just landed (2026-08-12)", "v": "Audit fix batches A/B/C: security hardening (auth on Zoho routes + sockets, webhook validation, MMS hardening, no default secrets), compliance (opt-out variants, missed-call throttle, quiet hours, recording notice), and client bugs (socket leaks, reconnect re-join, failed-send message recovery, light theme, bell badge)." },
-                { "l": "Mac port status", "v": "App installs and runs on macOS. Remaining: finish the incoming-call banner smoke test (call the test number, verify banner Accept/Decline), and keep the update button hidden on Mac." },
-                { "l": "Waiting on Danny", "v": "Attach the Windows BTI-Voice-Setup-1.5.0.exe to the v1.5.0 GitHub release; confirm Railway LATEST_VERSION = 1.5.0." }
+                {
+                  "l": "Released",
+                  "v": "v1.5.0 on all platforms (2026-08-13). Web client/server continuously deployed — latest: consent log, number routing, brandable UI, media-token hardening (2026-08-19)."
+                },
+                {
+                  "l": "Selling track",
+                  "v": "Productization plan written 2026-08-18; Phase 0 + all pilot-readiness engineering DONE 2026-08-19. Demo video recorded + uploaded. Waiting on: pilot pick, accountant, Twilio ISV ticket."
+                },
+                {
+                  "l": "Zoho migration",
+                  "v": "COMPLETE — all SMS/call logging in the BTI_Voice module (unique BTI_Ref upserts, proven idempotent); old Notes deleted; Zoho SMS channel retires ~Oct-Nov 2026."
+                },
+                {
+                  "l": "Data quality",
+                  "v": "Voicemail review finished (17/18 merged + row 80 purged); duplicate/malformed contacts fixed; junk test data purged 2026-08-19."
+                }
               ]
             },
             {
               "title": "Backlog (rough priority)",
               "rows": [
-                { "l": "1. Mac banner smoke test", "v": "Finish verifying the floating incoming-call banner end-to-end on the Mac (Paul, in progress)." },
-                { "l": "2. AI-suggested replies", "v": "2-3 GPT-4 reply suggestions above the compose box (OpenAI already wired). Next feature up." },
-                { "l": "3. Zoho hardening", "v": "Re-enable the contact-ID cache, add retry logic for wrap-up note/task pushes, verify refresh-token rotation." },
-                { "l": "4. Agent number assignment UI", "v": "Admin settings screen (currently done via API/DB; only 'danny' has a number)." },
-                { "l": "5. UI polish round", "v": "Remaining items from BTI-Voice-macOS-UI-Review.md: split view for wide windows, real app icon, Esc closes popovers, Zoho panel loading state, tab-switch performance." },
-                { "l": "6. Later", "v": "Conversation filters, bulk/broadcast SMS (needs campaign upgrade past ~200/day cap), editable disposition codes, iOS device testing, Twilio console tidying (delete 2 dead messaging services, add 911 address to test number), port real numbers from Zoho Voice." }
+                {
+                  "l": "1. iOS TestFlight",
+                  "v": "Capacitor scaffolding + icons ready; build on the Mac via build-ios.sh, archive in Xcode, upload to App Store Connect, internal TestFlight first (in progress 2026-08-19)."
+                },
+                {
+                  "l": "2. Pilot #1 deploy",
+                  "v": "Follow docs/DEPLOY-RUNBOOK.md once Danny signs the pilot client."
+                },
+                {
+                  "l": "3. AI-suggested replies",
+                  "v": "2-3 GPT-4 reply suggestions above the compose box (OpenAI already wired)."
+                },
+                {
+                  "l": "4. Zoho hardening",
+                  "v": "Re-enable contact-ID cache, retry logic for wrap-up pushes, confirm refresh-token rotation."
+                },
+                {
+                  "l": "5. Polish",
+                  "v": "Tab-switch performance (keep tabs mounted), delete dead Inbox.jsx/Sidebar.jsx, conversation filters, editable disposition codes."
+                },
+                {
+                  "l": "6. Later",
+                  "v": "Bulk/broadcast SMS (needs campaign upgrade past ~200/day), port real numbers from Zoho Voice, retire Zoho SMS channel (~Oct-Nov), Twilio console tidy (2 dead messaging services), 911 addresses, new installers for the pending Electron shell changes."
+                }
               ]
             }
           ]
@@ -319,27 +690,72 @@
             {
               "title": "Who to Ask",
               "rows": [
-                { "l": "Danny", "v": "Builder/lead developer. Windows machine. Owns releases, Railway config, Twilio + Zoho accounts." },
-                { "l": "Paul", "v": "Mac port, testing, documentation. paulm@businesstechnologyinsight.com" }
+                {
+                  "l": "Danny",
+                  "v": "Builder/lead developer. Windows machine. Owns releases, Railway config, Twilio + Zoho accounts, pricing/pilot decisions."
+                },
+                {
+                  "l": "Paul",
+                  "v": "Mac port, testing, documentation. paulm@businesstechnologyinsight.com. Admin on the Apple Developer account; signing certs live in his Mac keychain."
+                }
               ]
             },
             {
               "title": "Accounts & Services in Use (no passwords stored here)",
               "rows": [
-                { "l": "GitHub", "v": "Org: Talkingvet — private repo bti-voice. Mac has push credentials in the keychain." },
-                { "l": "Railway", "v": "Hosts server + Postgres + web client. Auto-deploys from main. Key env vars: DATABASE_URL, JWT_SECRET, TWILIO_* (SID, token, API key/secret, TwiML app, Messaging Service SID), LATEST_VERSION." },
-                { "l": "Twilio", "v": "Calls/SMS/MMS. One test number (+1 239-666-7033). A2P brand + campaign registered under Talkingvet. Two dead duplicate messaging services in the console are harmless leftovers." },
-                { "l": "Zoho", "v": "Zoho CRM (deep integration via Self Client token) + Zoho Voice (still holds the real phone numbers until porting)." },
-                { "l": "OpenAI", "v": "API account for transcription/summaries." },
-                { "l": "Apple Developer", "v": "Company Apple Developer account used for Mac code signing + notarization." }
+                {
+                  "l": "GitHub",
+                  "v": "Org: Talkingvet — private repo bti-voice. Mac has push credentials in the keychain."
+                },
+                {
+                  "l": "Railway",
+                  "v": "Project 'intuitive-compassion': server + Postgres + web client. Auto-deploys from main. Full env inventory in server/.env.example."
+                },
+                {
+                  "l": "Twilio",
+                  "v": "3 active numbers (danny/rick/paul), A2P approved, SHAKEN/STIR attested, strict webhooks. ISV identity-flag support ticket open (2026-08-19). Tidy later: 2 dead messaging services."
+                },
+                {
+                  "l": "Zoho",
+                  "v": "Zoho CRM (Self Client token — do not revoke) + Zoho Voice (still holds the original business numbers until porting). BTI_Voice custom module + SMS widget registered."
+                },
+                {
+                  "l": "OpenAI",
+                  "v": "API account for transcription/summaries."
+                },
+                {
+                  "l": "Apple Developer",
+                  "v": "Business Technology Insight, LLC — Team U2Z95CX43X, Apple ID dannyr927@outlook.com, Paul is Admin. Mac signing + notarization working (keychain profile bti-voice-notary); same account will publish iOS TestFlight builds."
+                }
               ]
             },
             {
-              "title": "Key Reference Docs (in the BTI Voice folder)",
+              "title": "Key Reference Docs (in the Talkingvet Help folder)",
               "rows": [
-                { "l": "BTI-Voice-Session-Handoff.md", "v": "The living handoff doc — full context, gotchas, and backlog. Point any Claude session at it first." },
-                { "l": "BTI-Voice-Preprod-Audit.md", "v": "Full security/quality audit (2026-08-12), 26 findings with severity and fix status." },
-                { "l": "BTI-Voice-macOS-UI-Review.md", "v": "16-finding UI review of the Mac app (2026-08-11)." }
+                {
+                  "l": "BTI-Voice-Session-Handoff 3.md",
+                  "v": "THE living handoff doc — full context, gotchas, session history. Point any Claude session at it first (§8i = latest)."
+                },
+                {
+                  "l": "BTI-Voice-TODO.md",
+                  "v": "Running checklist — what's done, what's next, who's blocked on what."
+                },
+                {
+                  "l": "BTI-Voice-Productization-Plan.md",
+                  "v": "Selling-track plan: tenancy, Twilio ISV/A2P mechanics + 2026 fees, pricing vs competitors, telecom tax (§8 = accountant questions)."
+                },
+                {
+                  "l": "bti-voice/docs/DEPLOY-RUNBOOK.md",
+                  "v": "Step-by-step per-customer deployment (Railway + Twilio subaccount + A2P + app config + verification)."
+                },
+                {
+                  "l": "BTI-Voice-Preprod-Audit.md",
+                  "v": "Security/quality audit (2026-08-12), 26 findings with fix status."
+                },
+                {
+                  "l": "BTI-Voice-Demo-Video-Script.md",
+                  "v": "Demo video script (recorded + uploaded 2026-08-19)."
+                }
               ]
             }
           ]

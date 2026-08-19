@@ -34,6 +34,10 @@ else
   echo "[3/5] iOS platform exists — skipping add"
 fi
 
+# Step 3.5: Generate iOS app icons + splash screens from client/resources/
+echo "[3.5/5] Generating app icons and splash screens..."
+npx @capacitor/assets generate --ios || echo "      (icon generation failed - set the AppIcon manually in Xcode)"
+
 # Step 4: Sync web assets into Xcode project
 echo "[4/5] Syncing to Xcode..."
 npx cap sync ios
