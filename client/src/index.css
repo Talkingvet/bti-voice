@@ -28,6 +28,34 @@ body {
   overflow: hidden;
 }
 
+/* ── Touch devices: scale the whole UI up ───────────────────────────────────
+   BTI Voice was designed as a ~470px desktop window. On a phone that leaves
+   body text around 13-14px and many tap targets under Apple's 44pt minimum —
+   noticeably smaller than WhatsApp or Apple's own Phone/Messages apps.
+
+   Every component declares its own inline pixel styles (a local `S` object),
+   so there is no single font-size to raise. Instead we scale the root, which
+   enlarges text, spacing and tap targets together and preserves the layout.
+
+   --ui-scale is the only knob. Raise it for bigger, lower it for smaller.
+   1.0 = today's desktop sizing. Viewport-height and safe-area values are
+   divided by it, because they resolve against the real viewport and would
+   otherwise overflow the screen once zoomed.
+
+   This is deliberately a broad first pass. A per-component typography pass
+   (proper type scale, 44pt minimum targets) is the eventual right answer —
+   see the TODO.                                                             */
+@media (pointer: coarse) {
+  :root { --ui-scale: 1.18; }
+
+  #root {
+    zoom: var(--ui-scale);
+    height: calc(100dvh / var(--ui-scale));
+    padding-top: calc(env(safe-area-inset-top) / var(--ui-scale));
+    padding-bottom: calc(env(safe-area-inset-bottom) / var(--ui-scale));
+  }
+}
+
 /* Allow text selection in message bodies and inputs */
 input, textarea, .selectable, .chat-bubble {
   user-select: text;
