@@ -264,6 +264,54 @@ He is not a developer and will not spot stranded commits himself.
 
 *Caught on its first run, 2026-08-19:* the desktop was 2 commits BEHIND origin (`47f1bd3` iOS keyboard pod + `279022e` client package-lock, both from the Mac) and Danny had no idea.
 
+## 8l. 2026-08-20 — BTI Voice IS ON TESTFLIGHT (build 1.5.0 (1))
+
+Uploaded, processed, compliance answered, internal group created, installed on a device. Path from
+§8j is now closed. Full click-by-click procedure preserved in **`docs/BTI-Voice-TestFlight-Runbook.md`**
+(written this session — use it for every future build).
+
+**Four things blocked the way that were NOT in the plan. Worth knowing before the next upload:**
+
+1. **The Xcode project was still stamped `MARKETING_VERSION = 1.0`.** The TODO said "set version
+   1.5.0/build 1 in Xcode" and nobody had. Fixed in `client/ios/App/App.xcodeproj/project.pbxproj`
+   (both Debug and Release configs). `CURRENT_PROJECT_VERSION` was already 1. **Bump
+   MARKETING_VERSION in the pbxproj, not in the Xcode GUI** — that way it travels in git and the
+   Mac can't archive a stale version.
+2. **The everyday App Store Connect login has role `Customer Support`.** That role cannot create
+   apps, cannot see the Business section, and shows no **+** on the Apps page. Hours could be lost
+   hunting a "missing button" that is really a permissions state. Creating an app needs
+   **Account Holder, Admin, or App Manager**. Signed in as the Account Holder to proceed.
+   ⚠ Still open: promote the day-to-day account to Admin so credential-swapping isn't needed again.
+3. **The App ID `com.businesstechnologyinsight.btivoice` had never been registered** in the
+   developer portal, so it wasn't in the New App bundle-ID dropdown. Registered manually at
+   developer.apple.com → Identifiers → + → App IDs → App → Explicit, no capabilities ticked
+   (mic comes from Info.plist, not an entitlement). Telling detail: had Xcode been signing under
+   team U2Z95CX43X all along it would have auto-registered this — worth a thought if signing acts up.
+4. **"Your user access settings could not be saved"** on app creation is cosmetic. The record is
+   created; access falls back to all-users, which is what Full Access grants anyway. Ignore it.
+
+**Export compliance answer (use the same one every time):** "What type of encryption algorithms
+does your app implement?" → **None of the algorithms mentioned above.** The app implements no crypto
+of its own — HTTPS to Railway/Twilio and WebRTC inside the WKWebView are all WebKit/OS-provided.
+This answer must be revisited only if a native crypto library, encrypted local storage, or a custom
+VoIP stack is ever added. Optional future tidy: `ITSAppUsesNonExemptEncryption = NO` in Info.plist
+skips the question on every upload.
+
+**Two process traps hit this session:**
+- **`build-ios.sh` was run on Windows.** It is **Mac-only** — it ends in `npx cap open ios` and runs
+  CocoaPods. It got partway, then left three modified tracked files behind
+  (`Assets.xcassets/AppIcon.appiconset/Contents.json`, `Assets.xcassets/Splash.imageset/Contents.json`,
+  `ios/App/Podfile`). All three were `git restore`d — **the Podfile one matters**, because `cap sync`
+  can strip the `post_install` block that pins the deployment target to 15.0.
+- **`git pull` died with `fatal: mmap failed: Operation timed out` at 9.00 KiB/s** on the Mac. It was
+  the network; a retry worked. If it recurs, note the Mac clone lives under `~/Documents`, so check
+  whether iCloud "Desktop & Documents Folders" sync is on — cloud-backed files are a classic cause of
+  mmap timeouts in git. Relocating the Mac clone to `~/Dev/bti-voice` would match the laptop and
+  remove the risk.
+
+**Also noted:** the Apple Developer Program membership **expires Sep 8, 2026** (ASC banner). If
+auto-renew is off, TestFlight builds die with it. Only the Account Holder can renew.
+
 ## 9. Security posture
 **Fixed & live:** Zoho + socket auth, webhook validation (soft), secret hardening, MMS hardening, crash safety, opt-out across all paths, throttles, quiet hours, recording notice, and the client/Electron bugs above.
 **Deferred (need more than a blind edit) — in BTI-Voice-Preprod-Audit.md:**

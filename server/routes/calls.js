@@ -232,29 +232,58 @@ router.get('/:id/recording', requireMediaAuth, async (req, res) => {
     const token = process.env.TWILIO_AUTH_TOKEN;
     if (!sid || !token) return res.status(503).json({ error: 'Twilio credentials not configured' });
 
-    const twilioAuth = Buffer.from(`${sid}:${token}`).toString('base64');
-    // Forward Range requests — iOS/Safari refuse to play audio from servers
-    // that ignore Range (they probe with "bytes=0-1" and expect a 206).
-    const upstreamHeaders = { Authorization: `Basic ${twilioAuth}` };
-    if (req.headers.range) upstreamHeaders.Range = req.headers.range;
-    const audioRes = await fetch(call.recording_url, { headers: upstreamHeaders });
+    // Ask Twilio for MP3 explicitly. Without an extension the API can answer with an
+    // unsized/chunked body, and an <audio> element that never learns Content-Length
+    // reports duration Infinity — which iOS renders as "Live Broadcast", unplayable.
+    let url = call.recording_url;
+    if (!/\.(mp3|wav)(\?|$)/i.test(url)) url += '.mp3';
 
-    if (!audioRes.ok && audioRes.status !== 206) {
-      return res.status(audioRes.status).json({ error: `Twilio returned ${audioRes.status}` });
+    const twilioAuth = Buffer.from(sid + ':' + token).toString('base64');
+    const audioRes = await fetch(url, { headers: { Authorization: 'Basic ' + twilioAuth } });
+
+    if (!audioRes.ok) {
+      return res.status(audioRes.status).json({ error: 'Twilio returned ' + audioRes.status });
     }
 
-    // Mirror status (200 or 206) + the headers Safari needs for seek/duration
-    res.status(audioRes.status);
+    // Buffer the whole recording so its length is ALWAYS known. Previously we mirrored
+    // Twilio's headers and only set Content-Length when Twilio supplied one; when it
+    // didn't, iOS got no duration and refused to play. Recordings are small (a 60-minute
+    // call is a few MB), so holding one in memory briefly is cheap and removes the
+    // dependency on upstream behaviour entirely.
+    const audio = Buffer.from(await audioRes.arrayBuffer());
+
     res.set('Content-Type', audioRes.headers.get('content-type') || 'audio/mpeg');
     res.set('Cache-Control', 'private, max-age=3600');
     res.set('Accept-Ranges', 'bytes');
-    const cr = audioRes.headers.get('content-range');
-    if (cr) res.set('Content-Range', cr);
-    const cl = audioRes.headers.get('content-length');
-    if (cl) res.set('Content-Length', cl);
 
-    const { Readable } = require('stream');
-    Readable.fromWeb(audioRes.body).pipe(res);
+    // iOS probes with a Range request (often "bytes=0-1") and expects a real 206.
+    // We answer it ourselves rather than forwarding it upstream.
+    const rangeHeader = req.headers.range;
+    const m = rangeHeader && /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim());
+    if (m) {
+      let start = m[1] === '' ? null : parseInt(m[1], 10);
+      let end   = m[2] === '' ? null : parseInt(m[2], 10);
+      if (start === null) {
+        // suffix form, e.g. "bytes=-500" = the last 500 bytes
+        start = Math.max(0, audio.length - (end || 0));
+        end   = audio.length - 1;
+      } else if (end === null || end >= audio.length) {
+        end = audio.length - 1;
+      }
+      if (start >= audio.length || start > end) {
+        res.set('Content-Range', 'bytes */' + audio.length);
+        return res.status(416).end();
+      }
+      const slice = audio.subarray(start, end + 1);
+      res.status(206);
+      res.set('Content-Range', 'bytes ' + start + '-' + end + '/' + audio.length);
+      res.set('Content-Length', String(slice.length));
+      return res.end(slice);
+    }
+
+    res.status(200);
+    res.set('Content-Length', String(audio.length));
+    return res.end(audio);
   } catch (e) {
     console.error('[recording proxy]', e.message);
     res.status(500).json({ error: e.message });

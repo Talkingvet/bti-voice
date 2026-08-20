@@ -19,14 +19,23 @@ git pull origin main
 
 **🧳 TRAVELING / MULTI-MACHINE:** laptop setup guide is `docs/BTI-Voice-LAPTOP-SETUP.md` (clone to `C:\Dev\bti-voice`). Handoff §8k has per-machine paths. **Claude now runs a git sync check at the start of every session and commits + pushes + verifies before every session ends — standing instruction, saved to memory.**
 
-**▶ START HERE 2026-08-20 — TestFlight, exact sequence (full detail: handoff §8j):**
-1. appstoreconnect.apple.com as the Account Holder (dannyr927@outlook.com) → accept the updated **Program License Agreement** (front-page banner). Everything below is blocked until this.
-2. Apps → **+ New App**: iOS, "BTI Voice", bundle `com.businesstechnologyinsight.btivoice` (in dropdown), SKU `bti-voice`.
-3. Mac Xcode (`npx cap open ios` from `client/` if closed): App target → General → **Version 1.5.0, Build 1**.
-4. Device chip → **Any iOS Device (arm64)** → **Product → Archive** → Organizer → **Distribute App → App Store Connect → Upload** (accept defaults). ⚠ Beta Xcode occasionally can't upload — if rejected, install release Xcode and re-archive.
-5. ASC → BTI Voice → **TestFlight** (build processes ~15-30 min) → "Missing Compliance" → standard HTTPS only = **exempt** → Internal group "BTI Team" → add testers (they need Users & Access entries first) → they install via the TestFlight app.
-6. On-phone verifications still open: **recording playback** (Range fix) + **incoming call while app is open**.
-- iOS state: app RUNS on Danny's iPhone, keyboard/viewport/touch polish done, everything committed+pushed (Mac & Windows in sync as of 8/19 evening). Known limitation: incoming calls only ring while the app is foregrounded — CallKit/VoIP push is the next iOS project.
+**✅ TESTFLIGHT IS LIVE — DONE 2026-08-20.** BTI Voice **1.5.0 (1)** is uploaded, processed, compliance-cleared, attached to the internal group, and installed from TestFlight on a device. Runbook for every future build: **`docs/BTI-Voice-TestFlight-Runbook.md`**. Session story + the four unexpected blockers: **handoff §8l**.
+
+Short version of what tripped us up, so it doesn't again:
+- The pbxproj still said `MARKETING_VERSION = 1.0` — now 1.5.0. **Bump it in the file, not the Xcode GUI**, so it travels in git.
+- The everyday ASC login is role **Customer Support** → no **+** on Apps, no Business section. App creation needs Account Holder / Admin / App Manager.
+- App ID `com.businesstechnologyinsight.btivoice` had never been registered in the developer portal — had to add it under Identifiers before it appeared in the New App dropdown.
+- Export compliance answer is **"None of the algorithms mentioned above"** (no own crypto; HTTPS + WebRTC are OS-provided). Same answer every upload.
+- `build-ios.sh` is **Mac-only**; running it on Windows dirties 3 tracked files including the Podfile.
+
+**▶ START HERE NEXT — open items in priority order:**
+1. [ ] **On-phone verifications** (build is installed, just needs exercising): **incoming call while the app is foregrounded**.
+   - [~] **Recording playback FAILED on iOS 2026-08-20 — fix written, needs deploy + retest.** Recordings showed **"Live Broadcast"** and would not play (transcripts + summaries were fine). Cause: `/api/calls/:id/recording` only set `Content-Length` when Twilio happened to supply one; when Twilio streams chunked, the `<audio>` element gets duration Infinity, which iOS renders as an unseekable live stream. The `9a97d86` Range work was correct in principle but inherited whatever upstream did. **Fix:** the proxy now requests `.mp3` explicitly, buffers the recording so the length is always known, and answers Range requests itself (proper 206 + `Content-Range`, 416 on bad ranges). Server-side only — **a Railway deploy fixes all platforms, no new TestFlight build needed.** Retest on the phone after deploy.
+2. [ ] **Promote the day-to-day ASC account from Customer Support → Admin** so Account Holder credentials aren't needed for routine TestFlight work.
+3. [ ] **Apple Developer Program membership expires Sep 8, 2026** — confirm auto-renew is on. TestFlight dies with the membership. Account Holder only.
+4. [ ] Optional: `ITSAppUsesNonExemptEncryption = NO` in `client/ios/App/App/Info.plist` to stop being asked the compliance question on every upload.
+5. [ ] Consider moving the Mac clone out of `~/Documents` (iCloud-synced) to `~/Dev/bti-voice` — a `git pull` failed this session with `mmap failed: Operation timed out`.
+- iOS state: shipping via TestFlight as of 8/20. Known limitation: incoming calls only ring while the app is foregrounded — **CallKit/VoIP push is the next real iOS project**. Later: App Store "unlisted" distribution decision.
 - Also open: Twilio support ticket (ISV flag + Compliance Embeddable — check Ticket history in a few days); pilot client pick; accountant email (draft ready: `BTI-Voice-Accountant-Email-Draft.md`); team password changes; pilot docs ready to send (`BTI-Voice-Pilot-One-Pager.md`, `BTI-Voice-Customer-Onboarding-Checklist.md`).
 
 
@@ -38,7 +47,7 @@ git pull origin main
 - [x] **Consent-record storage — DONE 2026-08-19 (commit `d9b93c6`, needs push):** append-only `consent_records` table; auto-captured on new-contact-from-inbound-SMS (implied opt-in), STOP/START keywords, and all five 21610 carrier-block sites; manual capture UI in ContactDetail (verbal/web form/written — manual opt-in does NOT clear a carrier STOP, warns instead); per-contact history; CSV export at Settings → Calls → SMS Compliance. Also fixed a latent ReferenceError (ContactDetail used `toast` without declaring it).
 - [x] **Deploy runbook + env template — DONE 2026-08-19 (commit `40e6582`, needs push):** `docs/DEPLOY-RUNBOOK.md` (customer data collection → Railway → Twilio subaccount/A2P → app config → Zoho add-on → verification checklist) + `server/.env.example` (every env var, annotated).
 - [x] **Twilio one-time — DONE 2026-08-19** (except the support-ticket wait): approved Primary Profiles are READ-ONLY in console → support ticket filed for ISV Reseller/Partner identity flag + Compliance Embeddable beta + blank-Business-Type question. "Create Secondary Profile" exists already, so customer onboarding is NOT blocked on the ticket. SHAKEN/STIR Trust Product "Talkingvet Dialer" was already Approved but had 0 numbers — all 3 numbers assigned (Business Profile first, then Trust Product) = A-level attestation. Toll-free +18555998716 released.
-- [ ] **iOS / TestFlight (started 2026-08-19, see handoff §8j):** app RUNS on Danny's iPhone (scene lifecycle + keyboard/viewport fixes done). NEXT: (1) Account Holder accepts Apple's updated license agreement (ASC front-page banner, dannyr927@outlook.com); (2) ASC app record `com.businesstechnologyinsight.btivoice`; (3) Xcode: version 1.5.0/build 1 → Any iOS Device → Archive → Distribute → Upload; (4) TestFlight compliance = standard-HTTPS exempt → internal group "BTI Team". Verify on phone: recording playback (Range fix), incoming-call-while-open. Later: CallKit/VoIP push for background ringing; App Store "unlisted" distribution decision.
+- [x] **iOS / TestFlight — DONE 2026-08-20 (handoff §8l, runbook `docs/BTI-Voice-TestFlight-Runbook.md`):** app record created, App ID registered, 1.5.0 (1) archived + uploaded, export compliance cleared, internal group live, installed from TestFlight on a device. Still to exercise on the phone: recording playback (Range fix) + incoming-call-while-open. Later: CallKit/VoIP push for background ringing; App Store "unlisted" distribution decision.
 - [ ] **Watch the Twilio support ticket** (ISV identity flag + Compliance Embeddable) — check Ticket history in a few days.
 - [x] Demo video recorded (2026-08-19, Danny).
 - [x] **Media/recording token hardening — DONE 2026-08-19 (commit `bd268b2`, needs push):** `POST /api/auth/media-token` mints 10-min `scope:'media'` JWTs; `/messages/media/:id` + `/calls/:id/recording` now use `requireMediaAuth` — full 7-day login JWTs are REJECTED in `?token=` query params (header Bearer still fine). Client auto-mints on login + refreshes every 5 min, clears on logout. calls.js's stale `bti-voice-dev-secret` fallback removed.
