@@ -6,6 +6,7 @@ import { useColors }   from '../../useColors'
 import { api }         from '../../api'
 import { getSoundPrefs, setSoundPref, startRingtone, stopRingtone, playDTMF } from '../../dtmf'
 import { applyFont }   from '../../utils/font'
+import { getLogs }     from '../../utils/logBuffer'
 import { useToast }    from '../Toast'
 
 const FONTS = [
@@ -1726,6 +1727,39 @@ function AboutSection({ C }) {
     window.electronAPI.installUpdate()
   }
 
+  // ── Diagnostics ───────────────────────────────────────────────────────────
+  // TestFlight testers have no console and no way to hand us a log. This posts
+  // the rolling in-memory log buffer plus device context to /api/diagnostics.
+  const [diagStatus, setDiagStatus] = useState(null) // null | 'sending' | 'sent' | 'error'
+  const [diagNote,   setDiagNote]   = useState('')
+
+  async function sendDiagnostics() {
+    setDiagStatus('sending')
+    try {
+      const result = await api.sendDiagnostics({
+        note: diagNote,
+        platform: isElectron
+          ? 'electron-' + (window.electronAPI?.platform || 'unknown')
+          : (window.matchMedia?.('(pointer: coarse)').matches ? 'mobile' : 'web'),
+        appVersion: version,
+        userAgent: navigator.userAgent,
+        context: {
+          screen:     window.innerWidth + 'x' + window.innerHeight,
+          pixelRatio: window.devicePixelRatio || 1,
+          online:     navigator.onLine,
+          language:   navigator.language,
+        },
+        logs: getLogs(),
+      })
+      setDiagStatus('sent')
+      setDiagNote('')
+      console.log('[diagnostics] Sent report #' + result.id)
+    } catch (e) {
+      console.error('[diagnostics] Send failed', e)
+      setDiagStatus('error')
+    }
+  }
+
   const updateLabel = {
     checking:    'Checking…',
     'up-to-date':'You\'re on the latest version ✓',
@@ -1760,6 +1794,47 @@ function AboutSection({ C }) {
           >
             Need Help? →
           </a>
+
+          {/* Report a problem — sends the in-app log buffer to the server.
+              Primarily for TestFlight testers, who have no other way to
+              hand over a log. */}
+          <div style={{ width: '100%', marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.borderSoft}` }}>
+            <div style={{ ...S.rowLabel, color: C.text, fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
+              Report a problem
+            </div>
+            <div style={{ ...S.rowDesc, color: C.textMuted, marginBottom: 8 }}>
+              Sends recent app logs and device info so we can investigate. No call
+              recordings or message content are included.
+            </div>
+            <textarea
+              value={diagNote}
+              onChange={e => { setDiagNote(e.target.value); if (diagStatus) setDiagStatus(null) }}
+              placeholder="What went wrong? (optional)"
+              rows={3}
+              style={{
+                width: '100%', padding: 8, borderRadius: 8, fontSize: 13, resize: 'vertical',
+                background: C.surface, color: C.text, border: `1px solid ${C.borderSoft}`,
+              }}
+            />
+            <button
+              onClick={diagStatus === 'sending' ? undefined : sendDiagnostics}
+              style={{
+                marginTop: 8, padding: '9px 18px', borderRadius: 8, border: 'none',
+                minHeight: 44, width: '100%', fontSize: 13, fontWeight: 600,
+                cursor: diagStatus === 'sending' ? 'default' : 'pointer',
+                background: diagStatus === 'sent'  ? '#22c55e'
+                          : diagStatus === 'error' ? 'rgba(239,68,68,0.15)'
+                          : '#4f9cf9',
+                color: diagStatus === 'error' ? '#ef4444' : 'white',
+              }}
+            >
+              {{
+                sending: 'Sending…',
+                sent:    'Sent ✓ Thank you',
+                error:   'Send failed — tap to retry',
+              }[diagStatus] || 'Send diagnostics'}
+            </button>
+          </div>
 
           {canUpdate && (
             <button

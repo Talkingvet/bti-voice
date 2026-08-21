@@ -303,6 +303,25 @@ async function migrate() {
     );
   `);
 
+  // Tester-submitted diagnostic reports. The app keeps a rolling in-memory log
+  // buffer; "Send diagnostics" in Settings posts it here with device context.
+  // Exists so TestFlight testers can report a problem without needing a Mac,
+  // Xcode, or console access.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS diagnostic_reports (
+      id          SERIAL PRIMARY KEY,
+      agent_id    INTEGER REFERENCES agents(id) ON DELETE SET NULL,
+      note        TEXT,
+      platform    VARCHAR(40),
+      app_version VARCHAR(20),
+      user_agent  TEXT,
+      context     JSONB,
+      logs        TEXT,
+      created_at  TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_diag_created ON diagnostic_reports (created_at DESC);
+  `);
+
   console.log('[db] Migrations complete.');
 }
 

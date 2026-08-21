@@ -141,7 +141,16 @@ function AppInner() {
 
         device.on('error', err => {
           console.error('[Twilio Device]', err)
-          if (mounted) setDeviceStatus('error')
+          if (!mounted) return
+          // The SDK emits non-fatal errors — audio-device warnings, transient
+          // ICE/signaling hiccups — and this used to latch the status red
+          // permanently, with nothing ever setting it back. On iOS that meant
+          // a constantly red connection dot while calls worked perfectly.
+          // Trust the device's own state instead: only report an error when
+          // it is genuinely not registered. A real drop still fires
+          // 'unregistered', and recovery still fires 'registered'.
+          if (device.state === 'registered') return
+          setDeviceStatus('error')
         })
 
         // Apply noise suppression / echo cancellation from user prefs

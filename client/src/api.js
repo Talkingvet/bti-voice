@@ -88,6 +88,7 @@ export const api = {
   newMessage:    ({ to_number, from_agent_id, body }) =>
     request('/conversations/new-message', { method: 'POST', body: { to_number, from_agent_id, body } }),
   activity:      () => request('/activity'),
+  sendDiagnostics: (payload) => request('/diagnostics', { method: 'POST', body: payload }),
 
   // Voicemails
   voicemails:        ()           => request('/calls/voicemails'),

@@ -1,5 +1,5 @@
 /* Calls tab — Logs + Voicemails sub-tabs, date-grouped, Zoho-style compact */
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { api } from '../../api'
 import { useColors } from '../../useColors'
 import { getSocket } from '../../socket'
@@ -8,6 +8,94 @@ import { getSocket } from '../../socket'
 // api.ensureMediaToken() (audio/download links can't send Authorization headers)
 function recordingUrl(callId) {
   return api.recordingUrl(callId)
+}
+
+/* ── Audio player ─────────────────────────────────────────────────
+   iOS draws <audio controls> using its own shadow-DOM controls, which do
+   not respond to taps inside a Capacitor WKWebView with the viewport
+   locked (user-scalable=no + scrollEnabled:false). On iPhone the
+   recording loaded and showed a duration, but play/seek/speaker were all
+   dead. This builds the controls from ordinary elements we own, so the
+   behaviour is identical on iOS, desktop and browser.
+
+   The <audio> element is still what plays; it's just hidden. Media
+   elements do not need to be visible to produce sound.                 */
+function AudioPlayer({ src, C, autoPlay = false }) {
+  const audioRef = useRef(null)
+  const [playing, setPlaying] = useState(false)
+  const [current, setCurrent] = useState(0)
+  const [total, setTotal]     = useState(0)
+  const [failed, setFailed]   = useState(false)
+
+  const fmt = (s) => {
+    if (!isFinite(s) || s < 0) return '0:00'
+    return Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0')
+  }
+
+  const toggle = () => {
+    const el = audioRef.current
+    if (!el) return
+    if (el.paused) {
+      // play() returns a promise on iOS; rejection means the browser blocked it
+      const p = el.play()
+      if (p && p.catch) p.catch(() => setFailed(true))
+    } else {
+      el.pause()
+    }
+  }
+
+  const seek = (e) => {
+    const el = audioRef.current
+    if (!el || !isFinite(total) || total <= 0) return
+    const t = Number(e.target.value)
+    el.currentTime = t
+    setCurrent(t)
+  }
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
+      <audio
+        ref={audioRef}
+        src={src}
+        autoPlay={autoPlay}
+        preload="metadata"
+        style={{ display: 'none' }}
+        onLoadedMetadata={e => setTotal(e.target.duration || 0)}
+        onDurationChange={e => setTotal(e.target.duration || 0)}
+        onTimeUpdate={e => setCurrent(e.target.currentTime || 0)}
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onEnded={() => { setPlaying(false); setCurrent(0) }}
+        onError={() => setFailed(true)}
+      />
+      <button
+        onClick={toggle}
+        aria-label={playing ? 'Pause' : 'Play'}
+        style={{
+          flexShrink: 0, width: 44, height: 44, borderRadius: 22, padding: 0,
+          border: 'none', background: '#4f9cf9', color: 'white', fontSize: 15,
+        }}
+      >
+        {playing ? '❚❚' : '▶'}
+      </button>
+      <input
+        type="range"
+        min={0}
+        max={total > 0 && isFinite(total) ? total : 0}
+        step="any"
+        value={current}
+        onChange={seek}
+        aria-label="Seek"
+        style={{ flex: 1, height: 28, accentColor: '#4f9cf9' }}
+      />
+      <div style={{
+        flexShrink: 0, fontSize: 11, minWidth: 76, textAlign: 'right',
+        fontVariantNumeric: 'tabular-nums', color: failed ? '#f87171' : C.textMuted,
+      }}>
+        {failed ? 'Failed' : fmt(current) + ' / ' + fmt(total)}
+      </div>
+    </div>
+  )
 }
 
 /* ── Helpers ─────────────────────────────────────────────────────── */
@@ -407,7 +495,7 @@ function CallDetailBody({ call, onDial, onMessage, C }) {
                   ⬇ Download
                 </a>
               </div>
-              <audio controls style={{ width: '100%', height: 36 }} src={recordingUrl(call.id)} />
+              <AudioPlayer src={recordingUrl(call.id)} C={C} />
             </div>
           )}
           {call.ai_summary && (
@@ -473,12 +561,7 @@ function VmRow({ vm, isPlaying, onToggle, C }) {
         <div style={{ ...S.miniPlayer, background: C.surface, borderBottom: `1px solid ${C.border}` }}>
           {vm.recording_url ? (
             <>
-              <audio
-                controls
-                autoPlay
-                style={{ width: '100%', height: 36, outline: 'none' }}
-                src={recordingUrl(vm.id)}
-              />
+              <AudioPlayer src={recordingUrl(vm.id)} C={C} autoPlay />
               <a
                 href={recordingUrl(vm.id)}
                 download={`voicemail-${vm.id}.mp3`}
