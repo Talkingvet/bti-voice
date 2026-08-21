@@ -17,7 +17,7 @@ Background on how the iOS build got here: handoff `BTI-Voice-Session-Handoff-3.m
 | Version / Build | 1.5.0 / 1 |
 | Apple Team | Business Technology Insight, LLC — Team ID `U2Z95CX43X` |
 | Account Holder Apple ID | dannyr927@outlook.com |
-| Mac repo | `~/Documents/Claude/Projects/BTI Voice/bti-voice` |
+| Mac repo | `~/Dev/bti-voice` (moved off iCloud 2026-08-20 — handoff §8m) |
 | Windows laptop repo | `C:\Dev\bti-voice` |
 
 **Status of prerequisites (2026-08-20):**
@@ -84,10 +84,19 @@ App Store review. TestFlight **internal** testing skips all of it.
 ## Step 3 — Build the web bundle on the Mac (Terminal)
 
 ```bash
-cd "$HOME/Documents/Claude/Projects/BTI Voice/bti-voice"
+cd "$HOME/Dev/bti-voice"
 git pull origin main
+grep CURRENT_PROJECT_VERSION client/ios/App/App.xcodeproj/project.pbxproj
 bash build-ios.sh
 ```
+
+⚠ **Every new upload needs a higher build number** — Apple rejects duplicates. Bump
+`CURRENT_PROJECT_VERSION` in `client/ios/App/App.xcodeproj/project.pbxproj` **on the laptop and push
+it**, then confirm with the `grep` above before building. Setting it in the Xcode GUI instead leaves
+it stranded on one machine. Build 1 = original TestFlight release; build 2 = mobile UI scale.
+
+⚠ **Client-side changes require a new build; server-side changes do not.** Capacitor bundles the web
+assets inside the app, so a Railway push reaches browser and desktop users but never the phone.
 
 `build-ios.sh` does all of this for you, in order: `npm install`, builds the React app with
 `VITE_API_URL` pointed at Railway, generates icons and splash screens, runs `npx cap sync ios`

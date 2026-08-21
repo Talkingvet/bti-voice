@@ -252,7 +252,7 @@ Because there is no cloud sync, docs on the desktop had **no backup and no path 
 |---|---|---|
 | Windows desktop | `C:\Users\Doero\OneDrive\Documents\Claude\Projects\Talkingvet Help\bti-voice` | Path name is legacy; no sync running. Plain git works fine for Danny. |
 | Windows laptop | `C:\Dev\bti-voice` | Set up per the laptop guide |
-| Mac | `~/Documents/Claude/Projects/BTI Voice/bti-voice` | Only machine that can build iOS/Mac |
+| Mac | **`~/Dev/bti-voice`** (moved 2026-08-20 — was `~/Documents/Claude/Projects/BTI Voice/bti-voice`) | Only machine that can build iOS/Mac. See §8m for why it moved. |
 
 ### ⚠ MANDATORY SYNC FAILSAFE — Danny explicitly asked Claude to own this
 
@@ -311,6 +311,51 @@ skips the question on every upload.
 
 **Also noted:** the Apple Developer Program membership **expires Sep 8, 2026** (ASC banner). If
 auto-renew is off, TestFlight builds die with it. Only the Account Holder can renew.
+
+## 8m. 2026-08-20 — the Mac repo moved to `~/Dev/bti-voice` (iCloud was corrupting git)
+
+**Symptom:** `git pull` on the Mac died twice with `fatal: mmap failed: Operation timed out` /
+`Operation cancelled`, then `fatal: unpack-objects failed`. First occurrence looked like a slow
+network (9 KiB/s). Second occurrence proved otherwise.
+
+**Cause:** the Mac clone lived under `~/Documents`, and iCloud's **Desktop & Documents Folders**
+sync was on. Git writes thousands of small loose objects during `unpack-objects`; iCloud was
+syncing and evicting them concurrently, so the memory-map failed. Classic, and easy to misread as
+a network problem.
+
+**⚠ Turning that sync off MOVES the folder.** macOS relocated `~/Documents` into iCloud Drive and
+left the old path non-existent — `cd` to the repo failed outright. Nothing was lost (every commit
+that day was made on the Windows laptop and pushed; the Mac held only regenerated build artifacts),
+but it is alarming if you don't expect it.
+
+**Resolution: fresh clone to `~/Dev/bti-voice`.** Now outside iCloud, and the path matches the
+Windows laptop's `C:\Dev\bti-voice`. All Mac commands in the runbook use the new path.
+
+**If mmap errors ever recur** (any machine, any cloud-synced folder): `git config --global
+fetch.unpackLimit 1` makes git keep a single pack file instead of exploding it into loose objects,
+sidestepping `unpack-objects` entirely. Harmless to leave set.
+
+**Also learned this session — the "up to date" trap, again.** `git status` saying *"Your branch is
+up to date with 'origin/main'"* describes **committed work only**. It printed that line while three
+files sat uncommitted, and the Mac then pulled "successfully" without the build-number bump, which
+produced an archive stamped `1.5.0 (1)` instead of `(2)`. **Trust the combination — "working tree
+clean" AND "up to date" — never either alone.** This is gotcha #7 restated because it bit again.
+
+### Mobile UI scaling (first pass, shipped in build 2)
+
+Testing on the phone showed the UI far too small — the app was designed as a 470px desktop window,
+so body text landed ~13-14px and tap targets under Apple's 44pt minimum. There is **no central
+stylesheet**: all 16 components carry their own inline `S` pixel style objects, so nothing could be
+raised in one place. First pass is a root scale in `client/src/index.css` under
+`@media (pointer: coarse)`: `--ui-scale: 1.18` with `zoom` on `#root`, dividing `100dvh` and the
+safe-area insets by the same factor so the layout doesn't overflow. **Tune by changing that one
+number.** Confirmed a clear improvement on device. Desktop and browser are untouched (coarse-pointer
+only). Proper per-component typography pass remains on the TODO.
+
+⚠ **Client changes need a new TestFlight build.** Capacitor bundles the web assets *inside* the iOS
+app (`capacitor.config.json` has no `server.url`), so unlike server fixes a Railway push does NOT
+reach the phone. Bump `CURRENT_PROJECT_VERSION` in the pbxproj **on the laptop, in git** — Apple
+rejects duplicate build numbers, and setting it in the Xcode GUI leaves it stranded on one machine.
 
 ## 9. Security posture
 **Fixed & live:** Zoho + socket auth, webhook validation (soft), secret hardening, MMS hardening, crash safety, opt-out across all paths, throttles, quiet hours, recording notice, and the client/Electron bugs above.
