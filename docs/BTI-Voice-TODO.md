@@ -28,6 +28,12 @@ Short version of what tripped us up, so it doesn't again:
 - Export compliance answer is **"None of the algorithms mentioned above"** (no own crypto; HTTPS + WebRTC are OS-provided). Same answer every upload.
 - `build-ios.sh` is **Mac-only**; running it on Windows dirties 3 tracked files including the Podfile.
 
+**⏸ RESUME POINT (2026-08-20, end of session): build 3 was ARCHIVED but never uploaded — the Mac died right before Distribute.**
+1. On the Mac: **Window → Organizer → Archives**, find **1.5.0 (3)**, click **Distribute App → App Store Connect → Upload**. Xcode writes the archive to `~/Library/Developer/Xcode/Archives` at archive time, so it should still be there — **no rebuild or re-pull needed**. Compliance answer: *None of the algorithms mentioned above*.
+2. If the archive is gone: on the Mac `cd "$HOME/Dev/bti-voice" && git pull origin main && bash build-ios.sh`, then archive again. The build number is already 3 in git.
+3. ⚠ **Confirm the laptop actually pushed before rebuilding** — `cd /c/Dev/bti-voice && git status` must show BOTH "working tree clean" AND "up to date with origin/main". If not, commit and push first or the Mac will rebuild the old code.
+4. Build 3 contains: custom audio player (iOS playback), connection-dot fix, and the tester diagnostics upload. **The server half of diagnostics is already live if the push went through** — `/api/diagnostics` + the `diagnostic_reports` table deploy with Railway.
+
 **▶ START HERE NEXT — open items in priority order:**
 1. [ ] **On-phone verifications** (build is installed, just needs exercising): **incoming call while the app is foregrounded**.
    - [~] **Recording playback FAILED on iOS 2026-08-20 — fix written, needs deploy + retest.** Recordings showed **"Live Broadcast"** and would not play (transcripts + summaries were fine). Cause: `/api/calls/:id/recording` only set `Content-Length` when Twilio happened to supply one; when Twilio streams chunked, the `<audio>` element gets duration Infinity, which iOS renders as an unseekable live stream. The `9a97d86` Range work was correct in principle but inherited whatever upstream did. **Fix:** the proxy now requests `.mp3` explicitly, buffers the recording so the length is always known, and answers Range requests itself (proper 206 + `Content-Range`, 416 on bad ranges). Server-side only — **a Railway deploy fixes all platforms, no new TestFlight build needed.** Retest on the phone after deploy.
