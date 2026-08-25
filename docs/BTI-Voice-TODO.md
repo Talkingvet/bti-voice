@@ -28,12 +28,11 @@ Short version of what tripped us up, so it doesn't again:
 - Export compliance answer is **"None of the algorithms mentioned above"** (no own crypto; HTTPS + WebRTC are OS-provided). Same answer every upload.
 - `build-ios.sh` is **Mac-only**; running it on Windows dirties 3 tracked files including the Podfile.
 
-**⏸ RESUME POINT (2026-08-20, end of session): build 3 was ARCHIVED but never uploaded — the Mac died right before Distribute.**
-1. On the Mac: **Window → Organizer → Archives**, find **1.5.0 (3)**, click **Distribute App → App Store Connect → Upload**. Xcode writes the archive to `~/Library/Developer/Xcode/Archives` at archive time, so it should still be there — **no rebuild or re-pull needed**. Compliance answer: *None of the algorithms mentioned above*.
-2. If the archive is gone: on the Mac `cd "$HOME/Dev/bti-voice" && git pull origin main && bash build-ios.sh`, then archive again. The build number is already 3 in git.
-3. ⚠ **Confirm the laptop actually pushed before rebuilding** — `cd /c/Dev/bti-voice && git status` must show BOTH "working tree clean" AND "up to date with origin/main". If not, commit and push first or the Mac will rebuild the old code.
-4. Build 3 contains: custom audio player (iOS playback), connection-dot fix, and the tester diagnostics upload. The server half of diagnostics is already live — `/api/diagnostics` + the `diagnostic_reports` table deployed with Railway.
-5. ✅ **All three fixes VERIFIED 2026-08-20 in mobile Safari** on the phone (`bti-voice-production.up.railway.app` — Railway rebuilds the client on push, so the browser gets client fixes immediately; only the Capacitor app needs a new build). Recording plays and the scrubber responds to touch; no connection dot (correct — it only shows when degraded); "Send diagnostics" returns Sent ✓. **Build 3 is de-risked — the upload is a formality.** Useful trick to reuse: test client changes in mobile Safari before spending an archive.
+**✅ BUILD 3 UPLOADED AND DISTRIBUTED (2026-08-20).** Contains the custom audio player (iOS recording playback), the connection-dot fix, and the tester diagnostics upload. Server halves were already live via Railway. All three were verified in **mobile Safari** before the build went out — see the trick below. On-device re-verification after the TestFlight update: recording playback, absent connection dot, Send diagnostics, UI scale.
+
+**🔧 Trick worth reusing: test client changes in mobile Safari before spending an archive.** Railway rebuilds the client on every push, so `bti-voice-production.up.railway.app` on the phone gets client fixes immediately — only the Capacitor app needs a new build. It turns a 20-minute build-and-upload cycle into a page refresh. Not identical to the WKWebView, but close enough to de-risk a build.
+
+**📱 Build history:** 1 = original TestFlight release · 2 = mobile UI scale (`--ui-scale: 1.18`) · 3 = audio player + connection dot + diagnostics. **Bump `CURRENT_PROJECT_VERSION` in the pbxproj on the laptop and push it** before every new archive — Apple rejects duplicate build numbers, and setting it in the Xcode GUI strands it on one machine.
 
 **▶ START HERE NEXT — open items in priority order:**
 1. [ ] **On-phone verifications** (build is installed, just needs exercising): **incoming call while the app is foregrounded**.
