@@ -214,4 +214,39 @@ router.post('/send', async (req, res) => {
   }
 });
 
+// ── POST /api/zoho-widget/dial { phone, agent_id } ────────────────────────────
+// Zoho click-to-dial: asks the chosen agent's RUNNING BTI Voice app to place
+// the call (server emits a 'dial_request' socket event into that agent's room;
+// the app auto-dials via dialTo()). The app must be open + logged in — if no
+// socket is connected for that agent, respond 409 so the widget can say so.
+router.post('/dial', async (req, res) => {
+  const phone   = req.body.phone;
+  const agentId = parseInt(req.body.agent_id, 10);
+  if (!phone)   return res.status(400).json({ error: 'phone required' });
+  if (!agentId) return res.status(400).json({ error: 'agent_id required' });
+
+  try {
+    const { rows: [agent] } = await pool.query(
+      'SELECT id, name FROM agents WHERE id = $1 AND is_active = TRUE', [agentId]
+    );
+    if (!agent) return res.status(404).json({ error: 'Agent not found' });
+
+    const io = getIO();
+    const room = io && io.sockets.adapter.rooms.get('agent_' + agent.id);
+    if (!room || room.size === 0) {
+      return res.status(409).json({
+        error: agent.name + "'s BTI Voice app isn't open. Open the app (and log in), then try again.",
+      });
+    }
+
+    const { e164 } = phoneVariants(phone);
+    const dialNumber = e164 || phone;
+    io.to('agent_' + agent.id).emit('dial_request', { phone: dialNumber });
+    res.json({ ok: true, dialing: dialNumber, agent: agent.name });
+  } catch (e) {
+    console.error('[zoho-widget/dial]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;

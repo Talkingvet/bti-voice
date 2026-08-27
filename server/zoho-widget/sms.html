@@ -21,6 +21,11 @@
   #header .who { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #header .num { color: #64748b; font-size: 11px; }
   #status { font-size: 11px; color: #64748b; flex-shrink: 0; }
+  #call-btn {
+    background: #22c55e; color: white; border: none; border-radius: 8px;
+    padding: 6px 12px; font-weight: 600; font-size: 12px; cursor: pointer; flex-shrink: 0;
+  }
+  #call-btn:disabled { background: #cbd5e1; cursor: default; }
   #optout-banner {
     display: none; background: #fef2f2; color: #b91c1c; border-bottom: 1px solid #fecaca;
     padding: 6px 12px; font-size: 11px; font-weight: 600; flex-shrink: 0;
@@ -65,14 +70,17 @@
       <div class="who" id="contact-name">Loading…</div>
       <div class="num" id="contact-number"></div>
     </div>
-    <div id="status"></div>
+    <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+      <div id="status"></div>
+      <button id="call-btn" disabled title="Ring this number from the selected agent's BTI Voice app">📞 Call</button>
+    </div>
   </div>
   <div id="optout-banner">This contact has opted out of SMS (replied STOP). Sending is blocked until they text START.</div>
   <div id="thread"><div id="empty">Loading conversation…</div></div>
   <div id="composer">
     <div id="error"></div>
     <div id="agent-row">
-      <span>Send as</span>
+      <span>Send / call as</span>
       <select id="agent-select"></select>
     </div>
     <div id="composer-row">
@@ -105,6 +113,7 @@
   var elSelect = document.getElementById('agent-select');
   var elErr    = document.getElementById('error');
   var elOptout = document.getElementById('optout-banner');
+  var elCall   = document.getElementById('call-btn');
 
   function api(path, opts) {
     opts = opts || {};
@@ -228,6 +237,35 @@
       .finally(function () { elSend.disabled = false; elInput.focus(); });
   }
 
+  // Click-to-dial: ask the selected agent's running BTI Voice app to place the
+  // call. Requires that agent's app to be open + logged in — the server answers
+  // 409 with a clear message when it isn't.
+  var statusClearTimer = null;
+  function dial() {
+    if (!phone) return;
+    var agentId = parseInt(elSelect.value, 10);
+    if (!agentId) { showError('Pick an agent first.'); return; }
+    elCall.disabled = true;
+    showError('');
+    if (statusClearTimer) clearTimeout(statusClearTimer);
+    elStatus.textContent = 'Calling…';
+    api('/api/zoho-widget/dial', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: phone, agent_id: agentId }),
+    })
+      .then(function (r) {
+        elStatus.textContent = '📞 Dialing in ' + r.agent + "'s app";
+        statusClearTimer = setTimeout(function () { elStatus.textContent = ''; }, 6000);
+      })
+      .catch(function (e) {
+        elStatus.textContent = '';
+        showError(e.message);
+      })
+      .finally(function () { elCall.disabled = false; });
+  }
+  elCall.addEventListener('click', dial);
+
   elSend.addEventListener('click', send);
   elInput.addEventListener('keydown', function (e) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
@@ -242,7 +280,9 @@
     phone = recordPhone;
     elName.textContent = displayLabel || recordPhone;
     elNum.textContent = recordPhone;
-    loadAgents().catch(function (e) { showError(e.message); });
+    loadAgents()
+      .then(function () { elCall.disabled = !agents.length; })
+      .catch(function (e) { showError(e.message); });
     poll();
     if (pollTimer) clearInterval(pollTimer);
     pollTimer = setInterval(poll, POLL_MS);

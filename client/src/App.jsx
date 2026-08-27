@@ -342,6 +342,18 @@ function AppInner() {
     return () => socket.off('agent_status_changed', handleStatusChanged)
   }, [agent])
 
+  // Zoho click-to-dial: the CRM widget's 📞 button POSTs /api/zoho-widget/dial,
+  // the server emits dial_request into this agent's room, and we auto-dial.
+  useEffect(() => {
+    if (!agent) return
+    const socket = getSocket()
+    const onDialRequest = (data) => {
+      if (data && data.phone) dialTo(data.phone)
+    }
+    socket.on('dial_request', onDialRequest)
+    return () => socket.off('dial_request', onDialRequest)
+  }, [agent])
+
   const unreadCount = activity.filter(a =>
     new Date(a.occurred_at) > baseAt && !readKeys.has(`${a.type}-${a.id}`)
   ).length

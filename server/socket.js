@@ -26,6 +26,12 @@ function init(httpServer) {
   io.on('connection', (socket) => {
     console.log('[socket] Client connected:', socket.id, 'agent:', socket.agent && socket.agent.username);
 
+    // Per-agent room — lets the server target one agent's running app
+    // (e.g. Zoho click-to-dial emits 'dial_request' into agent_<id>).
+    if (socket.agent && socket.agent.id) {
+      socket.join('agent_' + socket.agent.id);
+    }
+
     socket.on('join_conversation', (conversationId) => {
       socket.join(`conv_${conversationId}`);
     });
