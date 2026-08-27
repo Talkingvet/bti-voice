@@ -369,6 +369,18 @@ Key facts for future Android work:
 - APK output: `client\android\app\release\app-release.apk` (~3.5 MB). First build stamped 1.0 internally; rebuilt after the versionName fix.
 - Remaining: on-phone verification checklist (plan doc) — especially both-ways call audio and the runtime mic prompt.
 
+## 8o. 2026-08-27 (Danny, laptop) — double recording disclosure fixed + FIRST UNIT TESTS
+
+**Bug:** callers heard "This call may be recorded…" twice (or more) before connecting. Cause: `maybeRecordingNotice()` fired at three sites in `server/webhooks/voice.js` and inbound paths CHAIN — `dialAgent` plays it, agent misses, Twilio hits `/no-answer`, `ringAllAgents` plays it again on the SAME call.
+
+**Fix:** notice extracted to `server/helpers/recordingNotice.js` with a once-per-CallSid guard (in-memory Map — fine for this single-process server; pruned after 4h once past 1000 entries). `dialAgent(twiml, agentId, callSid, timeout)` and `ringAllAgents(twiml, callSid)` gained a CallSid param; every route call site passes `req.body.CallSid`. Fail-safe direction: missing CallSid → play anyway (a repeat is harmless, a missing disclosure is a compliance problem). Pre-existing gap noticed, NOT fixed: `dialSequential()` (IVR sequential queues) never records and never plays the notice — consistent, but means queue calls are unrecorded.
+
+**Unit testing exists now.** `server/test/recordingNotice.test.js` — 7 tests on the guard using Node's **built-in** test runner (`node:test`, Node ≥18, zero new dependencies). Run: `cd server && npm test` (script added to `server/package.json`). Pattern for future tests: extract logic into `server/helpers/`, test the helper with fakes — no DB or Twilio needed.
+
+**Versioning rule for this change: NO version bumps.** Server-only → a git push deploys it via Railway. The version stamps (electron/package.json, iOS pbxproj MARKETING_VERSION/CURRENT_PROJECT_VERSION, Android build.gradle versionName/versionCode, Railway LATEST_VERSION) only move when a new installer/build ships. Root + server/client package.json "1.0.0" are unused/cosmetic.
+
+**Retest after deploy:** with recording on, call in and let it ring through to the all-agents fallback — the disclosure should play exactly once.
+
 ## 9. Security posture
 **Fixed & live:** Zoho + socket auth, webhook validation (soft), secret hardening, MMS hardening, crash safety, opt-out across all paths, throttles, quiet hours, recording notice, and the client/Electron bugs above.
 **Deferred (need more than a blind edit) — in BTI-Voice-Preprod-Audit.md:**

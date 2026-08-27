@@ -4,6 +4,7 @@ const twilio  = require('twilio');
 const { pool } = require('../db');
 const { getIO } = require('../socket');
 const { createNotification } = require('../notifications');
+const { maybeRecordingNotice } = require('../helpers/recordingNotice');
 
 const router = express.Router();
 
@@ -144,7 +145,7 @@ router.post('/outbound', async (req, res) => {
   }
 
   if (To) {
-    maybeRecordingNotice(twiml);
+    maybeRecordingNotice(twiml, req.body.CallSid);
     const dial = twiml.dial({ callerId, ...recordingOpts() });
     dial.number(To);
     console.log(`[outbound] TwiML: dial ${To} from ${callerId}`);
@@ -199,14 +200,14 @@ router.post('/inbound', async (req, res) => {
         console.log(`[inbound] number_routing ${calledNumber} → ${rule.destination_type}${rule.destination_value ? ':' + rule.destination_value : ''}`);
         switch (rule.destination_type) {
           case 'agent':
-            await dialAgent(twiml, rule.destination_value);
+            await dialAgent(twiml, rule.destination_value, req.body.CallSid);
             break;
           case 'voicemail':
             sendToVoicemail(twiml, nrVoice, req.body.From || '');
             break;
           case 'all_agents':
           default:
-            await ringAllAgents(twiml);
+            await ringAllAgents(twiml, req.body.CallSid);
             break;
         }
         res.set('Content-Type', 'text/xml');
@@ -256,9 +257,9 @@ router.post('/inbound', async (req, res) => {
 
     // IVR disabled or no menu — use default agent or ring all
     if (settings?.default_agent_id) {
-      await dialAgent(twiml, settings.default_agent_id);
+      await dialAgent(twiml, settings.default_agent_id, req.body.CallSid);
     } else {
-      await ringAllAgents(twiml);
+      await ringAllAgents(twiml, req.body.CallSid);
     }
   } catch (e) {
     console.error('[voice/inbound]', e.message);
@@ -290,9 +291,9 @@ router.post('/ivr-gather', async (req, res) => {
     if (fallback || !Digits) {
       console.log('[ivr-gather] Timeout/no-digit fallback → routing to agent');
       if (defaultAgent || settingsDefaultAgent) {
-        await dialAgent(twiml, defaultAgent || settingsDefaultAgent);
+        await dialAgent(twiml, defaultAgent || settingsDefaultAgent, req.body.CallSid);
       } else {
-        await ringAllAgents(twiml);
+        await ringAllAgents(twiml, req.body.CallSid);
       }
       res.set('Content-Type', 'text/xml');
       return res.send(twiml.toString());
@@ -317,9 +318,9 @@ router.post('/ivr-gather', async (req, res) => {
       console.log(`[ivr-gather] Unknown digit "${Digits}" → routing to default agent`);
       twiml.say({ voice }, "Let me connect you now.");
       if (defaultAgent || settingsDefaultAgent) {
-        await dialAgent(twiml, defaultAgent || settingsDefaultAgent);
+        await dialAgent(twiml, defaultAgent || settingsDefaultAgent, req.body.CallSid);
       } else {
-        await ringAllAgents(twiml);
+        await ringAllAgents(twiml, req.body.CallSid);
       }
       res.set('Content-Type', 'text/xml');
       return res.send(twiml.toString());
@@ -340,10 +341,10 @@ router.post('/ivr-gather', async (req, res) => {
         const agentId = parseInt(item.destination_value, 10);
         if (!agentId || isNaN(agentId)) {
           console.error(`[ivr-gather] Invalid agent destination_value="${item.destination_value}" — falling back to ringAll`);
-          await ringAllAgents(twiml);
+          await ringAllAgents(twiml, req.body.CallSid);
         } else {
           console.log(`[ivr-gather] Dialing agent_${agentId}`);
-          await dialAgent(twiml, agentId);
+          await dialAgent(twiml, agentId, req.body.CallSid);
         }
         break;
       }
@@ -356,7 +357,7 @@ router.post('/ivr-gather', async (req, res) => {
       case 'all_agents':
       default:
         console.log('[ivr-gather] Ringing all agents');
-        await ringAllAgents(twiml);
+        await ringAllAgents(twiml, req.body.CallSid);
         break;
     }
 
@@ -396,7 +397,7 @@ router.post('/next-agent', async (req, res) => {
   if (queue.length > 0) {
     dialSequential(twiml, queue, defaultAgent);
   } else if (defaultAgent) {
-    await dialAgent(twiml, defaultAgent);
+    await dialAgent(twiml, defaultAgent, req.body.CallSid);
   } else {
     twiml.say({ voice: 'Polly.Joanna-Neural' }, 'Sorry, no one is available right now. Please try again later.');
   }
@@ -433,7 +434,7 @@ router.post('/no-answer', async (req, res) => {
   // Agent didn't answer — try ringing all agents as final fallback
   // (don't log yet — wait for the ringAllAgents <Dial> action to fire)
   try {
-    await ringAllAgents(twiml);
+    await ringAllAgents(twiml, req.body.CallSid);
   } catch (e) {
     // ringAllAgents failed entirely — log as missed now
     autoLogCall({
@@ -861,15 +862,9 @@ async function sendMissedCallAutoText(fromPhone) {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-// Recording requires ENABLE_RECORDING=true in addition to SERVER_URL + OPENAI_API_KEY.
-// Adds a spoken recording disclosure — only when recording is actually active
-// (same gate as recordingOpts). Two-party-consent states require it. No-op
-// when recording is off, so normal call flow is unchanged.
-function maybeRecordingNotice(twiml) {
-  if (process.env.ENABLE_RECORDING !== 'true') return;
-  if (!process.env.SERVER_URL || !process.env.OPENAI_API_KEY) return;
-  twiml.say('This call may be recorded for quality and training purposes.');
-}
+// The spoken recording disclosure now lives in helpers/recordingNotice.js,
+// guarded to play once per CallSid (call paths chain: dialAgent -> /no-answer
+// -> ringAllAgents used to replay it on the same call).
 
 function recordingOpts() {
   if (process.env.ENABLE_RECORDING !== 'true') return {};
@@ -903,12 +898,12 @@ function sendToVoicemail(twiml, voice, callerNum) {
   twiml.say({ voice }, 'Thank you for your message. Goodbye.');
 }
 
-async function dialAgent(twiml, agentId, timeout = 30) {
+async function dialAgent(twiml, agentId, callSid = null, timeout = 30) {
   // Validate the agent ID before dialing — parseInt('') === NaN
   const id = parseInt(agentId, 10);
   if (!id || isNaN(id)) {
     console.error(`[dialAgent] Invalid agentId="${agentId}" — falling back to ringAll`);
-    await ringAllAgents(twiml);
+    await ringAllAgents(twiml, callSid);
     return;
   }
 
@@ -916,7 +911,7 @@ async function dialAgent(twiml, agentId, timeout = 30) {
 
   // action="/webhooks/voice/no-answer" ensures Twilio calls us back instead of
   // silently dropping the call when the client doesn't answer.
-  maybeRecordingNotice(twiml);
+  maybeRecordingNotice(twiml, callSid);
   const dial = twiml.dial({
     timeout,
     action: '/webhooks/voice/no-answer',
@@ -926,7 +921,7 @@ async function dialAgent(twiml, agentId, timeout = 30) {
   dial.client(`agent_${id}`);
 }
 
-async function ringAllAgents(twiml) {
+async function ringAllAgents(twiml, callSid = null) {
   const { rows } = await pool.query(
     'SELECT id FROM agents WHERE is_active = true ORDER BY id'
   );
@@ -936,7 +931,7 @@ async function ringAllAgents(twiml) {
     return;
   }
   console.log(`[ringAllAgents] Ringing ${rows.length} agents: ${rows.map(r => r.id).join(', ')}`);
-  maybeRecordingNotice(twiml);
+  maybeRecordingNotice(twiml, callSid);
   const dial = twiml.dial({
     timeout: 30,
     action:  '/webhooks/voice/no-answer',
