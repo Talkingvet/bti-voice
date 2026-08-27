@@ -237,32 +237,21 @@
       .finally(function () { elSend.disabled = false; elInput.focus(); });
   }
 
-  // Click-to-dial: ask the selected agent's running BTI Voice app to place the
-  // call. Requires that agent's app to be open + logged in — the server answers
-  // 409 with a clear message when it isn't.
-  var statusClearTimer = null;
+  // Click-to-dial: open the mini softphone popup (call.html). The call happens
+  // right there in the popup — no dependency on the desktop app being open.
   function dial() {
     if (!phone) return;
     var agentId = parseInt(elSelect.value, 10);
     if (!agentId) { showError('Pick an agent first.'); return; }
-    elCall.disabled = true;
-    showError('');
-    if (statusClearTimer) clearTimeout(statusClearTimer);
-    elStatus.textContent = 'Calling…';
-    api('/api/zoho-widget/dial', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone: phone, agent_id: agentId }),
-    })
-      .then(function (r) {
-        elStatus.textContent = '📞 Dialing in ' + r.agent + "'s app";
-        statusClearTimer = setTimeout(function () { elStatus.textContent = ''; }, 6000);
-      })
-      .catch(function (e) {
-        elStatus.textContent = '';
-        showError(e.message);
-      })
-      .finally(function () { elCall.disabled = false; });
+    var opt = elSelect.options[elSelect.selectedIndex];
+    var url = BASE + '/zoho-widget/call.html' +
+      '?key='        + encodeURIComponent(KEY) +
+      '&phone='      + encodeURIComponent(phone) +
+      '&name='       + encodeURIComponent(elName.textContent || phone) +
+      '&agent_id='   + agentId +
+      '&agent_name=' + encodeURIComponent(opt ? opt.textContent : '');
+    var win = window.open(url, 'bti_voice_call', 'width=380,height=620,popup=yes');
+    if (!win) showError('Popup blocked — allow popups for this page to place calls.');
   }
   elCall.addEventListener('click', dial);
 

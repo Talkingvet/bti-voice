@@ -214,16 +214,24 @@ router.post('/send', async (req, res) => {
   }
 });
 
-// ── POST /api/zoho-widget/dial { phone, agent_id } ────────────────────────────
-// Zoho click-to-dial: asks the chosen agent's RUNNING BTI Voice app to place
-// the call (server emits a 'dial_request' socket event into that agent's room;
-// the app auto-dials via dialTo()). The app must be open + logged in — if no
-// socket is connected for that agent, respond 409 so the widget can say so.
-router.post('/dial', async (req, res) => {
-  const phone   = req.body.phone;
+// ── POST /api/zoho-widget/voice-token { agent_id } ────────────────────────────
+// Powers the mini softphone popup (call.html): mints a Twilio Voice access
+// token so the popup can place a call DIRECTLY in the browser, as the chosen
+// agent. Identity matches the app's ('agent_<id>') so /webhooks/voice/outbound
+// applies that agent's caller ID and call logging exactly as an app dial.
+// incomingAllow is FALSE — the popup is outbound-only and must never compete
+// with the agent's real app for incoming calls.
+router.post('/voice-token', async (req, res) => {
   const agentId = parseInt(req.body.agent_id, 10);
-  if (!phone)   return res.status(400).json({ error: 'phone required' });
   if (!agentId) return res.status(400).json({ error: 'agent_id required' });
+
+  const sid      = process.env.TWILIO_ACCOUNT_SID;
+  const apiKey   = process.env.TWILIO_API_KEY;
+  const secret   = process.env.TWILIO_API_SECRET;
+  const twimlApp = process.env.TWILIO_TWIML_APP_SID;
+  if (!sid || !apiKey || !secret || !twimlApp) {
+    return res.status(503).json({ error: 'Twilio Voice not yet configured' });
+  }
 
   try {
     const { rows: [agent] } = await pool.query(
@@ -231,20 +239,22 @@ router.post('/dial', async (req, res) => {
     );
     if (!agent) return res.status(404).json({ error: 'Agent not found' });
 
-    const io = getIO();
-    const room = io && io.sockets.adapter.rooms.get('agent_' + agent.id);
-    if (!room || room.size === 0) {
-      return res.status(409).json({
-        error: agent.name + "'s BTI Voice app isn't open. Open the app (and log in), then try again.",
-      });
-    }
+    const twilio = require('twilio');
+    const AccessToken = twilio.jwt.AccessToken;
+    const VoiceGrant = AccessToken.VoiceGrant;
 
-    const { e164 } = phoneVariants(phone);
-    const dialNumber = e164 || phone;
-    io.to('agent_' + agent.id).emit('dial_request', { phone: dialNumber });
-    res.json({ ok: true, dialing: dialNumber, agent: agent.name });
+    const token = new AccessToken(sid, apiKey, secret, {
+      identity: 'agent_' + agent.id,
+      ttl: 3600,
+    });
+    token.addGrant(new VoiceGrant({
+      outgoingApplicationSid: twimlApp,
+      incomingAllow: false,
+    }));
+
+    res.json({ token: token.toJwt(), identity: 'agent_' + agent.id, agent: agent.name });
   } catch (e) {
-    console.error('[zoho-widget/dial]', e.message);
+    console.error('[zoho-widget/voice-token]', e.message);
     res.status(500).json({ error: e.message });
   }
 });

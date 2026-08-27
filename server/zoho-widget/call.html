@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BTI Voice — Call</title>
+<!-- Twilio Voice JS SDK, served from our own server (copied from
+     client/node_modules/@twilio/voice-sdk/dist/twilio.min.js — keep the
+     filename version in sync if the client dependency is ever upgraded). -->
+<script src="/zoho-widget/twilio-voice-2.18.1.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #0f172a; color: #e2e8f0;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 20px 16px; gap: 4px; font-size: 13px;
+    user-select: none;
+  }
+  #contact-name { font-size: 18px; font-weight: 700; margin-top: 8px; text-align: center; word-break: break-word; }
+  #contact-number { font-size: 13px; color: #94a3b8; }
+  #agent-line { font-size: 11px; color: #64748b; margin-top: 2px; }
+  #call-status { font-size: 13px; color: #4f9cf9; min-height: 18px; margin-top: 14px; font-weight: 600; }
+  #timer { font-size: 26px; font-variant-numeric: tabular-nums; margin-top: 2px; min-height: 32px; }
+  #error {
+    display: none; color: #fca5a5; background: rgba(185,28,28,.15);
+    border: 1px solid rgba(185,28,28,.4); border-radius: 8px;
+    padding: 8px 10px; margin-top: 10px; font-size: 12px; text-align: center;
+    max-width: 300px; word-break: break-word;
+  }
+  #keypad {
+    display: grid; grid-template-columns: repeat(3, 64px); gap: 8px; margin-top: 14px;
+  }
+  #keypad button {
+    height: 48px; border-radius: 10px; border: 1px solid #334155;
+    background: #1e293b; color: #e2e8f0; font-size: 17px; font-weight: 600;
+    cursor: pointer;
+  }
+  #keypad button:active { background: #334155; }
+  #digits-display { font-size: 12px; color: #94a3b8; min-height: 16px; margin-top: 6px; letter-spacing: 2px; }
+  #controls { display: flex; gap: 14px; margin-top: 16px; align-items: center; }
+  .ctl {
+    width: 56px; height: 56px; border-radius: 50%; border: none; cursor: pointer;
+    font-size: 22px; display: flex; align-items: center; justify-content: center;
+  }
+  #mute-btn { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; }
+  #mute-btn.muted { background: #f59e0b; color: #0f172a; border-color: #f59e0b; }
+  #hangup-btn { background: #dc2626; color: white; }
+  #call-btn { background: #22c55e; color: white; width: auto; border-radius: 28px; padding: 0 28px; height: 56px; font-size: 15px; font-weight: 700; }
+  .hidden { display: none !important; }
+  #hint { font-size: 11px; color: #475569; margin-top: auto; text-align: center; }
+</style>
+</head>
+<body>
+  <div id="contact-name">Loading…</div>
+  <div id="contact-number"></div>
+  <div id="agent-line"></div>
+  <div id="call-status"></div>
+  <div id="timer"></div>
+  <div id="error"></div>
+
+  <div id="keypad" class="hidden"></div>
+  <div id="digits-display"></div>
+
+  <div id="controls">
+    <button id="mute-btn" class="ctl hidden" title="Mute">🎤</button>
+    <button id="call-btn" class="ctl hidden">📞 Call</button>
+    <button id="hangup-btn" class="ctl hidden" title="Hang up">📵</button>
+  </div>
+
+  <div id="hint">Keep this window open for the duration of the call.<br>Calls log to BTI Voice + Zoho like any app call.</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var qs = new URLSearchParams(location.search);
+  var KEY       = qs.get('key') || '';
+  var BASE      = location.origin;
+  var phone     = qs.get('phone') || '';
+  var name      = qs.get('name') || phone;
+  var agentId   = parseInt(qs.get('agent_id'), 10);
+  var agentName = qs.get('agent_name') || '';
+
+  var device = null;
+  var call = null;
+  var timerIv = null;
+  var callStart = null;
+  var muted = false;
+
+  var elName   = document.getElementById('contact-name');
+  var elNum    = document.getElementById('contact-number');
+  var elAgent  = document.getElementById('agent-line');
+  var elStatus = document.getElementById('call-status');
+  var elTimer  = document.getElementById('timer');
+  var elErr    = document.getElementById('error');
+  var elKeypad = document.getElementById('keypad');
+  var elDigits = document.getElementById('digits-display');
+  var elMute   = document.getElementById('mute-btn');
+  var elCall   = document.getElementById('call-btn');
+  var elHangup = document.getElementById('hangup-btn');
+
+  elName.textContent = name;
+  elNum.textContent = phone;
+  if (agentName) elAgent.textContent = 'Calling as ' + agentName;
+  document.title = 'Call — ' + name;
+
+  function showError(msg) {
+    elErr.textContent = msg || '';
+    elErr.style.display = msg ? 'block' : 'none';
+  }
+  function setStatus(s) { elStatus.textContent = s; }
+
+  function fmtDur(sec) {
+    var m = Math.floor(sec / 60), s = sec % 60;
+    return m + ':' + (s < 10 ? '0' : '') + s;
+  }
+  function startTimer() {
+    callStart = Date.now();
+    elTimer.textContent = '0:00';
+    timerIv = setInterval(function () {
+      elTimer.textContent = fmtDur(Math.floor((Date.now() - callStart) / 1000));
+    }, 1000);
+  }
+  function stopTimer() {
+    if (timerIv) { clearInterval(timerIv); timerIv = null; }
+  }
+
+  // ── Keypad (DTMF) ────────────────────────────────────────────────────────────
+  ['1','2','3','4','5','6','7','8','9','*','0','#'].forEach(function (d) {
+    var b = document.createElement('button');
+    b.textContent = d;
+    b.addEventListener('click', function () {
+      if (call) {
+        call.sendDigits(d);
+        elDigits.textContent = (elDigits.textContent + d).slice(-20);
+      }
+    });
+    elKeypad.appendChild(b);
+  });
+
+  function setUI(state) {
+    // states: idle (pre-call / ended), connecting, active
+    elCall.classList.toggle('hidden',   state !== 'idle');
+    elHangup.classList.toggle('hidden', state === 'idle');
+    elMute.classList.toggle('hidden',   state !== 'active');
+    elKeypad.classList.toggle('hidden', state !== 'active');
+    if (state !== 'active') { elDigits.textContent = ''; }
+  }
+
+  function cleanupCall(label) {
+    stopTimer();
+    call = null;
+    muted = false;
+    elMute.classList.remove('muted');
+    setStatus(label || 'Call ended');
+    setUI('idle');
+    elCall.textContent = '📞 Call again';
+  }
+
+  async function getDevice() {
+    if (device) return device;
+    var r = await fetch(BASE + '/api/zoho-widget/voice-token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-widget-key': KEY },
+      body: JSON.stringify({ agent_id: agentId }),
+    });
+    var j = await r.json();
+    if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+    device = new Twilio.Device(j.token, {
+      logLevel: 'warn',
+      codecPreferences: ['opus', 'pcmu'],
+    });
+    device.on('error', function (err) {
+      console.error('[Twilio Device]', err);
+      if (!call) showError(err.message || 'Device error');
+    });
+    device.on('tokenWillExpire', async function () {
+      try {
+        var r2 = await fetch(BASE + '/api/zoho-widget/voice-token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-widget-key': KEY },
+          body: JSON.stringify({ agent_id: agentId }),
+        });
+        var j2 = await r2.json();
+        if (r2.ok) device.updateToken(j2.token);
+      } catch (e) { console.error('token refresh failed', e); }
+    });
+    return device;
+  }
+
+  async function startCall() {
+    if (call) return;
+    showError('');
+    setStatus('Connecting…');
+    setUI('connecting');
+    try {
+      var dev = await getDevice();
+      // NOTE: no dev.register() — this popup is outbound-only on purpose, so it
+      // never competes with the agent's real BTI Voice app for incoming calls.
+      call = await dev.connect({ params: { To: phone } });
+
+      call.on('accept', function () {
+        setStatus('Connected');
+        setUI('active');
+        startTimer();
+      });
+      call.on('ringing', function () { setStatus('Ringing…'); });
+      call.on('disconnect', function () { cleanupCall('Call ended'); });
+      call.on('cancel',     function () { cleanupCall('Call cancelled'); });
+      call.on('error', function (err) {
+        console.error('[Call]', err);
+        showError(err.message || 'Call error');
+        cleanupCall('Call failed');
+      });
+    } catch (e) {
+      console.error('[startCall]', e);
+      if (e && e.name === 'NotAllowedError') {
+        showError('Microphone access was blocked. Allow the microphone for this site (padlock icon in the address bar), then click Call again.');
+      } else {
+        showError(e.message || 'Could not start the call');
+      }
+      cleanupCall('');
+      setStatus('');
+    }
+  }
+
+  elCall.addEventListener('click', startCall);
+  elHangup.addEventListener('click', function () {
+    if (call) call.disconnect();
+    else cleanupCall('');
+  });
+  elMute.addEventListener('click', function () {
+    if (!call) return;
+    muted = !muted;
+    call.mute(muted);
+    elMute.classList.toggle('muted', muted);
+    elMute.title = muted ? 'Unmute' : 'Mute';
+  });
+
+  // Hang up if the window is closed mid-call
+  window.addEventListener('beforeunload', function () {
+    if (call) call.disconnect();
+  });
+
+  // ── Boot ────────────────────────────────────────────────────────────────────
+  if (!KEY || !phone || !agentId) {
+    elName.textContent = 'Missing parameters';
+    setStatus('');
+    showError('This page must be opened from the BTI Voice widget in Zoho CRM.');
+  } else if (typeof Twilio === 'undefined') {
+    showError('Could not load the Twilio calling library. Check your network and reopen this window.');
+    setUI('idle');
+  } else {
+    // Auto-dial on open — the user already clicked Call in the widget.
+    startCall();
+  }
+})();
+</script>
+</body>
+</html>
