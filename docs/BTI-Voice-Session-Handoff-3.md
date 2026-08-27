@@ -379,7 +379,14 @@ Key facts for future Android work:
 
 **Versioning rule for this change: NO version bumps.** Server-only → a git push deploys it via Railway. The version stamps (electron/package.json, iOS pbxproj MARKETING_VERSION/CURRENT_PROJECT_VERSION, Android build.gradle versionName/versionCode, Railway LATEST_VERSION) only move when a new installer/build ships. Root + server/client package.json "1.0.0" are unused/cosmetic.
 
-**Retest after deploy:** with recording on, call in and let it ring through to the all-agents fallback — the disclosure should play exactly once.
+**Retest after deploy:** with recording on, call in and let it ring through to the all-agents fallback — the disclosure should play exactly once. **First live test 2026-08-27: PASSED — single disclosure.**
+
+**Same session, afternoon batch:**
+- **Test suite grew to 19** — added `server/test/phone.test.js` (phoneVariants: E.164 normalization, dedupe invariant, the 9-digit-misdial edge) and `server/test/consent.test.js` (recordConsent: writes complete records, refuses incomplete ones, never throws on DB failure — pool.query stubbed, no real DB needed).
+- **Live Broadcast recording fix confirmed deployed** — `98d9b07` is on origin/main and Railway redeployed today. TODO's "needs deploy" was stale; only the on-phone retest remains.
+- **Dead code deleted:** `client/src/pages/Inbox.jsx`, `client/src/components/Sidebar.jsx`, stray root `App-Audit.html` (grep confirmed zero imports; vite build ✓). `App-Audit-Handoff.md` still at root — Danny to decide keep/archive.
+- **🔑 SANDBOX CHANGE — Claude CAN now delete files.** Cowork has a permission tool (`allow_cowork_file_delete`); once granted for the folder, `rm` works on the FUSE mount — dead files, `.git/*.old` debris, and tmp_obj litter were all cleaned this session. §8k's "mount cannot unlink" is now conditional: ask for delete permission first, fall back to the rename trick only if it's refused. Commits still needed the `GIT_INDEX_FILE=/tmp` + plumbing dance this session (permission was granted after); NEXT session should try a plain `git commit` first — it may just work now.
+- **⚠ Sandbox git trap discovered:** a stale `/tmp/bti.index` from an EARLIER session (owned by another user, cp-over silently failed) produced a commit that would have deleted `client/android/` — caught by checking `git show --stat` before pushing, rolled back via `update-ref`, redone with a fresh index path. **Rule: always `git show --stat` a sandbox-made commit before pushing, and never reuse a /tmp index file you didn't create this session.**
 
 ## 9. Security posture
 **Fixed & live:** Zoho + socket auth, webhook validation (soft), secret hardening, MMS hardening, crash safety, opt-out across all paths, throttles, quiet hours, recording notice, and the client/Electron bugs above.
