@@ -357,6 +357,18 @@ app (`capacitor.config.json` has no `server.url`), so unlike server fixes a Rail
 reach the phone. Bump `CURRENT_PROJECT_VERSION` in the pbxproj **on the laptop, in git** — Apple
 rejects duplicate build numbers, and setting it in the Xcode GUI leaves it stranded on one machine.
 
+## 8n. 2026-08-27 (Danny, laptop) — Android bring-up: signed APK in one session
+
+Followed `docs/BTI-Voice-Android-Setup-Plan.md`; it held up with no surprises. Timeline: Android Studio installed (Quail 3 | 2026.1.3) → `bash build-android.sh` in Git Bash ran end-to-end (created `client/android/`, API URL verified baked into the bundle) → Trust Project → Gradle sync → Build → Generate Signed Bundle/APK → signed release APK.
+
+Key facts for future Android work:
+- **Manifest fix applied:** `RECORD_AUDIO` + `MODIFY_AUDIO_SETTINGS` added to `client/android/app/src/main/AndroidManifest.xml` (Capacitor generates only INTERNET). Capacitor 6's WebChromeClient forwards getUserMedia and prompts at runtime **provided the manifest declares the permission** — no MainActivity changes needed.
+- **Keystore:** `C:\Dev\bti-voice-release.jks`, alias `bti-voice` (password with Danny). `*.jks`/`*.keystore` uncommented in `client/android/.gitignore` so it can never be committed. 🔴 Must be backed up permanently — lost keystore = no more updates to installed apps, ever.
+- **Version stamping lives in `client/android/app/build.gradle`** (`versionName "1.5.0"`, `versionCode 1`). Bump `versionCode` for every new APK — Android rejects installs over an equal/higher code. Same "edit the file, not the GUI" rule as the iOS pbxproj (§8l).
+- Generated project targets **API 34** — fine for direct APK; Google Play (from 31 Aug 2026) needs 36. That bump (or a Capacitor upgrade — separate session!) is a Play-route-only task.
+- APK output: `client\android\app\release\app-release.apk` (~3.5 MB). First build stamped 1.0 internally; rebuilt after the versionName fix.
+- Remaining: on-phone verification checklist (plan doc) — especially both-ways call audio and the runtime mic prompt.
+
 ## 9. Security posture
 **Fixed & live:** Zoho + socket auth, webhook validation (soft), secret hardening, MMS hardening, crash safety, opt-out across all paths, throttles, quiet hours, recording notice, and the client/Electron bugs above.
 **Deferred (need more than a blind edit) — in BTI-Voice-Preprod-Audit.md:**

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">BTI Voice</string>
+    <string name="title_activity_main">BTI Voice</string>
+    <string name="package_name">com.businesstechnologyinsight.btivoice</string>
+    <string name="custom_url_scheme">com.businesstechnologyinsight.btivoice</string>
+</resources>
