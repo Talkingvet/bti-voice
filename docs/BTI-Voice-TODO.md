@@ -5,6 +5,10 @@ Full context for anything here lives in `BTI-Voice-Session-Handoff 3.md` (see §
 
 ## ⚡ WHAT'S NEXT (start a new session here)
 
+**▶ NEXT SESSION (decided 2026-08-25): ANDROID BRING-UP.** Plan is already written: `docs/BTI-Voice-Android-Setup-Plan.md` + `build-android.sh`. Android builds on WINDOWS — no Mac needed. Start with direct-APK distribution for first testers. ⚠ Two standing cautions from the plan: (1) new Google Play submissions must target API 36 from **31 Aug 2026** — affects the Play route only, not direct APK; the fix is a `targetSdkVersion` bump, NOT a Capacitor upgrade in the same session; (2) `RECORD_AUDIO` must be declared AND granted at runtime or calls connect with no audio.
+
+**✅ 2026-08-25: Paul's "can't dial out" fixed — stale tray-resident app.** His desktop app (resident in tray for days) had a stale calling session; dials died instantly client-side, so no call rows appeared. Full app restart (Task Manager; tray → Quit works too) fixed it — calls 173/174 confirmed logged. Lesson recorded as handoff gotcha #12: dial-stops-instantly + no call row + other agents fine = restart the app first.
+
 **🔴 DESKTOP IS STALE — do this first (2026-08-19):** the desktop repo is **2 commits behind origin** (`47f1bd3` iOS keyboard pod, `279022e` client package-lock — both from the Mac). In **Git Bash**:
 ```bash
 cd "/c/Users/Doero/OneDrive/Documents/Claude/Projects/Talkingvet Help/bti-voice"
