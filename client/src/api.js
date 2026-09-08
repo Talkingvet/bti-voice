@@ -82,8 +82,8 @@ export const api = {
   calls:         ()                    => request('/calls'),
   logCall:       (conversation_id, duration, direction) => request('/calls/log', { method: 'POST', body: { conversation_id, duration, direction } }),
   voiceToken:    ()                    => request('/calls/token', { method: 'POST' }),
-  logCallByPhone: (phone, duration, direction, startedAt, callSid) =>
-    request('/calls/log-by-phone', { method: 'POST', body: { phone, duration, direction, started_at: startedAt, call_sid: callSid } }),
+  logCallByPhone: (phone, duration, direction, startedAt, callSid, recordingOptOut = false) =>
+    request('/calls/log-by-phone', { method: 'POST', body: { phone, duration, direction, started_at: startedAt, call_sid: callSid, recording_opt_out: !!recordingOptOut } }),
   ensureConversation: (to_number) => request('/conversations/ensure', { method: 'POST', body: { to_number } }),
   newMessage:    ({ to_number, from_agent_id, body }) =>
     request('/conversations/new-message', { method: 'POST', body: { to_number, from_agent_id, body } }),

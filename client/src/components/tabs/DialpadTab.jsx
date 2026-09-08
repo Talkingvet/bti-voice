@@ -30,6 +30,7 @@ export default function DialpadTab({ agent, device, activeCall, onCallStart, onC
   const CALLBTN = compact ? 52 : 64
   const [status,       setStatus]       = useState('')
   const [callState,    setCallState]    = useState('idle') // idle | connecting | active
+  const [noRecord,     setNoRecord]     = useState(false)  // "Don't record this call" (resets after each call)
   const [quickDials,   setQuickDials]   = useState([])
   const [addingQD,     setAddingQD]     = useState(false)
   const [qdName,       setQdName]       = useState('')
@@ -167,7 +168,13 @@ export default function DialpadTab({ agent, device, activeCall, onCallStart, onC
     const to = digits.length === 10 ? `+1${digits}` : `+${digits}`
 
     try {
-      const call = await device.connect({ params: { To: to } })
+      // Record=false → server omits <Dial record> + the spoken disclosure for
+      // this one call. Flag rides on the call object so App.jsx can log it.
+      const params = { To: to }
+      if (noRecord) params.Record = 'false'
+      const call = await device.connect({ params })
+      call.customNoRecord = noRecord
+      setNoRecord(false) // per-call opt-out, never sticky
 
       call.on('accept', () => {
         setCallState('active')
@@ -319,6 +326,19 @@ export default function DialpadTab({ agent, device, activeCall, onCallStart, onC
         )}
       </div>
 
+      {/* Per-call recording opt-out — only while idle; resets after each call */}
+      {!isActive && (
+        <label style={{ ...S.noRecord, color: noRecord ? '#f59e0b' : C.textMuted }}>
+          <input
+            type="checkbox"
+            checked={noRecord}
+            onChange={e => setNoRecord(e.target.checked)}
+            style={{ margin: 0, accentColor: '#f59e0b' }}
+          />
+          Don't record this call
+        </label>
+      )}
+
       {/* Status */}
       {status && (
         <div style={{ ...S.status, color: callState === 'active' ? '#22c55e' : C.textSec }}>
@@ -435,6 +455,7 @@ const S = {
   callBtnDisabled: { background: '#374151', boxShadow: 'none', cursor: 'not-allowed' },
   hangupBtn:    { width: 64, height: 64, borderRadius: '50%', background: '#ef4444', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(239,68,68,0.4)', transition: 'transform 0.1s' },
   status:       { fontSize: 12, textAlign: 'center', padding: '0 20px 4px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  noRecord:     { fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '0 20px 6px', cursor: 'pointer', userSelect: 'none' },
   activeDot:    { width: 7, height: 7, borderRadius: '50%', background: '#22c55e', display: 'inline-block' },
   hint:         { fontSize: 10, textAlign: 'center', padding: '0 20px 6px', opacity: 0.5 },
   quickSection: { width: '100%', padding: '12px 20px 0', marginTop: 4 },

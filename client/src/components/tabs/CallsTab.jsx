@@ -483,6 +483,11 @@ function CallDetailBody({ call, onDial, onMessage, C }) {
               >💬 Message</button>
             </div>
           )}
+          {call.recording_opt_out && !call.recording_url && (
+            <div style={{ fontSize: 11, color: C.textMuted, fontStyle: 'italic' }}>
+              🔇 Not recorded — agent opted out for this call
+            </div>
+          )}
           {call.recording_url && (
             <div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>

@@ -14,7 +14,7 @@ router.get('/', requireAuth, async (req, res) => {
       SELECT
         ca.id, ca.direction, ca.duration, ca.status,
         ca.started_at, ca.ended_at,
-        ca.recording_url, ca.transcription, ca.ai_summary,
+        ca.recording_url, ca.transcription, ca.ai_summary, ca.recording_opt_out,
         ca.needs_wrap_up, ca.chosen_zoho_contact_id, ca.chosen_zoho_module,
         ca.disposition, ca.wrap_up_completed_at,
         a.name     AS agent_name,
@@ -92,6 +92,9 @@ router.post('/token', requireAuth, async (req, res) => {
 // Called from frontend after a call ends (outbound or inbound answered)
 router.post('/log-by-phone', requireAuth, async (req, res) => {
   const { phone, duration = 0, direction = 'outbound', status = 'completed', started_at, call_sid } = req.body;
+  // Dialpad "Don't record this call" toggle — stored so the Calls tab can say
+  // "not recorded" instead of looking like a missing recording.
+  const optOut = req.body.recording_opt_out === true;
   if (!phone) return res.status(400).json({ error: 'phone required' });
 
   try {
@@ -104,8 +107,8 @@ router.post('/log-by-phone', requireAuth, async (req, res) => {
       );
       if (existing) {
         // Update with agent_id since the webhook doesn't know the agent
-        await pool.query('UPDATE calls SET agent_id = $1 WHERE id = $2', [req.agent.id, existing.id]);
-        return res.json(existing);
+        await pool.query('UPDATE calls SET agent_id = $1, recording_opt_out = $3 WHERE id = $2', [req.agent.id, existing.id, optOut]);
+        return res.json({ ...existing, recording_opt_out: optOut });
       }
     }
 
@@ -133,7 +136,7 @@ router.post('/log-by-phone', requireAuth, async (req, res) => {
     `, [direction, [e164, phone, tenDigit], twoMinsAgo]);
     if (webhookRecord) {
       // Webhook already logged this — stamp agent_id and return existing record
-      await pool.query('UPDATE calls SET agent_id = $1 WHERE id = $2', [req.agent.id, webhookRecord.id]);
+      await pool.query('UPDATE calls SET agent_id = $1, recording_opt_out = $3 WHERE id = $2', [req.agent.id, webhookRecord.id, optOut]);
       console.log(`[log-by-phone] Matched webhook-logged call for ${phone} — skipping duplicate`);
       const { rows: [updated] } = await pool.query('SELECT * FROM calls WHERE id = $1', [webhookRecord.id]);
       return res.json(updated);
@@ -171,10 +174,10 @@ router.post('/log-by-phone', requireAuth, async (req, res) => {
     // Log the call
     const startedAt = started_at ? new Date(started_at).toISOString() : new Date(Date.now() - duration * 1000).toISOString();
     const { rows: [call] } = await pool.query(`
-      INSERT INTO calls (conversation_id, agent_id, direction, duration, status, twilio_call_sid, started_at, ended_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+      INSERT INTO calls (conversation_id, agent_id, direction, duration, status, twilio_call_sid, started_at, ended_at, recording_opt_out)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), $8)
       RETURNING *
-    `, [conv.id, req.agent.id, direction, duration, status, call_sid || null, startedAt]);
+    `, [conv.id, req.agent.id, direction, duration, status, call_sid || null, startedAt, optOut]);
 
     // Sync to Zoho
     syncCallToZoho(call.id);

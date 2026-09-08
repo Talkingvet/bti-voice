@@ -115,6 +115,8 @@ async function migrate() {
     ALTER TABLE calls ADD COLUMN IF NOT EXISTS transcription   TEXT;
     ALTER TABLE calls ADD COLUMN IF NOT EXISTS ai_summary      TEXT;
     ALTER TABLE calls ADD COLUMN IF NOT EXISTS recording_sid   VARCHAR(50);
+    -- Agent chose "Don't record this call" on the Dialpad (per-call opt-out)
+    ALTER TABLE calls ADD COLUMN IF NOT EXISTS recording_opt_out BOOLEAN DEFAULT false;
   `);
 
   // Unread badge tracking

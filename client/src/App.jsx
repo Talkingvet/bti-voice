@@ -476,6 +476,8 @@ function AppInner() {
     // can null it out via state updates.
     const startTs  = callStartRef.current
     const duration = startTs ? Math.round((Date.now() - startTs) / 1000) : 0
+    // Dialpad "Don't record this call" flag — read before activeCallRef is cleared
+    const noRecord = !!(activeCallRef.current && activeCallRef.current.customNoRecord)
 
     stopRingtone()
     playDisconnected()
@@ -490,7 +492,8 @@ function AppInner() {
       const callRecord = await api.logCallByPhone(
         phone, duration, direction,
         new Date(Date.now() - duration * 1000).toISOString(),
-        callSid
+        callSid,
+        noRecord
       )
 
       // v1.4.0 trigger: open the post-call wrap-up screen for connected calls >= 15s.

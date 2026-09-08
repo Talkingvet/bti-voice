@@ -145,10 +145,20 @@ router.post('/outbound', async (req, res) => {
   }
 
   if (To) {
-    maybeRecordingNotice(twiml, req.body.CallSid);
-    const dial = twiml.dial({ callerId, ...recordingOpts() });
+    // Per-call recording opt-out: the Dialpad's "Don't record this call" toggle
+    // sends Record=false as a custom Device.connect() param. When set we omit
+    // BOTH the <Dial record> attribute and the spoken disclosure — Twilio only
+    // records what the TwiML asks for, so nothing is captured. Any other value
+    // (or absent) keeps the ENABLE_RECORDING default.
+    const optOut = String(req.body.Record || '').toLowerCase() === 'false';
+    if (optOut) {
+      console.log(`[outbound] recording opt-out for CallSid=${req.body.CallSid}`);
+    } else {
+      maybeRecordingNotice(twiml, req.body.CallSid);
+    }
+    const dial = twiml.dial({ callerId, ...(optOut ? {} : recordingOpts()) });
     dial.number(To);
-    console.log(`[outbound] TwiML: dial ${To} from ${callerId}`);
+    console.log(`[outbound] TwiML: dial ${To} from ${callerId}${optOut ? ' (not recorded)' : ''}`);
   } else {
     console.error('[outbound] ⚠️  No To parameter received — check TwiML App Voice Request URL');
     twiml.say('No destination number provided.');
