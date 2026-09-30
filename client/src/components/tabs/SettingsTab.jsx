@@ -26,13 +26,25 @@ const TABS = [
   { id: 'about',      label: 'About',       icon: 'ℹ️'  },
 ]
 
+// One-line descriptions for the phone settings list
+const MOBILE_SUBS = {
+  profile:    'Your name, number & password',
+  audio:      'Ringtones & notification sounds',
+  appearance: 'Theme & font',
+  calls:      'IVR, routing, auto-texts & compliance',
+  about:      'Zoho, version & report a problem',
+}
+
 export default function SettingsTab({ agent, onLogout }) {
   const C = useColors()
   const [activeTab, setActiveTab] = useState('profile')
+  // Phones only: null = top-level section list, otherwise the open section
+  const [mobileSection, setMobileSection] = useState(null)
 
   return (
     <div style={{ ...S.page, background: C.bg }}>
-      {/* Tab strip */}
+      {/* Tab strip (desktop only) */}
+      {!IS_TOUCH && (
       <div style={{ ...S.tabStrip, borderBottom: `1px solid ${C.border}`, background: C.panel }}>
         {TABS.map(tab => {
           const active = tab.id === activeTab
@@ -53,8 +65,40 @@ export default function SettingsTab({ agent, onLogout }) {
           )
         })}
       </div>
+      )}
+
+      {/* Phone: top-level settings list (Pixel Messages style) */}
+      {IS_TOUCH && mobileSection === null && (
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+          {TABS.map(tab => (
+            <button
+              key={tab.id}
+              style={{ ...S.mRow, borderBottom: `1px solid ${C.borderSoft}` }}
+              onClick={() => { setActiveTab(tab.id); setMobileSection(tab.id) }}
+            >
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ ...S.mRowLabel, color: C.text }}>{tab.label}</div>
+                <div style={{ ...S.mRowSub, color: C.textMuted }}>{MOBILE_SUBS[tab.id]}</div>
+              </div>
+              <span style={{ color: C.textMuted, fontSize: 20, lineHeight: 1 }}>&#8250;</span>
+            </button>
+          ))}
+          <button style={{ ...S.mRow, borderBottom: 'none' }} onClick={onLogout}>
+            <div style={{ ...S.mRowLabel, color: '#ef4444', flex: 1 }}>Sign out</div>
+          </button>
+        </div>
+      )}
+
+      {/* Phone: open-section header with back arrow */}
+      {IS_TOUCH && mobileSection !== null && (
+        <div style={{ ...S.mHeader, background: C.panel, borderBottom: `1px solid ${C.border}` }}>
+          <button style={{ ...S.mBack, color: C.text }} onClick={() => setMobileSection(null)} aria-label="Back">&#8592;</button>
+          <div style={{ ...S.mHeaderTitle, color: C.text }}>{TABS.find(t => t.id === mobileSection)?.label}</div>
+        </div>
+      )}
 
       {/* Tab content */}
+      {(!IS_TOUCH || mobileSection !== null) && (
       <div style={S.scroll}>
         {activeTab === 'profile' && (
           <>
@@ -93,6 +137,7 @@ export default function SettingsTab({ agent, onLogout }) {
           </>
         )}
       </div>
+      )}
     </div>
   )
 }
@@ -1904,5 +1949,11 @@ const S = {
   logoutBtn: { width: '100%', padding: '10px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: 'center' },
 
   tabStrip: { display: 'flex', flexShrink: 0 },
+  mRow:        { display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '15px 16px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' },
+  mRowLabel:   { fontSize: 15, fontWeight: 600 },
+  mRowSub:     { fontSize: 11.5, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  mHeader:     { display: 'flex', alignItems: 'center', gap: 4, padding: '6px 8px', flexShrink: 0 },
+  mBack:       { background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, padding: '8px 12px', lineHeight: 1 },
+  mHeaderTitle:{ fontSize: 16, fontWeight: 700 },
   tabBtn:   { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '8px 4px 6px', border: 'none', cursor: 'pointer', transition: 'color 0.15s' },
 }

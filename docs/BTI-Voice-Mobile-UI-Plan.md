@@ -39,6 +39,16 @@ Google Voice). Hard rule: **no screen may need scrolling or swiping to be fully 
 Any `position: fixed` element or raw `100vw/100vh` must divide by `var(--ui-scale, 1)`
 or it overflows. Fixed-size elements must fit 349px width.
 
+## Phase 1b — DONE 2026-09-30 (same day, after Paul's web test)
+
+- `SettingsTab.jsx`: full two-level phone navigation — top level is a Pixel
+  Messages-style list (Profile / Audio / Appearance / Calls / About, each with a
+  one-line description, plus a red Sign out row); tapping opens the section
+  full-screen with a back-arrow header. Desktop keeps the tab strip, unchanged.
+- `ChatPanel.jsx`: compose placeholder is just "Text message" on phones — the
+  desktop placeholder ("Message… ( / = templates)") wrapped to a second line that
+  the one-row box clipped, which looked broken.
+
 ## Phase 2 — backlog, in rough priority
 
 1. [ ] **Per-component typography pass** to replace the zoom hack: real type scale
@@ -46,8 +56,8 @@ or it overflows. Fixed-size elements must fit 349px width.
    This is the documented "eventual right answer" from the TODO.
 2. [ ] **TitleBar on mobile**: fold brand out, keep one slim row (presence + bell)
    or move both into per-tab headers — reclaims ~40px on every screen.
-3. [ ] **Settings as stacked full-width rows** (Pixel Messages style) instead of
-   top tabs; each section becomes a push-in page with a back arrow.
+3. [x] ~~Settings as stacked full-width rows~~ — done in Phase 1b. Remaining
+   polish: the section CONTENT (cards, inputs) is still desktop-dense.
 4. [ ] **Calls/Contacts/SMS list rows**: bigger avatars, 2-line rows, full-bleed
    (Google Messages style), swipe actions optional.
 5. [ ] **Wrap-up sheet content**: chips are compact; check tap targets ≥44pt.

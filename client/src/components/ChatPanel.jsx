@@ -1,5 +1,6 @@
 /* Chat thread panel — compact Zoho-style, with Notes tab + Canned Responses */
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { IS_TOUCH } from '../utils/touch'
 import { api } from '../api'
 import { displayName } from '../utils/phone'
 import { useColors } from '../useColors'
@@ -608,7 +609,7 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
               <textarea
                 ref={textareaRef}
                 style={{ ...styles.textarea, background: C.inputBg, border: `1px solid ${C.inputBorder}`, color: C.text }}
-                placeholder={narrow ? "Message… ( / = templates)" : "Enter a message — type / for quick replies"}
+                placeholder={IS_TOUCH ? "Text message" : narrow ? "Message… ( / = templates)" : "Enter a message — type / for quick replies"}
                 value={body}
                 onChange={handleBodyChange}
                 onKeyDown={handleKeyDown}
