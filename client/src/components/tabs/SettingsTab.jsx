@@ -1,4 +1,5 @@
 /* Settings tab — single scrollable page, sections grouped */
+import { IS_TOUCH } from '../../utils/touch'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { BRAND } from '../../brand'
 import { useTheme }    from '../../ThemeContext'
@@ -46,8 +47,8 @@ export default function SettingsTab({ agent, onLogout }) {
                 background:       'none',
               }}
             >
-              <span style={{ fontSize: 13 }}>{tab.icon}</span>
-              <span style={{ fontSize: 10, fontWeight: active ? 700 : 500, marginTop: 1 }}>{tab.label}</span>
+              {!IS_TOUCH && <span style={{ fontSize: 13 }}>{tab.icon}</span>}
+              <span style={{ fontSize: IS_TOUCH ? 12 : 10, fontWeight: active ? 700 : 500, marginTop: 1, padding: IS_TOUCH ? '4px 0' : 0 }}>{tab.label}</span>
             </button>
           )
         })}
@@ -134,15 +135,17 @@ function FieldRow({ label, value, hint, colorValue, C, last }) {
   return (
     <div style={{ ...S.row, borderBottom: last ? 'none' : `1px solid ${C.borderSoft}` }}>
       <div style={{ ...S.rowDesc, color: C.textMuted, width: 110, flexShrink: 0 }}>{label}</div>
-      {colorValue ? (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ width: 14, height: 14, borderRadius: 3, background: colorValue }} />
-          <span style={{ ...S.rowLabel, color: C.text }}>{value}</span>
-        </div>
-      ) : (
-        <div style={{ ...S.rowLabel, color: C.text }}>{value}</div>
-      )}
-      {hint && <div style={{ ...S.rowDesc, color: C.textMuted, marginTop: 2 }}>{hint}</div>}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        {colorValue ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ width: 14, height: 14, borderRadius: 3, background: colorValue }} />
+            <span style={{ ...S.rowLabel, color: C.text }}>{value}</span>
+          </div>
+        ) : (
+          <div style={{ ...S.rowLabel, color: C.text }}>{value}</div>
+        )}
+        {hint && <div style={{ ...S.rowDesc, color: C.textMuted, marginTop: 2, fontSize: 10 }}>{hint}</div>}
+      </div>
     </div>
   )
 }

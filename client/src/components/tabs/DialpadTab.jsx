@@ -17,6 +17,7 @@ const KEYS = [
 export default function DialpadTab({ agent, device, activeCall, onCallStart, onCallEnd, autoDial, onAutoDialConsumed }) {
   const C = useColors()
   const { toast } = useToast()
+  const MOBILE = IS_TOUCH  // phone layout: bottom-anchored keypad, no scrolling
   const [number,       setNumber]       = useState('')
   // Compact mode: shrink the keypad so the call button never clips at small
   // window sizes (min window is 330x560; full-size keypad needs ~660px height)
@@ -220,11 +221,11 @@ export default function DialpadTab({ agent, device, activeCall, onCallStart, onC
   const isActive  = callState === 'active' || callState === 'connecting'
 
   return (
-    <div style={{ ...S.page, background: C.bg }}>
+    <div style={{ ...S.page, ...(MOBILE ? { overflowY: 'hidden', paddingBottom: 8 } : {}), background: C.bg }}>
 
       {/* Header */}
-      <div style={{ ...S.header, background: C.panel, borderBottom: `1px solid ${C.border}` }}>
-        <div style={{ ...S.headerTitle, color: C.text }}>Dialpad</div>
+      <div style={{ ...S.header, ...(MOBILE ? { padding: '10px 16px 8px' } : {}), background: C.panel, borderBottom: `1px solid ${C.border}` }}>
+        {!MOBILE && <div style={{ ...S.headerTitle, color: C.text }}>Dialpad</div>}
         <div style={{ ...S.headerSub, color: C.textSec }}>
           Calling from
           <span style={{ ...S.fromBadge, background: agent.color || '#3b82f6' }}>{agent.name}</span>
@@ -233,6 +234,8 @@ export default function DialpadTab({ agent, device, activeCall, onCallStart, onC
           )}
         </div>
       </div>
+
+      {MOBILE && <div style={{ flex: 1, minHeight: 8 }} />}
 
       {/* Number display — clicking anywhere on it focuses the hidden input */}
       <div
@@ -298,11 +301,13 @@ export default function DialpadTab({ agent, device, activeCall, onCallStart, onC
       </div>
 
       {/* Keypad */}
-      <div style={{ ...S.keypad, gridTemplateColumns: `repeat(3, ${KEY}px)`, gap: compact ? 7 : 10, padding: compact ? '4px 0 10px' : '8px 0 16px' }}>
+      <div style={MOBILE
+        ? { ...S.keypad, gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, width: '100%', maxWidth: 340, boxSizing: 'border-box', padding: '8px 24px 12px' }
+        : { ...S.keypad, gridTemplateColumns: `repeat(3, ${KEY}px)`, gap: compact ? 7 : 10, padding: compact ? '4px 0 10px' : '8px 0 16px' }}>
         {KEYS.map(([digit, letters]) => (
           <button
             key={digit}
-            style={{ ...S.key, width: KEY, height: KEY, background: C.panel, boxShadow: `0 1px 4px rgba(0,0,0,0.15)` }}
+            style={{ ...S.key, ...(MOBILE ? { width: '100%', height: 58, borderRadius: 29 } : { width: KEY, height: KEY }), background: C.panel, boxShadow: `0 1px 4px rgba(0,0,0,0.15)` }}
             onClick={() => pressDigit(digit)}
           >
             <span style={{ ...S.keyDigit, color: C.text }}>{digit}</span>
@@ -314,14 +319,14 @@ export default function DialpadTab({ agent, device, activeCall, onCallStart, onC
       {/* Call / Hangup button */}
       <div style={S.callRow}>
         {isActive ? (
-          <button style={{ ...S.hangupBtn, width: CALLBTN, height: CALLBTN }} onClick={hangUp}><HangupIcon /></button>
+          <button style={{ ...S.hangupBtn, ...(MOBILE ? S.pillBtn : { width: CALLBTN, height: CALLBTN }) }} onClick={hangUp}><HangupIcon />{MOBILE && <span style={S.pillLabel}>End</span>}</button>
         ) : (
           <button
-            style={{ ...S.callBtn, width: CALLBTN, height: CALLBTN, ...(!number || !device ? S.callBtnDisabled : {}) }}
+            style={{ ...S.callBtn, ...(MOBILE ? S.pillBtn : { width: CALLBTN, height: CALLBTN }), ...(!number || !device ? S.callBtnDisabled : {}) }}
             onClick={startCall}
             disabled={!number || !device}
           >
-            <PhoneIcon />
+            <PhoneIcon />{MOBILE && <span style={S.pillLabel}>Call</span>}
           </button>
         )}
       </div>
@@ -348,13 +353,14 @@ export default function DialpadTab({ agent, device, activeCall, onCallStart, onC
       )}
 
       {/* Keyboard hint */}
-      {!isActive && !number && (
+      {!isActive && !number && !MOBILE && (
         <div style={{ ...S.hint, color: C.textMuted }}>
           You can also type numbers on your keyboard
         </div>
       )}
 
-      {/* Quick dial */}
+      {/* Quick dial — desktop only: on phones it forced the dialer to scroll */}
+      {!MOBILE && (
       <div style={{ ...S.quickSection, borderTop: `1px solid ${C.border}` }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
           <div style={{ ...S.quickTitle, color: C.textMuted }}>Quick Dial</div>
@@ -401,6 +407,7 @@ export default function DialpadTab({ agent, device, activeCall, onCallStart, onC
           </div>
         ))}
       </div>
+      )}
     </div>
   )
 }
@@ -451,6 +458,8 @@ const S = {
   keyDigit:     { fontSize: 22, fontWeight: 400, lineHeight: 1 },
   keyLetters:   { fontSize: 8, fontWeight: 700, letterSpacing: 1.5 },
   callRow:      { display: 'flex', justifyContent: 'center', margin: '4px 0 8px' },
+  pillBtn:      { width: 150, height: 52, borderRadius: 26, gap: 8 },
+  pillLabel:    { color: 'white', fontSize: 16, fontWeight: 600 },
   callBtn:      { width: 64, height: 64, borderRadius: '50%', background: '#22c55e', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(34,197,94,0.4)', transition: 'transform 0.1s' },
   callBtnDisabled: { background: '#374151', boxShadow: 'none', cursor: 'not-allowed' },
   hangupBtn:    { width: 64, height: 64, borderRadius: '50%', background: '#ef4444', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(239,68,68,0.4)', transition: 'transform 0.1s' },

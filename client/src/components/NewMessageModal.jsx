@@ -1,3 +1,4 @@
+import { IS_TOUCH } from '../utils/touch'
 import { useState, useEffect, useRef } from 'react'
 import { api } from '../api'
 import { useColors } from '../useColors'
@@ -147,7 +148,7 @@ export default function NewMessageModal({ currentAgent, onClose, onSent }) {
       <div style={S.backdrop} onClick={onClose} />
 
       {/* Modal card */}
-      <div style={{ ...S.modal, background: C.panel, border: `1px solid ${C.border}` }}>
+      <div style={{ ...S.modal, ...(IS_TOUCH ? S.modalMobile : {}), background: C.panel, border: `1px solid ${C.border}` }}>
         {/* Header */}
         <div style={{ ...S.header, borderBottom: `1px solid ${C.border}` }}>
           <div style={{ ...S.headerTitle, color: C.text }}>
@@ -394,6 +395,12 @@ const S = {
     boxShadow: '0 20px 60px rgba(0,0,0,0.4)',
     overflow: 'hidden',
     display: 'flex', flexDirection: 'column',
+  },
+  modalMobile: {
+    left: 0, right: 0, bottom: 0,
+    width: 'auto', maxWidth: 'none',
+    borderRadius: '16px 16px 0 0',
+    maxHeight: 'calc(100vh / var(--ui-scale, 1) - 56px)',
   },
   header: {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
