@@ -1,5 +1,6 @@
 /* Contacts tab — create, edit, view contacts with Zoho name sync */
 import { useState, useEffect } from 'react'
+import { IS_TOUCH as T } from '../../utils/touch'
 import { api } from '../../api'
 import { useColors } from '../../useColors'
 import { useToast } from '../Toast'
@@ -601,25 +602,25 @@ function PlusIcon() {
 const S = {
   page:       { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 },
   searchBar:  { padding: '8px 10px', flexShrink: 0, display: 'flex', gap: 8, alignItems: 'center' },
-  searchWrap: { flex: 1, display: 'flex', alignItems: 'center', gap: 7, borderRadius: 8, padding: '6px 10px' },
-  searchInput:{ border: 'none', outline: 'none', fontSize: 13, background: 'transparent', flex: 1 },
+  searchWrap: { flex: 1, display: 'flex', alignItems: 'center', gap: 7, borderRadius: T ? 20 : 8, padding: T ? '9px 14px' : '6px 10px' },
+  searchInput:{ border: 'none', outline: 'none', fontSize: T ? 14 : 13, background: 'transparent', flex: 1 },
   clearBtn:   { border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 16, color: '#8b96ab', padding: 0 },
-  newBtn:     { width: 32, height: 32, borderRadius: 8, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  newBtn:     { width: T ? 40 : 32, height: T ? 40 : 32, borderRadius: T ? 20 : 8, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   list:       { flex: 1, overflowY: 'auto', minHeight: 0, paddingBottom: 76 },
   empty:      { padding: '24px 16px', textAlign: 'center', fontSize: 12, lineHeight: 1.5 },
   item: {
     display: 'flex', alignItems: 'center',
-    padding: '10px 12px', gap: 10, cursor: 'pointer',
+    padding: T ? '12px 16px' : '10px 12px', gap: T ? 12 : 10, cursor: 'pointer',
     transition: 'background 0.1s',
   },
   avatar: {
-    width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
+    width: T ? 42 : 36, height: T ? 42 : 36, borderRadius: '50%', flexShrink: 0,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
-    fontSize: 12, fontWeight: 700, color: 'white',
+    fontSize: T ? 14 : 12, fontWeight: 700, color: 'white',
   },
   itemInfo:  { flex: 1, minWidth: 0 },
-  itemName:  { fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  itemPhone: { fontSize: 11, marginTop: 1 },
+  itemName:  { fontSize: T ? 14.5 : 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  itemPhone: { fontSize: T ? 12 : 11, marginTop: 1 },
   footer:    { padding: '7px 14px', fontSize: 11, flexShrink: 0 },
 }
 const D = {
@@ -633,10 +634,10 @@ const D = {
   heroName:  { fontSize: 17, fontWeight: 700 },
   heroPhone: { fontSize: 12, marginTop: 1 },
   section:   { overflowY: 'auto' },
-  row: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '11px 16px' },
-  label: { fontSize: 12, fontWeight: 500 },
-  value: { fontSize: 12, fontWeight: 500, textAlign: 'right' },
-  zohoBtn: { width: '100%', padding: '9px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 600, textAlign: 'center' },
+  row: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: T ? '13px 16px' : '11px 16px' },
+  label: { fontSize: T ? 13.5 : 12, fontWeight: 500 },
+  value: { fontSize: T ? 13.5 : 12, fontWeight: 500, textAlign: 'right' },
+  zohoBtn: { width: '100%', padding: T ? '12px' : '9px 12px', borderRadius: 8, cursor: 'pointer', fontSize: T ? 13.5 : 12, fontWeight: 600, textAlign: 'center' },
   syncMsg:   { fontSize: 11, textAlign: 'center', lineHeight: 1.4 },
 }
 const F = {

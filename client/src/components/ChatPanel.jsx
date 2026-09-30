@@ -412,7 +412,7 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
             <button
               style={{ ...styles.tabBtn, ...(activeTab === 'messages' ? { ...styles.tabBtnActive, background: C.panel } : { color: C.textMuted }) }}
               onClick={() => setActiveTab('messages')}
-            >Messages</button>
+            >{IS_TOUCH ? 'Chat' : 'Messages'}</button>
             <button
               style={{ ...styles.tabBtn, ...(activeTab === 'notes' ? { ...styles.tabBtnActive, background: C.panel } : { color: C.textMuted }), position: 'relative' }}
               onClick={() => setActiveTab('notes')}
@@ -1152,13 +1152,13 @@ const styles = {
   header:  { padding: '10px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 },
   headerLeft: { display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 },
   headerMid:  { flex: 1, minWidth: 0 },
-  headerName: { fontSize: 14, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  headerSub:  { fontSize: 11, marginTop: 1, display: 'flex', alignItems: 'center', overflow: 'hidden', whiteSpace: 'nowrap' },
+  headerName: { fontSize: IS_TOUCH ? 15 : 14, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  headerSub:  { fontSize: IS_TOUCH ? 12 : 11, marginTop: 1, display: 'flex', alignItems: 'center', overflow: 'hidden', whiteSpace: 'nowrap' },
   agentDot:   { display: 'inline-block', width: 7, height: 7, borderRadius: '50%', marginLeft: 3 },
   iconBtn: { display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, border: 'none', background: 'transparent', cursor: 'pointer', borderRadius: 8, flexShrink: 0 },
 
   tabToggle: { display: 'flex', borderRadius: 8, padding: 2, gap: 2 },
-  tabBtn: { fontSize: 11, fontWeight: 600, border: 'none', background: 'transparent', cursor: 'pointer', padding: '4px 10px', borderRadius: 6, transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 4 },
+  tabBtn: { fontSize: IS_TOUCH ? 12.5 : 11, fontWeight: 600, border: 'none', background: 'transparent', cursor: 'pointer', padding: IS_TOUCH ? '7px 10px' : '4px 10px', borderRadius: 6, transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 4 },
   tabBtnActive: { color: '#4f9cf9' },
   noteBadge: { background: '#f59e0b', color: 'white', fontSize: 9, fontWeight: 700, borderRadius: 8, padding: '1px 5px', marginLeft: 2 },
 

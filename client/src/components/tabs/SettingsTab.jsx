@@ -18,6 +18,9 @@ const FONTS = [
   { key: 'Outfit',            label: 'Outfit',        sample: 'Aa' },
 ]
 
+// Touch = phone layout: roomier rows, larger type, 44pt-ish targets
+const T = IS_TOUCH
+
 const TABS = [
   { id: 'profile',    label: 'Profile',     icon: '👤' },
   { id: 'audio',      label: 'Audio',       icon: '🔊' },
@@ -170,7 +173,7 @@ function ToggleRow({ label, desc, value, onChange, C, last }) {
         style={{ ...S.toggle, background: value ? '#4f9cf9' : C.surface }}
         onClick={() => onChange(!value)}
       >
-        <div style={{ ...S.toggleThumb, left: value ? 21 : 3 }} />
+        <div style={{ ...S.toggleThumb, left: value ? (T ? 23 : 21) : 3 }} />
       </button>
     </div>
   )
@@ -1924,29 +1927,29 @@ const S = {
   page:   { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' },
   scroll: { flex: 1, overflowY: 'auto', padding: '8px 0' },
   section: { padding: '0 12px 4px' },
-  sectionHeader: { fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.7, padding: '12px 4px 6px' },
+  sectionHeader: { fontSize: T ? 11.5 : 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.7, padding: T ? '14px 6px 8px' : '12px 4px 6px' },
   card:   { borderRadius: 10, marginBottom: 10, overflow: 'hidden' },
-  cardTitle: { padding: '8px 14px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.6 },
+  cardTitle: { padding: T ? '10px 16px' : '8px 14px', fontSize: T ? 11 : 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.6 },
 
-  row:    { display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px' },
-  rowLabel: { fontSize: 13, fontWeight: 500 },
-  rowDesc:  { fontSize: 11, marginTop: 1 },
+  row:    { display: 'flex', alignItems: 'center', gap: 10, padding: T ? '13px 16px' : '10px 14px' },
+  rowLabel: { fontSize: T ? 14.5 : 13, fontWeight: 500 },
+  rowDesc:  { fontSize: T ? 12 : 11, marginTop: 1 },
 
-  avatarRow: { display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px' },
+  avatarRow: { display: 'flex', alignItems: 'center', gap: 12, padding: T ? '14px 16px' : '12px 14px' },
   avatar:    { width: 40, height: 40, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, color: 'white', flexShrink: 0 },
 
   badge: { display: 'flex', alignItems: 'center', gap: 4, borderRadius: 10, padding: '2px 7px', fontSize: 10, fontWeight: 600 },
 
-  toggle:      { width: 38, height: 21, borderRadius: 11, border: 'none', cursor: 'pointer', position: 'relative', flexShrink: 0, transition: 'background 0.2s' },
-  toggleThumb: { position: 'absolute', top: 3, width: 15, height: 15, borderRadius: '50%', background: 'white', transition: 'left 0.18s', boxShadow: '0 1px 3px rgba(0,0,0,0.25)' },
+  toggle:      { width: T ? 46 : 38, height: T ? 26 : 21, borderRadius: 13, border: 'none', cursor: 'pointer', position: 'relative', flexShrink: 0, transition: 'background 0.2s' },
+  toggleThumb: { position: 'absolute', top: 3, width: T ? 20 : 15, height: T ? 20 : 15, borderRadius: '50%', background: 'white', transition: 'left 0.18s', boxShadow: '0 1px 3px rgba(0,0,0,0.25)' },
 
-  input: { padding: '6px 10px', borderRadius: 6, fontSize: 13, outline: 'none', boxSizing: 'border-box' },
-  primaryBtn: { padding: '6px 14px', background: '#4f9cf9', color: 'white', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer' },
+  input: { padding: T ? '10px 12px' : '6px 10px', borderRadius: T ? 8 : 6, fontSize: T ? 14 : 13, outline: 'none', boxSizing: 'border-box' },
+  primaryBtn: { padding: T ? '10px 18px' : '6px 14px', background: '#4f9cf9', color: 'white', border: 'none', borderRadius: T ? 9 : 7, fontSize: T ? 13.5 : 12, fontWeight: 600, cursor: 'pointer' },
 
   aboutHero: { display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px 16px 18px', gap: 2 },
   aboutLogo: { width: 48, height: 48, borderRadius: 12, background: 'linear-gradient(135deg,#1d4ed8,#4f9cf9)', color: 'white', fontWeight: 900, fontSize: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
 
-  logoutBtn: { width: '100%', padding: '10px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: 'center' },
+  logoutBtn: { width: '100%', padding: T ? '13px' : '10px', borderRadius: 8, fontSize: T ? 14.5 : 13, fontWeight: 600, cursor: 'pointer', textAlign: 'center' },
 
   tabStrip: { display: 'flex', flexShrink: 0 },
   mRow:        { display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '15px 16px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' },

@@ -1,5 +1,6 @@
 /* Conversation list — full-width single-pane, Zoho-style compact */
 import { useState, useRef, useEffect } from 'react'
+import { IS_TOUCH as T } from '../utils/touch'
 import { useColors } from '../useColors'
 import { displayName, contactInitials } from '../utils/phone'
 
@@ -272,16 +273,16 @@ const S = {
   },
   filterRow: {
     display: 'flex', gap: 6,
-    padding: '8px 10px',
+    padding: T ? '8px 12px' : '8px 10px',
     flexShrink: 0,
   },
   searchWrap: {
     flex: 1, display: 'flex', alignItems: 'center',
-    gap: 6, borderRadius: 7, padding: '5px 9px',
+    gap: 6, borderRadius: T ? 20 : 7, padding: T ? '9px 14px' : '5px 9px',
   },
   searchInput: {
     border: 'none', outline: 'none',
-    fontSize: 12, background: 'transparent',
+    fontSize: T ? 14 : 12, background: 'transparent',
     flex: 1, minWidth: 0,
   },
   clearBtn: {
@@ -294,7 +295,7 @@ const S = {
 
   item: {
     position: 'relative',
-    padding: '10px 12px 10px 12px',
+    padding: T ? '13px 14px' : '10px 12px 10px 12px',
     cursor: 'pointer',
     display: 'flex', alignItems: 'flex-start', gap: 10,
     transition: 'background 0.1s, border-left 0.1s',
@@ -306,10 +307,10 @@ const S = {
     borderRadius: '0 2px 2px 0',
   },
   avatar: {
-    width: 36, height: 36, borderRadius: '50%',
+    width: T ? 44 : 36, height: T ? 44 : 36, borderRadius: '50%',
     flexShrink: 0,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
-    fontSize: 12, fontWeight: 700, color: 'white',
+    fontSize: T ? 15 : 12, fontWeight: 700, color: 'white',
     marginTop: 1,
   },
   itemBody: { flex: 1, minWidth: 0 },
@@ -318,13 +319,13 @@ const S = {
     alignItems: 'baseline', marginBottom: 2,
   },
   name: {
-    fontSize: 13, fontWeight: 600,
+    fontSize: T ? 14.5 : 13, fontWeight: 600,
     overflow: 'hidden', textOverflow: 'ellipsis',
     whiteSpace: 'nowrap', flex: 1,
   },
-  time: { fontSize: 10, flexShrink: 0, marginLeft: 6 },
+  time: { fontSize: T ? 11.5 : 10, flexShrink: 0, marginLeft: 6 },
   preview: {
-    fontSize: 11.5,
+    fontSize: T ? 12.5 : 11.5,
     overflow: 'hidden', textOverflow: 'ellipsis',
     whiteSpace: 'nowrap', marginBottom: 4,
   },

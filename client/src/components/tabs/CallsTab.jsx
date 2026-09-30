@@ -1,5 +1,6 @@
 /* Calls tab — Logs + Voicemails sub-tabs, date-grouped, Zoho-style compact */
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { IS_TOUCH as T } from '../../utils/touch'
 import { api } from '../../api'
 import { useColors } from '../../useColors'
 import { getSocket } from '../../socket'
@@ -611,32 +612,32 @@ function VmIcon() {
 /* ── Styles ─────────────────────────────────────────────────────── */
 const S = {
   page:      { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 },
-  filterRow: { display: 'flex', gap: 4, padding: '7px 10px', flexShrink: 0 },
-  filterBtn: { padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer' },
+  filterRow: { display: 'flex', gap: T ? 6 : 4, padding: T ? '8px 12px' : '7px 10px', flexShrink: 0 },
+  filterBtn: { padding: T ? '8px 14px' : '4px 10px', borderRadius: T ? 16 : 6, fontSize: T ? 12.5 : 11, fontWeight: 600, cursor: 'pointer' },
   list:      { flex: 1, overflowY: 'auto', minHeight: 0, paddingBottom: 76 },
   empty:     { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 200, fontSize: 13, color: '#8b96ab' },
 
   dateHeader: {
-    padding: '5px 12px',
-    fontSize: 11, fontWeight: 700,
+    padding: T ? '8px 16px' : '5px 12px',
+    fontSize: T ? 12 : 11, fontWeight: 700,
     letterSpacing: 0.3,
     position: 'sticky', top: 0, zIndex: 1,
   },
   row: {
     display: 'flex', alignItems: 'center',
-    padding: '10px 12px', gap: 10,
+    padding: T ? '13px 16px' : '10px 12px', gap: T ? 12 : 10,
   },
   callIcon: { width: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   vmIcon:   { width: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   rowInfo:  { flex: 1, minWidth: 0 },
-  rowName:  { fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  rowMeta:  { fontSize: 11, marginTop: 2 },
+  rowName:  { fontSize: T ? 14.5 : 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  rowMeta:  { fontSize: T ? 12 : 11, marginTop: 2 },
   rowRight: { textAlign: 'right', flexShrink: 0 },
-  rowTime:  { fontSize: 11 },
-  rowDur:   { fontSize: 11, marginTop: 2 },
+  rowTime:  { fontSize: T ? 12 : 11 },
+  rowDur:   { fontSize: T ? 12 : 11, marginTop: 2 },
   playBtn:  {
-    width: 26, height: 26, borderRadius: 6,
-    cursor: 'pointer', fontSize: 12,
+    width: T ? 38 : 26, height: T ? 38 : 26, borderRadius: T ? 19 : 6,
+    cursor: 'pointer', fontSize: T ? 14 : 12,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
     flexShrink: 0, marginLeft: 4,
   },

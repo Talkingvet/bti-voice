@@ -49,6 +49,22 @@ or it overflows. Fixed-size elements must fit 349px width.
   desktop placeholder ("Message… ( / = templates)") wrapped to a second line that
   the one-row box clipped, which looked broken.
 
+## Phase 1c — DONE 2026-09-30 (density pass on the remaining screens)
+
+All via touch-conditional values in each file's central `S` style object
+(`const T = IS_TOUCH`); desktop values untouched.
+
+- `SettingsTab.jsx` section content: rows 13px/16px padding, 14.5px labels, 12px
+  descriptions, 46×26 toggles, 14px inputs, bigger buttons.
+- `CallsTab.jsx`: taller rows (13/16), 14.5px names, pill-shaped filter chips,
+  38px round play button, larger date headers.
+- `ContactsTab.jsx`: 42px avatars, taller rows, rounded search field, larger
+  detail-view rows/labels.
+- `ConvList.jsx` (SMS list): 44px avatars, 14.5px names, 12.5px previews,
+  rounded search, Google Messages-like row height.
+- `ChatPanel.jsx`: "Messages" tab shortened to "Chat" on phones so the contact
+  name stops truncating to one letter; bigger header name/sub + tab buttons.
+
 ## Phase 2 — backlog, in rough priority
 
 1. [ ] **Per-component typography pass** to replace the zoom hack: real type scale
@@ -58,8 +74,8 @@ or it overflows. Fixed-size elements must fit 349px width.
    or move both into per-tab headers — reclaims ~40px on every screen.
 3. [x] ~~Settings as stacked full-width rows~~ — done in Phase 1b. Remaining
    polish: the section CONTENT (cards, inputs) is still desktop-dense.
-4. [ ] **Calls/Contacts/SMS list rows**: bigger avatars, 2-line rows, full-bleed
-   (Google Messages style), swipe actions optional.
+4. [x] ~~Calls/Contacts/SMS list rows~~ — done in Phase 1c (sizes/spacing).
+   Remaining: swipe actions, full-bleed dividers if wanted.
 5. [ ] **Wrap-up sheet content**: chips are compact; check tap targets ≥44pt.
 6. [ ] **ActiveCallPanel** on phone: full-screen in-call UI (Pixel Phone style)
    rather than the desktop panel.
