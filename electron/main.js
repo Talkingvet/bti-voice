@@ -128,13 +128,47 @@ function createWindow() {
   mainWindow.webContents.on('did-fail-load', (e, code, desc, validatedURL, isMainFrame) => {
     if (!isMainFrame || code === -3 /* aborted */) return
     console.error('[load] failed:', code, desc)
-    const retryHtml = 'data:text/html,' + encodeURIComponent(
-      '<body style="background:#161b24;color:#e6eaf1;font-family:-apple-system,sans-serif;' +
-      'display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;margin:0">' +
-      '<h2>Can\u2019t reach BTI Voice</h2><p>Check your internet connection.</p>' +
-      '<button onclick="location.href=\'' + APP_URL + '\'" ' +
-      'style="padding:10px 22px;border:none;border-radius:8px;background:#4f9cf9;color:#fff;' +
-      'font-size:14px;cursor:pointer">Retry</button></body>')
+    // NOTE: the data: URL MUST declare charset=utf-8 (and the page a <meta
+    // charset>) — without it Chromium decodes the percent-encoded UTF-8 as
+    // Latin-1 and the apostrophe renders as "â€™".
+    const isMac = process.platform === 'darwin'
+    const retryHtml = 'data:text/html;charset=utf-8,' + encodeURIComponent(
+      '<!doctype html><html><head><meta charset="utf-8"><title>BTI Voice</title></head>' +
+      '<body style="background:#161b24;color:#e6eaf1;font-family:-apple-system,Segoe UI,sans-serif;' +
+      'display:flex;flex-direction:column;height:100vh;margin:0;border:1px solid rgba(255,255,255,0.08);border-radius:8px;box-sizing:border-box;overflow:hidden">' +
+      // Title strip: drag handle + window controls, matching the React TitleBar.
+      // On macOS the OS draws the traffic lights, so only reserve space there.
+      '<div style="height:38px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;' +
+      'padding:0 4px 0 10px;background:#1d2330;border-bottom:1px solid rgba(255,255,255,0.07);-webkit-app-region:drag;user-select:none">' +
+      (isMac
+        ? '<div style="width:78px"></div>'
+        : '<span style="font-size:11px;font-weight:700;letter-spacing:.5px;color:rgba(255,255,255,0.85)">BTI Voice</span>') +
+      (isMac ? '<div></div>' :
+        '<div style="display:flex;gap:1px;-webkit-app-region:no-drag">' +
+        '<button title="Minimize" onclick="window.electronAPI&&electronAPI.minimize()" style="width:30px;height:28px;border:none;background:transparent;color:rgba(255,255,255,0.45);cursor:pointer;border-radius:4px;font-size:14px">&#8211;</button>' +
+        '<button title="Minimize to tray" onclick="window.electronAPI&&electronAPI.close()" style="width:30px;height:28px;border:none;background:transparent;color:rgba(255,255,255,0.45);cursor:pointer;border-radius:4px;font-size:16px">&#215;</button>' +
+        '</div>') +
+      '</div>' +
+      '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 24px">' +
+      '<h2 style="margin:0 0 6px">Can\u2019t reach BTI Voice</h2>' +
+      '<p style="margin:0 0 18px;color:rgba(255,255,255,0.6)">Check your internet connection.<br>' +
+      '<span style="font-size:12px">We\u2019ll reconnect automatically as soon as it\u2019s back.</span></p>' +
+      '<button onclick="retry()" ' +
+      'style="padding:10px 22px;border:none;border-radius:8px;background:#4f9cf9;color:#fff;font-size:14px;font-weight:600;cursor:pointer">Retry</button>' +
+      '<p style="margin:22px 0 0;font-size:12px;color:rgba(255,255,255,0.35)">To quit completely, right-click the BTI Voice icon in the system tray and choose Quit.</p>' +
+      '</div>' +
+      '<script>' +
+      'var URL_=' + JSON.stringify(APP_URL) + ';' +
+      'function retry(){location.href=URL_}' +
+      // Auto-retry: probe the server first so we only navigate once it is
+      // actually reachable (navigating blindly would flash the error page
+      // every few seconds). Probe on the OS "online" event and every 5s.
+      'var probing=false;' +
+      'function probe(){if(probing)return;probing=true;' +
+      'fetch(URL_+"/api/health?"+Date.now(),{mode:"no-cors",cache:"no-store"}).then(retry).catch(function(){}).finally(function(){probing=false})}' +
+      'window.addEventListener("online",probe);' +
+      'setInterval(probe,5000);' +
+      '</script></body></html>')
     setTimeout(() => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(retryHtml) }, 800)
   })
 

@@ -171,14 +171,16 @@ export default function TitleBar({ agent, unreadCount = 0, onBellClick, agentSta
           )
         })()}
 
-        <button style={{ ...S.bellBtn, ...T.bellBtn }} onClick={onBellClick} title="Activity">
-          <BellIcon />
-          {unreadCount > 0 && (
-            <span style={{ ...S.badge, border: `1.5px solid ${barBg}` }}>
-              {unreadCount > 99 ? '99+' : unreadCount}
-            </span>
-          )}
-        </button>
+        {agent && (
+          <button style={{ ...S.bellBtn, ...T.bellBtn }} onClick={onBellClick} title="Activity">
+            <BellIcon />
+            {unreadCount > 0 && (
+              <span style={{ ...S.badge, border: `1.5px solid ${barBg}` }}>
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
+          </button>
+        )}
 
         {isElectron && !isMac && (
           <div style={S.controls}>

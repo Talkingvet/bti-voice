@@ -41,6 +41,11 @@ function AppInner() {
 
   const [agent,      setAgent]      = useState(null)
   const [loading,    setLoading]    = useState(true)
+  // Set while a saved session can't be verified because the server is
+  // unreachable (typical right after boot, before Wi-Fi is up). We keep the
+  // token and retry instead of bouncing the user to the login screen.
+  const [reconnecting, setReconnecting] = useState(false)
+  const retryNowRef = useRef(null)
   const [activeTab,  setActiveTab]  = useState('dialpad')
   const [navConvId,  setNavConvId]  = useState(null)   // deep-link into a specific SMS conversation
   const [autoDialNumber, setAutoDialNumber] = useState(null) // click-to-call: number DialpadTab should dial on mount
@@ -216,13 +221,52 @@ function AppInner() {
   // ── Auth check on mount ───────────────────────────────────────────────────────
   useEffect(() => {
     const token = localStorage.getItem('bti_token')
-    if (token) {
-      api.me()
-        .then(data => { setAgent(data); setAgentStatus(data.status || 'online') })
-        .catch(() => localStorage.removeItem('bti_token'))
-        .finally(() => setLoading(false))
-    } else {
-      setLoading(false)
+    if (!token) { setLoading(false); return }
+
+    let cancelled = false
+    let timer     = null
+    let attempt   = 0
+
+    async function restore() {
+      timer = null
+      try {
+        const data = await api.me()
+        if (cancelled) return
+        setAgent(data)
+        setAgentStatus(data.status || 'online')
+        setReconnecting(false)
+        setLoading(false)
+        // Sliding session: "keep me signed in" tokens are renewed on every
+        // successful start, so the user is only logged out after 30 days of
+        // not opening the app. Short sessions get { token: null } — ignored.
+        api.refresh()
+          .then(r => { if (r?.token) localStorage.setItem('bti_token', r.token) })
+          .catch(() => {})
+      } catch (err) {
+        if (cancelled) return
+        if (err.status === 401 || err.status === 403) {
+          // Token expired or was revoked — the ONLY case that should sign out.
+          localStorage.removeItem('bti_token')
+          setReconnecting(false)
+          setLoading(false)
+          return
+        }
+        // Offline / server hiccup: keep the token, show "Connecting…", retry
+        // with a gentle backoff (2s, 4s, … capped at 15s).
+        attempt++
+        setReconnecting(true)
+        timer = setTimeout(restore, Math.min(2000 * attempt, 15000))
+      }
+    }
+
+    retryNowRef.current = () => { if (timer) { clearTimeout(timer); timer = null } restore() }
+    const onOnline = () => retryNowRef.current?.()
+    window.addEventListener('online', onOnline)
+    restore()
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+      window.removeEventListener('online', onOnline)
     }
   }, [])
 
@@ -551,18 +595,49 @@ function AppInner() {
     }
   }
 
-  if (loading) {
+  // Before sign-in (splash + login) the desktop app is a frameless window, so
+  // the React title bar is the only thing that gives the user a drag handle
+  // and an X. Without it a non-technical user has no visible way to close
+  // the app. Same shell as the signed-in view, just without agent/bell.
+  const preAuthShell = (children) => {
+    if (!window.electronAPI) return children
     return (
-      <div style={{ ...S.splash, background: isDark ? '#161b24' : '#f4f6f9' }}>
+      <div style={{
+        ...S.root,
+        background: isDark ? '#161b24' : '#f4f6f9',
+        border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.1)'}`,
+      }}>
+        <TitleBar agent={null} />
+        <div style={S.content}>{children}</div>
+      </div>
+    )
+  }
+
+  if (loading) {
+    return preAuthShell(
+      <div style={{ ...S.splash, ...(window.electronAPI ? {} : { minHeight: '100vh' }), background: isDark ? '#161b24' : '#f4f6f9' }}>
         <div style={S.spinWrap}>
           <div style={S.logoMark}>B</div>
           <div style={{ ...S.splashText, color: isDark ? 'white' : '#1e293b' }}>{BRAND}</div>
+          {reconnecting && (
+            <div style={{ textAlign: 'center', marginTop: 6 }}>
+              <div style={{ fontSize: 13, color: isDark ? 'rgba(255,255,255,0.55)' : '#64748b' }}>
+                Connecting&hellip; waiting for your internet connection
+              </div>
+              <button
+                onClick={() => retryNowRef.current?.()}
+                style={{ marginTop: 10, padding: '7px 18px', border: 'none', borderRadius: 8, background: '#4f9cf9', color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+              >
+                Retry now
+              </button>
+            </div>
+          )}
         </div>
       </div>
     )
   }
 
-  if (!agent) return <Login onLogin={handleLogin} />
+  if (!agent) return preAuthShell(<Login onLogin={handleLogin} embedded={!!window.electronAPI} />)
 
   return (
     <div style={{
@@ -760,7 +835,7 @@ const S = {
     display: 'flex', alignItems: 'center', justifyContent: 'center',
     boxShadow: '0 4px 16px rgba(79,156,249,0.45)', zIndex: 200,
   },
-  splash:    { height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  splash:    { flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' },
   spinWrap:  { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 },
   logoMark:  { width: 52, height: 52, borderRadius: 12, background: 'linear-gradient(135deg,#1d4ed8,#4f9cf9)', color: 'white', fontWeight: 900, fontSize: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' },
   splashText: { fontWeight: 700, fontSize: 18, letterSpacing: 1 },

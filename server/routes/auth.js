@@ -7,7 +7,7 @@ const { logActivity } = require('../helpers/logActivity');
 const router = express.Router();
 
 router.post('/login', async (req, res) => {
-  const { username, password } = req.body;
+  const { username, password, remember } = req.body;
   try {
     const { rows } = await pool.query(
       'SELECT * FROM agents WHERE username = $1 AND is_active = true',
@@ -24,7 +24,7 @@ router.post('/login', async (req, res) => {
 
     delete agent.password_hash;
     logActivity(req, agent, 'login');
-    res.json({ agent, token: generateToken(agent), default_password });
+    res.json({ agent, token: generateToken(agent, { remember: remember !== false }), default_password });
   } catch (e) {
     console.error('[auth/login]', e);
     res.status(500).json({ error: 'Server error' });
@@ -35,6 +35,15 @@ router.post('/login', async (req, res) => {
 // URLs. See requireMediaAuth in ../auth.js.
 router.post('/media-token', requireAuth, (req, res) => {
   res.json({ token: generateMediaToken(req.agent.id), expires_in: MEDIA_TOKEN_TTL_SEC });
+});
+
+// POST /refresh — sliding session. Called by the client on every successful
+// app start. Only "keep me signed in" tokens are renewed; short sessions get
+// { token: null } and simply expire on schedule.
+router.post('/refresh', requireAuth, (req, res) => {
+  if (!req.agent.remember) return res.json({ token: null });
+  const { id, username, name } = req.agent;
+  res.json({ token: generateToken({ id, username, name }, { remember: true }) });
 });
 
 router.get('/me', requireAuth, async (req, res) => {

@@ -36,25 +36,38 @@ export function clearMediaToken() {
 }
 
 async function request(path, options = {}) {
-  const res = await fetch(`${BASE}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${getToken()}`,
-      ...options.headers,
-    },
-    body: options.body ? JSON.stringify(options.body) : undefined,
-  })
+  let res
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${getToken()}`,
+        ...options.headers,
+      },
+      body: options.body ? JSON.stringify(options.body) : undefined,
+    })
+  } catch (e) {
+    // fetch() itself failed → no network / DNS / server unreachable.
+    // Callers use err.network to tell "you're offline" apart from "you're
+    // logged out" (a 401). Never treat this as an auth failure.
+    const err = new Error('Can\u2019t reach BTI Voice \u2014 check your internet connection')
+    err.network = true
+    throw err
+  }
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }))
-    throw new Error(err.error || 'Request failed')
+    const body = await res.json().catch(() => ({ error: res.statusText }))
+    const err = new Error(body.error || 'Request failed')
+    err.status = res.status
+    throw err
   }
   return res.json()
 }
 
 export const api = {
-  login:         (username, password)  => request('/auth/login', { method: 'POST', body: { username, password } }),
+  login:         (username, password, remember = true) => request('/auth/login', { method: 'POST', body: { username, password, remember } }),
   me:            ()                    => request('/auth/me'),
+  refresh:       ()                    => request('/auth/refresh', { method: 'POST' }),
   agents:        ()                    => request('/agents'),
   updateAgentNumber: (id, phone_number) => request(`/agents/${id}/number`, { method: 'PATCH', body: { phone_number } }),
   conversations: ()                    => request('/conversations'),

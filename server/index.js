@@ -20,6 +20,9 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: false })); // needed for Twilio webhooks
 
 // ── API Routes ────────────────────────────────────────────────
+// Unauthenticated liveness probe — the desktop app's offline page polls this
+// to know when to reconnect.
+app.get('/api/health', (req, res) => res.json({ ok: true }));
 app.use('/api/auth',          require('./routes/auth'));
 app.use('/api/agents',        require('./routes/agents'));
 app.use('/api/contacts',      require('./routes/contacts'));

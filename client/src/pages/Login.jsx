@@ -3,11 +3,16 @@ import { api } from '../api'
 import { useTheme } from '../ThemeContext'
 import { IS_TOUCH } from '../utils/touch'
 
-export default function Login({ onLogin }) {
+const REMEMBER_KEY = 'bti_remember'
+
+// `embedded` = rendered inside the desktop shell (below the title bar), so the
+// page fills the remaining space instead of forcing a full-viewport height.
+export default function Login({ onLogin, embedded = false }) {
   const { theme } = useTheme()
   const isDark = theme === 'dark'
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [remember, setRemember] = useState(() => localStorage.getItem(REMEMBER_KEY) !== '0')
   const [error, setError]       = useState('')
   const [loading, setLoading]   = useState(false)
 
@@ -16,7 +21,8 @@ export default function Login({ onLogin }) {
     setError('')
     setLoading(true)
     try {
-      const { agent, token, default_password } = await api.login(username, password)
+      localStorage.setItem(REMEMBER_KEY, remember ? '1' : '0')
+      const { agent, token, default_password } = await api.login(username, password, remember)
       onLogin(agent, token, default_password)
     } catch (err) {
       setError(err.message || 'Login failed')
@@ -35,7 +41,7 @@ export default function Login({ onLogin }) {
   } : { card: {}, brand: {}, sub: {}, label: {}, input: {}, error: {} }
 
   return (
-    <div style={styles.page}>
+    <div style={{ ...styles.page, ...(embedded ? { flex: 1, minHeight: 0 } : {}) }}>
       <div style={{ ...styles.card, ...T.card }}>
         <div style={styles.logo}>📞</div>
         <h1 style={{ ...styles.brand, ...T.brand }}><span style={{ color: '#4f9cf9' }}>BTI</span> Voice</h1>
@@ -65,6 +71,15 @@ export default function Login({ onLogin }) {
               required
             />
           </div>
+          <label style={{ ...styles.remember, color: isDark ? 'rgba(255,255,255,0.7)' : '#555' }}>
+            <input
+              type="checkbox"
+              checked={remember}
+              onChange={e => setRemember(e.target.checked)}
+              style={styles.checkbox}
+            />
+            Keep me signed in
+          </label>
           {error && <div style={{ ...styles.error, ...T.error }}>{error}</div>}
           <button style={styles.btn} type="submit" disabled={loading}>
             {loading ? 'Signing in...' : 'Sign In'}
@@ -103,6 +118,11 @@ const styles = {
     fontSize: 14, outline: 'none',
     transition: 'border-color 0.15s',
   },
+  remember: {
+    display: 'flex', alignItems: 'center', gap: 8,
+    fontSize: 13, marginBottom: 16, cursor: 'pointer', userSelect: 'none',
+  },
+  checkbox: { width: 15, height: 15, margin: 0, accentColor: '#3b82f6', cursor: 'pointer' },
   error: {
     background: '#fef2f2', border: '1px solid #fecaca',
     borderRadius: 8, padding: '10px 14px',

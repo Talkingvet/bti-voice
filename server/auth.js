@@ -1,11 +1,20 @@
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET, INTERNAL_TOKEN } = require('./secret');
 
-function generateToken(agent) {
+// Session lifetime:
+//   remember=true  → 30 days, and the client silently renews it every time the
+//                    app opens (POST /auth/refresh), so a "keep me signed in"
+//                    user is only ever logged out after 30 days of NOT opening
+//                    the app — same feel as Zoho Voice / Teams.
+//   remember=false → 12 hours, never renewed.
+const SESSION_TTL_REMEMBER = '30d';
+const SESSION_TTL_SHORT    = '12h';
+
+function generateToken(agent, { remember = false } = {}) {
   return jwt.sign(
-    { id: agent.id, username: agent.username, name: agent.name },
+    { id: agent.id, username: agent.username, name: agent.name, remember: !!remember },
     JWT_SECRET,
-    { expiresIn: '7d' }
+    { expiresIn: remember ? SESSION_TTL_REMEMBER : SESSION_TTL_SHORT }
   );
 }
 
