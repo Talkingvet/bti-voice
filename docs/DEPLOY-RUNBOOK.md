@@ -179,3 +179,48 @@ The portal is BTI's control plane (plan §3/§7). Code: `admin/` in this repo. I
 - Customer wants more seats → Features → raise **Seat limit**.
 - Dashboard shows **Unreachable** → their Railway service is down or the URL changed → click the tenant → **Health → Test connection** for the exact error.
 - Rotated a customer's `TENANT_ADMIN_KEY` → tenant → **Setup** → paste the new key → Save.
+
+## 9. Fast path: a demo / trial deploy for a prospect (~45 min, voice same day)
+
+For a prospect who wants to "play with it" before buying. Same code, their own isolated
+database and number, but **inside BTI's own Twilio account** (no subaccount, no A2P
+registration — texting rides on BTI's already-approved campaign). If they sign, redo
+Twilio properly per §3 under their identity; the Railway service and portal record stay.
+
+### 9a. Railway (~10 min)
+1. Railway → the **bti-voice** project → **+ New** → **Database → PostgreSQL** → rename it `<prospect>-postgres`.
+2. **+ New** → **GitHub Repo** → `Talkingvet/bti-voice` → rename the service `<prospect>-voice`. Leave Root Directory blank (repo root).
+3. Variables (generate each secret with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`):
+   - `DATABASE_URL` → reference `<prospect>-postgres` → `DATABASE_URL`
+   - `NODE_ENV` = `production`
+   - `JWT_SECRET` = random
+   - `TENANT_ADMIN_KEY` = random (**different** from JWT_SECRET; you'll paste it into the portal)
+   - `ADMIN_USERNAME` = `admin` · `ADMIN_PASSWORD` = temporary 8+ chars · `ADMIN_NAME` = the prospect's main contact
+   - `COMPANY_NAME` = the prospect's business name
+   - `ENABLE_RECORDING` = `true` · `OPENAI_API_KEY` = same value as BTI's own service
+   - **Do NOT set** `SEED_DEMO`, `ZOHO_*`, `LATEST_VERSION`, `GH_TOKEN`.
+   - Twilio vars come in §9b; `SERVER_URL` in step 4.
+4. Settings → Networking → **Generate Domain** → put it in `SERVER_URL` (https, no trailing slash).
+5. Deploy log must show `[db] Migrations complete.` and `[seed] Bootstrap admin account created: admin`.
+
+### 9b. Twilio, in BTI's main account (~15 min)
+1. **Buy a number** (Phone Numbers → Buy, local, voice + SMS + MMS capable, their area code). → `TWILIO_PHONE_NUMBER`. Add BTI's E911 address to it.
+2. **TwiML App**: Voice → TwiML Apps → Create → name `<prospect>-voice`, Request URL `SERVER_URL/webhooks/voice/outbound` (POST) → SID → `TWILIO_TWIML_APP_SID`.
+3. On the new number: Voice "A call comes in" = `SERVER_URL/webhooks/voice/inbound` (POST); Messaging "A message comes in" = `SERVER_URL/webhooks/sms` (POST).
+4. `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_API_KEY` / `TWILIO_API_SECRET` = **same values as BTI's own service** (it's the same account).
+5. **Texting**: add the new number to BTI's Messaging Service sender pool. Then check the service's **Integration → Incoming messages** setting: it must be **"Defer to sender's webhook"** so this number's own SMS URL (step 3) is used rather than BTI's deploy. If it's "Send a webhook" today, switch it — BTI's own numbers keep working because they carry the same URL at number level (verify with `server/scripts/fix-sms-urls.js` or by eye). Set `TWILIO_MESSAGING_SERVICE_SID` on the demo service to the same SID as BTI's.
+6. **SHAKEN/STIR**: add the number to the "Talkingvet Dialer" Trust Product (Business Profile first, then Trust Product) so outbound isn't "Spam Likely".
+7. Redeploy the demo service after the Twilio vars are in. Log prints the webhook URLs — compare against steps 2–3.
+
+### 9c. Portal (~5 min)
+1. Portal → **Add customer** → name, the demo service's domain, its `TENANT_ADMIN_KEY` → Verify and add.
+2. **Features**: leave on except Zoho (not available anyway). **Seat limit** 3.
+3. **Billing** → Enabled through = **today + 30 days**. Plan `Trial`. Notes: who the contact is, what they're evaluating.
+4. **Users** → Add user for the prospect's contact → send them the temp password + the URL. (The `admin` bootstrap login is BTI's; keep it.)
+
+### 9d. Hand-over
+- They get: the URL, their username, temp password (forced change), the phone number.
+- They test in a browser (Chrome/Edge). No installer for trials (§7).
+- Tell them: recording disclosure plays on outbound calls; texts work from the new number.
+- You watch usage on the dashboard. Day 16 they see the renewal banner; day 31 they enter grace; you extend or let it lapse from Billing.
+- **This deploy is also the runtime test plan §6g asked for** — when the trial lapses, confirm outbound blocked / inbound rings / then the blocked-login screen.
