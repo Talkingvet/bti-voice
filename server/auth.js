@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET, INTERNAL_TOKEN } = require('./secret');
+const { loginAllowed, accountStatus } = require('./helpers/deploySettings');
 
 // Session lifetime:
 //   remember=true  → 30 days, and the client silently renews it every time the
@@ -54,10 +55,18 @@ function requireAuth(req, res, next) {
   }
   try {
     req.agent = jwt.verify(auth.slice(7), JWT_SECRET);
-    next();
   } catch {
-    res.status(401).json({ error: 'Invalid or expired token' });
+    return res.status(401).json({ error: 'Invalid or expired token' });
   }
+  // Subscription lifecycle (admin portal Phase 1): once a deploy is blocked
+  // (past grace + 30 days, or suspended by BTI) existing sessions stop working
+  // too — not just new logins. 403 + code so the client can show the message
+  // instead of a generic "logged out". Nothing is deleted; BTI reactivates
+  // from the portal.
+  if (!loginAllowed()) {
+    return res.status(403).json({ error: accountStatus().message, code: 'account_blocked' });
+  }
+  next();
 }
 
 // Allows either a logged-in agent (Bearer JWT) OR an internal server-to-server

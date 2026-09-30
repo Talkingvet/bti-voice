@@ -12,8 +12,23 @@ let _tokenExpires = 0;
 // Single source of truth for "does this customer run Zoho". All three OAuth
 // values are required; anything less and every Zoho feature stays off
 // (server skips syncs, client hides CRM UI via GET /api/features).
-function isZohoConfigured() {
+// Credentials present in the env (the hard requirement).
+function hasZohoCredentials() {
   return !!(process.env.ZOHO_REFRESH_TOKEN && process.env.ZOHO_CLIENT_ID && process.env.ZOHO_CLIENT_SECRET);
+}
+
+// Credentials present AND the per-customer toggle is not off (admin portal
+// Phase 1: deploy_settings.features.zoho). Every CRM sync path in the server
+// calls this, so flipping the toggle from the BTI portal silences all Zoho
+// traffic for that customer without a redeploy. Lazy require: deploySettings
+// requires this module too.
+function isZohoConfigured() {
+  if (!hasZohoCredentials()) return false;
+  try {
+    const { getSettings } = require('./helpers/deploySettings');
+    if (getSettings().features.zoho === false) return false;
+  } catch { /* module not loaded yet during boot — creds alone decide */ }
+  return true;
 }
 
 // ── Token refresh ──────────────────────────────────────────────────────────────
@@ -345,6 +360,7 @@ function post(url, body) {
 
 module.exports = {
   isZohoConfigured,
+  hasZohoCredentials,
   zohoAPI,
   findContactByPhone,
   findAllContactsByPhone,

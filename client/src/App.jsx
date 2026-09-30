@@ -22,7 +22,7 @@ import ContactsTab                 from './components/tabs/ContactsTab'
 import CallsTab                    from './components/tabs/CallsTab'
 import SettingsTab                 from './components/tabs/SettingsTab'
 import { api, ensureMediaToken, clearMediaToken } from './api'
-import { loadFeatures, resetFeatures } from './features'
+import { loadFeatures, resetFeatures, useFeatures } from './features'
 import { applyFont } from './utils/font'
 
 const BASE_AT_KEY   = 'bti_notif_base_at'
@@ -205,6 +205,14 @@ function AppInner() {
     window.electronAPI.setZoom(d.factor, d.w, d.h)
   }, [])
 
+  // ── Subscription banner (admin portal Phase 1) ──────────────────────────────
+  // Server-driven: renews_soon / grace → amber notice; restricted → red
+  // (outbound calls + texts paused, inbound still rings). Nothing to dismiss —
+  // it clears itself when BTI extends the date from the portal.
+  const features = useFeatures()
+  const account  = features.account
+  const showAccountBanner = account && account.message && account.state !== 'active'
+
   // ── Default-password nag banner ──────────────────────────────────────────────
   const [defaultPw, setDefaultPw] = useState(false)
   useEffect(() => {
@@ -248,6 +256,9 @@ function AppInner() {
         if (cancelled) return
         if (err.status === 401 || err.status === 403) {
           // Token expired or was revoked — the ONLY case that should sign out.
+          // A 403 account_blocked means BTI's subscription lifecycle refused
+          // the session; carry the server's message to the login screen.
+          if (err.code === 'account_blocked') { try { sessionStorage.setItem('bti_blocked_msg', err.message) } catch {} }
           localStorage.removeItem('bti_token')
           setReconnecting(false)
           setLoading(false)
@@ -650,6 +661,19 @@ function AppInner() {
       border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.1)'}`,
     }}>
       <TitleBar agent={agent} unreadCount={unreadCount} onBellClick={handleBellClick} agentStatus={agentStatus} onStatusChange={handleStatusChange} deviceStatus={deviceStatus} />
+
+      {/* ── Subscription renewal / grace / restricted banner ─────────── */}
+      {showAccountBanner && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', flexShrink: 0, fontSize: 12,
+          ...(account.state === 'restricted'
+            ? { background: 'rgba(239,68,68,0.14)', borderBottom: '1px solid rgba(239,68,68,0.35)', color: isDark ? '#fca5a5' : '#991b1b' }
+            : { background: 'rgba(245,158,11,0.14)', borderBottom: '1px solid rgba(245,158,11,0.35)', color: isDark ? '#fbbf24' : '#92400e' }),
+        }}>
+          <span style={{ flexShrink: 0 }}>{account.state === 'restricted' ? '⛔' : '\u{1F4C5}'}</span>
+          <span style={{ flex: 1 }}>{account.message}</span>
+        </div>
+      )}
 
       {/* ── Default-password nag banner ─────────────────────────────── */}
       {defaultPw && (

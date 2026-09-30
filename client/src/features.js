@@ -9,7 +9,14 @@
 import { useEffect, useState } from 'react'
 import { api } from './api'
 
-const DEFAULTS = { zoho: false, zoho_widget: false, recording: true, brand: null, loaded: false }
+// `account` is the subscription state from the server (admin portal Phase 1):
+// { state: 'active'|'renews_soon'|'grace'|'restricted'|'blocked', message,
+//   enabled_through, grace_ends, outbound_allowed }. Drives the banner in App.
+const DEFAULTS = {
+  zoho: false, zoho_widget: false, recording: true,
+  sms: true, ai_summaries: true, voicemail_transcription: true, mobile_apps: true,
+  brand: null, account: null, loaded: false,
+}
 
 let current   = { ...DEFAULTS }
 let inflight  = null

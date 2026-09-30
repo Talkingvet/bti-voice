@@ -2,6 +2,7 @@ const express = require('express');
 const { pool } = require('../db');
 const { recordConsent } = require('../helpers/consent');
 const { requireAuth , requireMediaAuth } = require('../auth');
+const { smsBlockedReason } = require('../helpers/deploySettings');
 const { getIO } = require('../socket');
 
 // Fire-and-forget Zoho sync for outbound SMS
@@ -27,6 +28,9 @@ router.post('/send', requireAuth, async (req, res) => {
   const text = (body || '').trim();
   const mediaIds = Array.isArray(media_ids) ? media_ids.filter(Number.isInteger) : [];
   if (!text && !mediaIds.length) return res.status(400).json({ error: 'Message body or attachment required' });
+  // sms add-on + subscription lifecycle (admin portal Phase 1)
+  const smsBlock = smsBlockedReason();
+  if (smsBlock) return res.status(403).json({ error: smsBlock, code: 'sms_blocked' });
 
   try {
     // Get conversation contact number
@@ -243,6 +247,8 @@ router.get('/public-media/:token', async (req, res) => {
 router.post('/schedule', requireAuth, async (req, res) => {
   const { conversation_id, body, send_at } = req.body;
   if (!body?.trim()) return res.status(400).json({ error: 'Message body required' });
+  const smsBlock = smsBlockedReason();
+  if (smsBlock) return res.status(403).json({ error: smsBlock, code: 'sms_blocked' });
   const when = new Date(send_at);
   if (isNaN(when.getTime())) return res.status(400).json({ error: 'Invalid send_at' });
   if (when.getTime() < Date.now() + 60 * 1000) {

@@ -4,7 +4,8 @@ const twilio  = require('twilio');
 const { pool } = require('../db');
 const { getIO } = require('../socket');
 const { createNotification } = require('../notifications');
-const { maybeRecordingNotice } = require('../helpers/recordingNotice');
+const { maybeRecordingNotice, recordingActive } = require('../helpers/recordingNotice');
+const { outboundAllowed, accountStatus, featureOn, smsBlockedReason } = require('../helpers/deploySettings');
 
 const router = express.Router();
 
@@ -137,6 +138,16 @@ router.post('/outbound', async (req, res) => {
     }
   }
   const twiml = new twilio.twiml.VoiceResponse();
+
+  // Subscription lifecycle: past grace, OUTBOUND is off (inbound still rings —
+  // that path never touches this handler). Spoken to the agent, then hang up.
+  if (!outboundAllowed()) {
+    console.log(`[outbound] blocked — account ${accountStatus().state}`);
+    twiml.say({ voice: 'Polly.Joanna-Neural' }, 'Outbound calling is paused on this account. Please contact BTI to renew your subscription.');
+    twiml.hangup();
+    res.set('Content-Type', 'text/xml');
+    return res.send(twiml.toString());
+  }
 
   console.log(`[outbound] To=${To} From=${From} callerId=${callerId}`);
 
@@ -721,6 +732,13 @@ router.post('/recording-complete', async (req, res) => {
         console.log('[recording] OPENAI_API_KEY not set — skipping transcription');
         return;
       }
+      // Per-customer toggles (admin portal Phase 1): voicemails need the
+      // voicemail_transcription add-on; recorded calls need recording (already
+      // gated at <Dial>, re-checked here in case BTI flipped it mid-call).
+      if (isVoicemail ? !featureOn('voicemail_transcription') : !featureOn('recording')) {
+        console.log(`[recording] ${isVoicemail ? 'voicemail_transcription' : 'recording'} is off for this account — audio saved, not transcribed`);
+        return;
+      }
 
       console.log(`[recording] Transcribing call ${callRecord.id} (${duration}s)…`);
 
@@ -751,7 +769,8 @@ router.post('/recording-complete', async (req, res) => {
       console.log(`[recording] Transcription done (${transcriptText.length} chars)`);
 
       // ── AI Summary with GPT-4o-mini ───────────────────────────────────────
-      const summaryRes = await openai.chat.completions.create({
+      // ai_summaries add-on: when off we keep the transcript and skip the summary.
+      const summaryRes = !featureOn('ai_summaries') ? null : await openai.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [
           {
@@ -772,7 +791,8 @@ Keep it tight — this is for a CRM note, not a report.`,
         max_tokens: 500,
       });
 
-      const aiSummary = summaryRes.choices[0]?.message?.content || '';
+      // null (not '') when skipped so the portal's ai_summaries count stays honest.
+      const aiSummary = summaryRes?.choices?.[0]?.message?.content || null;
 
       // ── Save to DB ────────────────────────────────────────────────────────
       await pool.query(
@@ -850,6 +870,11 @@ async function sendMissedCallAutoText(fromPhone) {
       return;
     }
 
+    // Auto-texts are outbound SMS: off when the sms add-on is off or the
+    // subscription is past grace.
+    const smsBlock = smsBlockedReason();
+    if (smsBlock) { console.log(`[autoText] skipped — ${smsBlock}`); return; }
+
     const twilioClient = require('twilio')(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
     const params = {
       body: message,
@@ -877,8 +902,8 @@ async function sendMissedCallAutoText(fromPhone) {
 // -> ringAllAgents used to replay it on the same call).
 
 function recordingOpts() {
-  if (process.env.ENABLE_RECORDING !== 'true') return {};
-  if (!process.env.SERVER_URL || !process.env.OPENAI_API_KEY) return {};
+  // Same gate as the spoken disclosure (env vars AND the per-customer toggle).
+  if (!recordingActive()) return {};
   return {
     record:                        'record-from-answer',
     recordingStatusCallback:       `${process.env.SERVER_URL}/webhooks/voice/recording-complete`,

@@ -3,11 +3,24 @@ const bcrypt = require('bcryptjs');
 const { pool } = require('../db');
 const { generateToken, requireAuth, generateMediaToken, MEDIA_TOKEN_TTL_SEC } = require('../auth');
 const { logActivity } = require('../helpers/logActivity');
+const { loginAllowed, accountStatus, featureOn } = require('../helpers/deploySettings');
 
 const router = express.Router();
 
 router.post('/login', async (req, res) => {
-  const { username, password, remember } = req.body;
+  const { username, password, remember, platform } = req.body;
+  // Subscription lifecycle: blocked deploys refuse every login with the
+  // "contact BTI" message (plan §4a #3). Checked BEFORE the password so we
+  // never confirm/deny credentials on a blocked account.
+  if (!loginAllowed()) {
+    return res.status(403).json({ error: accountStatus().message, code: 'account_blocked' });
+  }
+  // mobile_apps toggle: the iOS/Android apps send platform:'ios'|'android'.
+  // Browser + desktop send nothing. Enforced at login so a customer who hasn't
+  // bought the mobile add-on gets a clear message instead of a half-working app.
+  if ((platform === 'ios' || platform === 'android') && !featureOn('mobile_apps')) {
+    return res.status(403).json({ error: 'The mobile apps are not enabled on this account. Please sign in from the desktop app or a browser, or contact BTI.', code: 'mobile_disabled' });
+  }
   try {
     const { rows } = await pool.query(
       'SELECT * FROM agents WHERE username = $1 AND is_active = true',
@@ -19,10 +32,14 @@ router.post('/login', async (req, res) => {
     const valid = await bcrypt.compare(password, agent.password_hash);
     if (!valid) return res.status(401).json({ error: 'Invalid username or password' });
 
-    // Nag-banner support: flag logins that still use the seeded default password.
-    const default_password = password === agent.username + '123';
+    // Nag-banner support: flag logins that still use the seeded default password,
+    // OR a one-time temporary password handed out by BTI from the portal
+    // (agents.must_change_password) — same banner, same "change it now" nudge.
+    const default_password = password === agent.username + '123' || !!agent.must_change_password;
 
+    pool.query('UPDATE agents SET last_login_at = NOW() WHERE id = $1', [agent.id]).catch(() => {});
     delete agent.password_hash;
+    delete agent.must_change_password;
     logActivity(req, agent, 'login');
     res.json({ agent, token: generateToken(agent, { remember: remember !== false }), default_password });
   } catch (e) {

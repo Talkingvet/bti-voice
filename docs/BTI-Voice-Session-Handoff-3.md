@@ -417,6 +417,14 @@ Verification: `node --check` on every touched server file ✓, `npm test` in `se
 
 Also raised this session: **BTI-only admin portal** (cross-customer usage, per-customer feature toggles, credential resets, billing "enabled through" dates). Single-tenant architecture means this needs a small central control-plane; design options written up for Danny to choose.
 
+## 8r. 2026-09-30 (Danny, desktop) — Admin portal PHASE 1 built (per-deploy plumbing)
+
+Everything from `BTI-Voice-Admin-Portal-Plan.md` §2 as re-scoped by Danny's §4a decisions (portal-only, no in-app admin UI). Full inventory in **plan §6** — read that, not this. Headlines: `deploy_settings` table; `helpers/deploySettings.js` (cache + feature resolution + lifecycle state machine, 15 unit tests); enforcement in login/sessions/outbound TwiML/all 6 SMS send sites/recording/transcription/AI/Zoho/seats; `/api/tenant/*` router keyed by new `TENANT_ADMIN_KEY` (settings, extend, usage aggregates, users incl. temp-password resets, health); client banner + blocked-login message + `platform` on login. **Existing deploys see zero behaviour change** until BTI sets a value. `recording` in `/api/features` now follows the real gate (`ENABLE_RECORDING=true` + `SERVER_URL` + `OPENAI_API_KEY` + toggle) instead of the old `!== 'false'` — BTI's deploy has all of these so nothing changes there.
+
+Verification: `node --check` on every touched file ✓; all modules `require()`d together without a DB to catch circular imports ✓; `npm test` 34/34 ✓; `vite build` ✓. NOT runtime-tested against Postgres yet — first boot on Railway runs the new `CREATE TABLE` + `ALTER TABLE` (all `IF NOT EXISTS`, additive). Watch the deploy log for `[db] Migrations complete.` then hit `/api/features` and confirm `account.state: "active"`.
+
+**Next session: Phase 2 — the portal itself** (plan §3): new tiny Railway service `bti-voice-admin`, tenants table, logins for Danny/Paul/Rick/Shawn, dashboard looping over tenants' `/api/tenant/*`. Nothing here is usable by BTI until that exists (curl in the meantime — DEPLOY-RUNBOOK).
+
 ## 9. Security posture
 **Fixed & live:** Zoho + socket auth, webhook validation (soft), secret hardening, MMS hardening, crash safety, opt-out across all paths, throttles, quiet hours, recording notice, and the client/Electron bugs above.
 **Deferred (need more than a blind edit) — in BTI-Voice-Preprod-Audit.md:**

@@ -59,13 +59,24 @@ async function request(path, options = {}) {
     const body = await res.json().catch(() => ({ error: res.statusText }))
     const err = new Error(body.error || 'Request failed')
     err.status = res.status
+    err.code   = body.code || null   // e.g. 'account_blocked', 'sms_blocked', 'mobile_disabled'
     throw err
   }
   return res.json()
 }
 
+function nativePlatform() {
+  try {
+    const p = window.Capacitor?.getPlatform?.()
+    return p === 'ios' || p === 'android' ? p : undefined
+  } catch { return undefined }
+}
+
 export const api = {
-  login:         (username, password, remember = true) => request('/auth/login', { method: 'POST', body: { username, password, remember } }),
+  // platform: 'ios' | 'android' when running inside the Capacitor mobile app
+  // (window.Capacitor is injected by the native shell). The server uses it to
+  // enforce the per-customer mobile_apps add-on; browser/desktop send nothing.
+  login:         (username, password, remember = true) => request('/auth/login', { method: 'POST', body: { username, password, remember, platform: nativePlatform() } }),
   me:            ()                    => request('/auth/me'),
   features:      ()                    => request('/features'),
   refresh:       ()                    => request('/auth/refresh', { method: 'POST' }),

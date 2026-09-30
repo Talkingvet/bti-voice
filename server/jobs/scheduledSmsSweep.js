@@ -38,6 +38,14 @@ async function sendDueMessage(sm) {
     );
     return;
   }
+  // sms add-on off / subscription past grace: mark failed with the reason so
+  // the agent sees why in the Scheduled list (the message is not sent later
+  // unannounced once BTI renews — a stale scheduled text is worse than none).
+  const smsBlock = require('../helpers/deploySettings').smsBlockedReason();
+  if (smsBlock) {
+    await pool.query("UPDATE scheduled_messages SET status = 'failed', error = $2 WHERE id = $1", [sm.id, smsBlock]);
+    return;
+  }
 
   const twilio = require('twilio')(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
   const params = { body: sm.body, from: sm.from_number, to: sm.to_number };

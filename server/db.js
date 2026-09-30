@@ -324,6 +324,46 @@ async function migrate() {
     CREATE INDEX IF NOT EXISTS idx_diag_created ON diagnostic_reports (created_at DESC);
   `);
 
+  // ── Admin portal Phase 1 (2026-09-30): per-deploy settings ─────────────────
+  // One row per deploy (id = 1). Written ONLY by BTI through /api/tenant/*
+  // (keyed by TENANT_ADMIN_KEY) — there is no customer-facing UI for any of it
+  // (plan §4a #4: portal-only). Overrides env-var defaults so BTI can flip
+  // features, seats and the renewal date without a Railway redeploy.
+  //
+  //   features           JSONB booleans: zoho, recording, ai_summaries, sms,
+  //                      voicemail_transcription, mobile_apps. A missing key
+  //                      means "on" (env/credentials still gate it — a toggle
+  //                      can only ever turn something OFF, never conjure creds).
+  //   seat_limit         max ACTIVE agents; NULL = unlimited.
+  //   enabled_through    subscription paid-through date; NULL = no expiry.
+  //   grace_days         days after enabled_through the app still fully works.
+  //   suspended          BTI kill-switch: behaves like "past grace + 30 days"
+  //                      immediately (login blocked). Nothing is deleted.
+  //   company_name/brand_name  override the env vars when set.
+  //   notes              BTI-internal (plan tier, invoice #, contact).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS deploy_settings (
+      id              INTEGER PRIMARY KEY DEFAULT 1,
+      features        JSONB   NOT NULL DEFAULT '{}',
+      seat_limit      INTEGER,
+      enabled_through DATE,
+      grace_days      INTEGER NOT NULL DEFAULT 14,
+      suspended       BOOLEAN NOT NULL DEFAULT false,
+      company_name    VARCHAR(200),
+      brand_name      VARCHAR(100),
+      notes           TEXT,
+      created_at      TIMESTAMPTZ DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ DEFAULT NOW(),
+      CONSTRAINT deploy_settings_single_row CHECK (id = 1)
+    );
+    INSERT INTO deploy_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+    -- Portal-driven user management: a BTI password reset hands out a one-time
+    -- temporary password and forces a change on next login; last_login_at
+    -- feeds the portal's "active users" count.
+    ALTER TABLE agents ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT false;
+    ALTER TABLE agents ADD COLUMN IF NOT EXISTS last_login_at        TIMESTAMPTZ;
+  `);
+
   console.log('[db] Migrations complete.');
 }
 

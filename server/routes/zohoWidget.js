@@ -103,6 +103,8 @@ router.post('/send', async (req, res) => {
   const agentId = parseInt(req.body.agent_id, 10);
   if (!phone || !text) return res.status(400).json({ error: 'phone and body required' });
   if (!agentId)        return res.status(400).json({ error: 'agent_id required' });
+  const smsBlock = require('../helpers/deploySettings').smsBlockedReason();
+  if (smsBlock) return res.status(403).json({ error: smsBlock, code: 'sms_blocked' });
 
   try {
     const { rows: [agent] } = await pool.query(

@@ -21,7 +21,15 @@ const PRUNE_THRESHOLD = 1000;              // prune only when the map grows past
 // Same gate as recordingOpts() in webhooks/voice.js: the disclosure is only
 // required when recording is actually active.
 function recordingActive(env = process.env) {
-  return env.ENABLE_RECORDING === 'true' && !!env.SERVER_URL && !!env.OPENAI_API_KEY;
+  if (!(env.ENABLE_RECORDING === 'true' && !!env.SERVER_URL && !!env.OPENAI_API_KEY)) return false;
+  // Admin portal Phase 1: BTI can switch recording off per customer without a
+  // redeploy (deploy_settings.features.recording = false). Only consulted once
+  // the env gate passes, so the unit tests that inject a fake env stay pure.
+  if (env === process.env) {
+    const { getSettings } = require('./deploySettings');
+    if (getSettings().features.recording === false) return false;
+  }
+  return true;
 }
 
 function maybeRecordingNotice(twiml, callSid) {

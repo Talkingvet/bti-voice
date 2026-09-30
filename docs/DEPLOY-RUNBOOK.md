@@ -131,5 +131,10 @@ Do all of this INSIDE a new subaccount, from BTI's parent console:
   For customer-specific pacing, pin services to a branch or fork per customer later.
 - Support runbook: check Railway Deploy Logs first; `TWILIO_STRICT_WEBHOOKS=false`
   to debug inbound 403s; `ADMIN_KEY` + `/admin/activity?key=` for login/event history.
+- **Tenant admin (Phase 1, 2026-09-30):** set `TENANT_ADMIN_KEY` on the service and
+  record it in the BTI portal. Until the portal exists, drive it with curl:
+  `curl -H "X-Tenant-Key: $KEY" $SERVER_URL/api/tenant/settings` (also `/usage`,
+  `/agents`, `/health-extended`; `PATCH /settings` with JSON, `POST /settings/extend
+  {"days":30}`). Full contract in `docs/BTI-Voice-Admin-Portal-Plan.md` §6.
 - Billing: software fee via BTI invoice; Twilio usage lands on the subaccount —
   decide per the agent-model tax strategy (plan §8) before first invoice.

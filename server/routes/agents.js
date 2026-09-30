@@ -73,7 +73,7 @@ router.patch('/me/password', requireAuth, async (req, res) => {
   const valid = await bcrypt.compare(current_password, rows[0].password_hash);
   if (!valid) return res.status(400).json({ error: 'Current password incorrect' });
   const hash = await bcrypt.hash(new_password, 10);
-  await pool.query('UPDATE agents SET password_hash = $1 WHERE id = $2', [hash, req.agent.id]);
+  await pool.query('UPDATE agents SET password_hash = $1, must_change_password = false WHERE id = $2', [hash, req.agent.id]);
   res.json({ success: true });
 });
 

@@ -75,3 +75,51 @@ A hidden **Account** section in Settings visible only when logged in with an `ow
 
 ## 5. Not in scope (noted so they aren't forgotten)
 Per-customer branded installers · Railway-API automated provisioning · multi-tenancy · customer self-service billing/Stripe.
+
+## 6. Phase 1 — BUILT 2026-09-30 (Danny, desktop). What exists now
+
+Backend-only, exactly per §4a #4 (no customer-facing admin UI). Everything is in the customer's own deploy; the Phase 2 portal just calls it.
+
+### 6a. Storage
+- `deploy_settings` (single row, id=1): `features` JSONB, `seat_limit`, `enabled_through` DATE, `grace_days` (14), `suspended`, `company_name`, `brand_name`, `notes`. Created + seeded by `migrate()`; existing deploys pick it up on next boot with everything "on"/unlimited/no expiry — **zero behaviour change until BTI sets something.**
+- `agents.must_change_password`, `agents.last_login_at`.
+
+### 6b. `server/helpers/deploySettings.js` — the brain
+- In-memory cache of the row, primed at boot, refreshed every 30s and instantly after any `PATCH`. Read synchronously from auth + TwiML (no DB hit on hot paths).
+- `resolveFeatures()` → `{ zoho, zoho_widget, recording, ai_summaries, sms, voicemail_transcription, mobile_apps }`. Rule: **a toggle can only turn a feature OFF**; env credentials still gate everything (toggling `zoho:true` on a deploy with no Zoho vars does nothing). Missing key = on.
+- `computeAccountStatus(row, now)` — pure, unit-tested (`server/test/deploySettings.test.js`, 15 cases). States: `active` → `renews_soon` (≤14 d) → `grace` (14 d after `enabled_through`, inclusive of that day) → `restricted` (outbound off) → `blocked` (grace + 30 d, or `suspended`). Each carries `outbound_allowed`, `login_allowed`, and the customer-facing `message`.
+
+### 6c. Where it's enforced (all server-side)
+| What | Where | Behaviour |
+|---|---|---|
+| Login | `routes/auth.js` | `blocked` → 403 `{code:'account_blocked'}` before the password is even checked. iOS/Android login with `mobile_apps=false` → 403 `mobile_disabled`. |
+| Existing sessions | `auth.js requireAuth` | `blocked` → every API call 403 `account_blocked`; client signs out and shows the message on the login screen. |
+| Outbound calls | `webhooks/voice.js /outbound` | `restricted`/`blocked` → agent hears "Outbound calling is paused… contact BTI", call ends. **Inbound path untouched — still rings and logs.** |
+| Outbound SMS (all 6 send sites) | `messages.js /send + /schedule`, `conversations.js /new-message`, `zohoWidget.js /send`, missed-call auto-text (`voice.js`), after-hours auto-reply (`sms.js`), scheduled sweep | `sms=false` or `restricted` → 403 `sms_blocked` with the reason; auto-texts skipped; due scheduled texts marked failed with the reason. |
+| Recording | `helpers/recordingNotice.js recordingActive()` (shared by `<Dial record>` + spoken disclosure) | `recording=false` → no recording, no disclosure. |
+| Transcription | `voice.js /recording-complete` | voicemails need `voicemail_transcription`; calls need `recording`. Audio still saved. |
+| AI summaries | same | `ai_summaries=false` → transcript kept, summary skipped. |
+| Zoho | `zoho.js isZohoConfigured()` now = creds **and** toggle | every sync path + wrap-up sweep (per-tick check) go quiet; client hides CRM UI via `/api/features`. |
+| Seats | `routes/tenant.js` | creating or re-activating a user past `seat_limit` → 409 `seat_limit`. |
+
+### 6d. `/api/tenant/*` (auth: `X-Tenant-Key: <TENANT_ADMIN_KEY>`; unset key ⇒ 404)
+- `GET /settings` → `{ settings, resolved_features, feature_keys, account, env_defaults }`
+- `PATCH /settings` — any of `features` (merged, booleans only), `seat_limit` (int|null), `enabled_through` (`YYYY-MM-DD`|null), `grace_days`, `suspended`, `company_name`, `brand_name`, `notes`. Validated; returns the same shape as GET.
+- `POST /settings/extend {days}` — the "extend 30 days" button; from `enabled_through` if still future, else from today; also clears `suspended`.
+- `GET /usage?from&to&agent_id` — defaults to month-to-date. Per-agent rows + org totals: calls in/out + minutes (Twilio-style ceil per call), missed, voicemails, recordings + recorded minutes, transcriptions, AI summaries, SMS in/out, MMS; storage (db + media bytes); counts (contacts, conversations, active agents, logged-in-this-period, seat limit). **Aggregates only — no bodies, transcripts, recordings, names.**
+- `GET /agents` (incl. inactive) · `POST /agents {name, username, password?, phone_number?}` → returns a one-time `temporary_password` when none given · `PATCH /agents/:id {name?, username?, phone_number?, is_active?, reset_password:true}` → `temporary_password`; the user gets the existing "change your password" banner and the flag clears when they do.
+- `GET /health-extended` — server/desktop versions, uptime, which integrations are configured (booleans), numbers (routing table + agent numbers), DB size, last call/message/login, last genuine Twilio webhook seen (voice/sms), resolved features, account status.
+
+### 6e. Client (`client/src`)
+- `features.js` defaults gained `sms, ai_summaries, voicemail_transcription, mobile_apps, account`.
+- `App.jsx`: server-driven banner — amber for `renews_soon`/`grace`, red for `restricted` ("outbound paused, incoming still rings"). Not dismissable; disappears when BTI extends the date.
+- `Login.jsx` shows the server's blocked/suspended message after a forced sign-out; `api.js` passes `platform` (ios/android via `window.Capacitor`) and surfaces `err.code`.
+
+### 6f. Pilot-onboarding flow this enables (once Phase 2 exists)
+Railway service from template → set `TENANT_ADMIN_KEY` → portal "Add tenant" (URL + key) → tick features, seat limit, `enabled_through` → `POST /agents` for their first user (temp password) → customer logs in already scoped. Until the portal exists the same thing works with curl (DEPLOY-RUNBOOK).
+
+### 6g. Not done / next
+- **Phase 2 portal** (`bti-voice-admin`, §3) — the only thing standing between this plumbing and a usable pilot.
+- Runtime test on a scratch Railway service: set `enabled_through` to yesterday-minus-15-days, confirm outbound blocked + inbound rings; set `suspended`, confirm login message; reset a password, confirm banner + forced change.
+- Client dial-pad could pre-empt the spoken "paused" message by reading `account.outbound_allowed` — cosmetic, deferred.
+- `company_name`/`brand_name` overrides are stored and returned (`/api/features.brand`) but AI-summary prompts and after-hours texts still read `COMPANY_NAME` from env — wire `displayNames()` in when Phase 2 lands.

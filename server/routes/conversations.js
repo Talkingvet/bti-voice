@@ -133,6 +133,9 @@ router.get('/:id/messages', requireAuth, async (req, res) => {
 router.post('/new-message', requireAuth, async (req, res) => {
   const { to_number, from_agent_id, body } = req.body
   if (!to_number || !body) return res.status(400).json({ error: 'to_number and body are required' })
+  // sms add-on + subscription lifecycle (admin portal Phase 1)
+  const smsBlock = require('../helpers/deploySettings').smsBlockedReason()
+  if (smsBlock) return res.status(403).json({ error: smsBlock, code: 'sms_blocked' })
   const { getIO } = require('../socket')
   const { phoneVariants } = require('../helpers/phone')
   const { e164, variants } = phoneVariants(to_number)

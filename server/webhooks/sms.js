@@ -56,6 +56,9 @@ async function maybeSendAfterHoursReply({ conv, contact, From, To, keyword }) {
     const s = rows[0];
     if (!s?.after_hours_sms_enabled) return;
     if (isWithinBusinessHours(s)) return;
+    // Auto-replies are outbound SMS: respect the sms add-on + subscription state.
+    const smsBlock = require('../helpers/deploySettings').smsBlockedReason();
+    if (smsBlock) { console.log(`[afterHours] skipped — ${smsBlock}`); return; }
 
     // Throttle: max one auto-reply per conversation per 4 hours
     const { rows: [c] } = await pool.query(

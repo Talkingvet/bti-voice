@@ -26,13 +26,23 @@ app.get('/api/health', (req, res) => res.json({ ok: true }));
 // Feature flags for the client — which optional add-ons this deploy has.
 // Booleans only, never credential values. The client hides CRM UI when
 // zoho=false so a customer without Zoho never sees CRM panels or buttons.
+// Admin portal Phase 1: flags now come from env vars AND the per-customer
+// toggles BTI sets in deploy_settings (helpers/deploySettings.js); `account`
+// carries the subscription state so the client can show the renewal /
+// grace / restricted banner (plan §4a #3). No customer-controllable inputs.
 const { isZohoConfigured } = require('./zoho');
-app.get('/api/features', (req, res) => res.json({
-  zoho:        isZohoConfigured(),
-  zoho_widget: isZohoConfigured() && !!process.env.ZOHO_WIDGET_KEY,
-  recording:   process.env.ENABLE_RECORDING !== 'false',
-  brand:       process.env.BRAND_NAME || 'BTI Voice',
-}));
+const deploySettings = require('./helpers/deploySettings');
+app.get('/api/features', (req, res) => {
+  const st = deploySettings.accountStatus();
+  res.json({
+    ...deploySettings.resolveFeatures(),
+    brand: deploySettings.displayNames().brand,
+    account: {
+      state: st.state, message: st.message, enabled_through: st.enabled_through,
+      grace_ends: st.grace_ends, outbound_allowed: st.outbound_allowed,
+    },
+  });
+});
 app.use('/api/auth',          require('./routes/auth'));
 app.use('/api/agents',        require('./routes/agents'));
 app.use('/api/contacts',      require('./routes/contacts'));
@@ -50,6 +60,9 @@ app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/track',         require('./routes/track'));
 app.use('/api/diagnostics',   require('./routes/diagnostics'));
 app.use('/admin/activity',    require('./routes/adminActivity'));
+// BTI-only tenant admin API (admin portal Phase 1). Keyed by TENANT_ADMIN_KEY,
+// never a customer login. The Phase 2 portal is its only intended client.
+app.use('/api/tenant',        require('./routes/tenant'));
 app.use('/api/zoho-widget',   require('./routes/zohoWidget'));
 
 // ── Twilio Webhooks ───────────────────────────────────────────
@@ -95,10 +108,14 @@ const PORT = process.env.PORT || 3000;
   try {
     await migrate();
     await seed();
+    // Prime the per-deploy settings cache (features, seats, renewal date) and
+    // keep it fresh — auth + TwiML read it synchronously.
+    await deploySettings.refreshSettings();
+    deploySettings.startSettingsRefresh();
     // v1.4.0: catches calls the agent skipped wrap-up on. Zoho-only — the
     // sweep's sole job is pushing calls to the CRM, so skip it entirely on
     // deploys without the Zoho add-on.
-    if (isZohoConfigured()) startWrapUpSweep();
+    if (require('./zoho').hasZohoCredentials()) startWrapUpSweep();
     else console.log('[boot] Zoho CRM add-on not configured — CRM sync + wrap-up sweep disabled');
     startScheduledSmsSweep(); // v1.5.x: sends due scheduled SMS
     server.listen(PORT, () => {

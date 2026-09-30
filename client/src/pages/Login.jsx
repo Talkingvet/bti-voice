@@ -13,7 +13,11 @@ export default function Login({ onLogin, embedded = false }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [remember, setRemember] = useState(() => localStorage.getItem(REMEMBER_KEY) !== '0')
-  const [error, setError]       = useState('')
+  // If the server blocked the session (subscription ended / suspended), App
+  // stashes the server's message here so the user sees WHY they're signed out.
+  const [error, setError]       = useState(() => {
+    try { const m = sessionStorage.getItem('bti_blocked_msg'); sessionStorage.removeItem('bti_blocked_msg'); return m || '' } catch { return '' }
+  })
   const [loading, setLoading]   = useState(false)
 
   async function handleSubmit(e) {

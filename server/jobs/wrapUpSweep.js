@@ -13,7 +13,7 @@
 
 const { pool }            = require('../db');
 const { fireZohoLogCall } = require('../helpers/syncCallToZoho');
-const { isZohoConfigured } = require('../zoho');
+const { isZohoConfigured, hasZohoCredentials } = require('../zoho');
 
 const SWEEP_INTERVAL_MS    = 30 * 1000; // every 30 sec
 const TIMEOUT_THRESHOLD_S  = 60;        // calls older than 60 sec
@@ -22,8 +22,10 @@ let timer = null;
 
 function startWrapUpSweep() {
   if (timer) return;
-  if (!isZohoConfigured()) return; // nothing to sync to
+  if (!hasZohoCredentials()) return; // nothing to sync to, ever
   timer = setInterval(async function() {
+    // Per-customer toggle (BTI portal) can switch Zoho off after boot.
+    if (!isZohoConfigured()) return;
     try {
       // Exponential backoff: attempt N waits 30s * 2^N since the last attempt
       // (30s, 1m, 2m, 4m, 8m, 16m, 32m). After MAX_ATTEMPTS we stamp

@@ -29,7 +29,11 @@ function validateTwilio(req, res, next) {
     valid = false;
   }
 
-  if (valid) return next();
+  if (valid) {
+    // Portal health view: remember when a genuine Twilio webhook last arrived.
+    require('../helpers/lastSeen').mark(req.baseUrl.includes('/sms') ? 'sms_webhook' : 'voice_webhook');
+    return next();
+  }
 
   const strict = process.env.TWILIO_STRICT_WEBHOOKS !== undefined
     ? process.env.TWILIO_STRICT_WEBHOOKS === 'true'
