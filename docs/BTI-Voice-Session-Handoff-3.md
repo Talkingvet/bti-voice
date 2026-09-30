@@ -425,6 +425,14 @@ Verification: `node --check` on every touched file ✓; all modules `require()`d
 
 **Next session: Phase 2 — the portal itself** (plan §3): new tiny Railway service `bti-voice-admin`, tenants table, logins for Danny/Paul/Rick/Shawn, dashboard looping over tenants' `/api/tenant/*`. Nothing here is usable by BTI until that exists (curl in the meantime — DEPLOY-RUNBOOK).
 
+## 8s. 2026-09-30 (Danny, desktop) — Admin portal PHASE 2 built (the portal itself)
+
+Everything in **plan §7** — read that for the inventory. Headlines: new folder `admin/` in this repo = a separate Railway service `bti-voice-admin` (own Postgres, own domain, no build step). Tables `portal_users` / `tenants` (keys AES-GCM encrypted at rest with `PORTAL_SECRET`) / `portal_audit`. Dashboard fans out to every tenant's Phase 1 `/api/tenant/*` in parallel with a timeout; tenant page has Usage (+ CSV export) / Users / Features / Billing / Health / Activity log / Setup tabs. Add-tenant verifies the key before saving. First login bootstrapped from `PORTAL_ADMIN_USERNAME/PASSWORD` env vars, forced password change, then add Paul/Rick/Shawn from Portal users.
+
+Verification: 5/5 unit tests; full runtime pass in the sandbox against real Postgres 16 + mock tenants (plan §7e) and a headless-browser walk of every screen with zero JS errors. **Not yet deployed to Railway** — Danny does that per **DEPLOY-RUNBOOK §8** (new service from the same repo with Root Directory `/admin`, new Postgres, 5 env vars, generate domain, log in, register BTI's own deploy as tenant #1 using the `TENANT_ADMIN_KEY` already set on the main service).
+
+Commit was handed to Danny (Claude's git can't write here). Claude's `git status` left `.git/index.lock` — delete before committing.
+
 ## 9. Security posture
 **Fixed & live:** Zoho + socket auth, webhook validation (soft), secret hardening, MMS hardening, crash safety, opt-out across all paths, throttles, quiet hours, recording notice, and the client/Electron bugs above.
 **Deferred (need more than a blind edit) — in BTI-Voice-Preprod-Audit.md:**

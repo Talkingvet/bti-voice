@@ -138,3 +138,44 @@ Do all of this INSIDE a new subaccount, from BTI's parent console:
   {"days":30}`). Full contract in `docs/BTI-Voice-Admin-Portal-Plan.md` §6.
 - Billing: software fee via BTI invoice; Twilio usage lands on the subaccount —
   decide per the agent-model tax strategy (plan §8) before first invoice.
+
+## 8. The BTI admin portal (`bti-voice-admin`) — one-time setup, then per-customer registration
+
+The portal is BTI's control plane (plan §3/§7). Code: `admin/` in this repo. It is a **second Railway service** in the same Railway project, with its **own** Postgres. Do §8a once; do §8b for every customer deploy (including BTI's own).
+
+### 8a. One-time: create the service (~15 min)
+1. Make sure the commit containing `admin/` is pushed (`git log origin/main --oneline -1` shows it).
+2. Railway → the **bti-voice** project → **+ New** → **GitHub Repo** → pick `Talkingvet/bti-voice`. A new service appears. Click it → **Settings** → rename to **`bti-voice-admin`**.
+3. Same Settings page → **Source** → **Root Directory**: type `/admin` and save. (This makes Railway use `admin/package.json`; no build step, it just runs `npm start`.)
+4. Back in the project canvas → **+ New** → **Database** → **Add PostgreSQL**. Rename it **`admin-postgres`** so it's never confused with the customer DB. ⚠ Do NOT reuse the main service's Postgres.
+5. Click **bti-voice-admin** → **Variables** → **+ New Variable**, add these five:
+   - `DATABASE_URL` → click **Add Reference** and pick `admin-postgres` → `DATABASE_URL` (it fills in `${{admin-postgres.DATABASE_URL}}`).
+   - `NODE_ENV` = `production`
+   - `PORTAL_SECRET` = a long random string. Generate one in Git Bash: `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"` and paste the output. **Save this somewhere safe (password manager).** If it is ever lost, every registered tenant key has to be re-entered.
+   - `PORTAL_ADMIN_USERNAME` = `danny`
+   - `PORTAL_ADMIN_PASSWORD` = any temporary password, at least 8 characters (you change it on first login).
+   - (optional) `PORTAL_ADMIN_NAME` = `Danny`
+6. **Settings → Networking → Generate Domain**. You get something like `bti-voice-admin-production.up.railway.app`. That's the portal URL — bookmark it.
+7. Railway deploys automatically once variables are saved. Open **Deployments → latest → View logs** and wait for these three lines, in order:
+   `[db] Migrations complete.` → `[bootstrap] First portal user created: danny. …` → `[admin] bti-voice-admin listening on :XXXX`.
+   If instead you see `[secret] FATAL: PORTAL_SECRET is not set`, step 5 didn't save — add it and redeploy.
+8. Open the portal URL → sign in `danny` / the temporary password → you are forced to **Change password** (10+ chars). Do it. You land on an empty Dashboard.
+9. **Register BTI's own deploy first** (§8b) using `https://bti-voice-production.up.railway.app` and the `TENANT_ADMIN_KEY` value from the **main** service's Variables. The dashboard should show it as **OK** with this month's real numbers. If it shows "Tenant rejected the admin key", copy the key again — it must match character for character.
+10. **Portal users → + Add user** for Paul, Rick, Shawn. Each gets a one-time temp password shown once (copy button) — send it to them; they're forced to change it.
+11. Go back to **bti-voice-admin → Variables** and **delete `PORTAL_ADMIN_PASSWORD`** (and the username/name vars if you like). They were only for the very first boot.
+12. Quick round-trip test: BTI tenant → **Features** → flip **Voicemail transcription** off → in a browser open `https://bti-voice-production.up.railway.app/api/features` → within 30 s it shows `"voicemail_transcription": false` → flip it back on. That proves the portal actually controls the deploy.
+
+### 8b. Per customer: register the deploy (~2 min, after §2 of this runbook)
+1. On the customer's Railway service add a variable **`TENANT_ADMIN_KEY`** = a long random string (generate the same way as `PORTAL_SECRET`). Redeploy if it doesn't auto-redeploy. Without this the portal gets a 404 ("no admin API").
+2. Portal → **+ Add tenant** → name, the customer's Railway domain, paste that key, plan (e.g. `Pilot · $35/user`), notes → **Verify & add**. It checks the key live before saving.
+3. You land on the **Features** tab — untick anything they aren't paying for, set the **seat limit**.
+4. **Billing** tab → set **Enabled through** to their first renewal date. (Rules for what happens after that date are printed on the tab.)
+5. **Users** tab → **+ Add user** for their first admin → give them the temp password. They log in already scoped.
+6. Month end: **Usage** tab → **Last month** → **⬇ Export CSV** → attach to / enter in Zoho Billing.
+
+### 8c. Everyday operations
+- Customer late paying → Billing → nothing to do, the deploy enforces the dates itself. To give them time: **+30 days**. To cut them off now: **Suspend account**. Both take effect within 30 s, nothing is ever deleted.
+- Customer forgot a password → Users → **Reset password** → send temp password.
+- Customer wants more seats → Features → raise **Seat limit**.
+- Dashboard shows **Unreachable** → their Railway service is down or the URL changed → click the tenant → **Health → Test connection** for the exact error.
+- Rotated a customer's `TENANT_ADMIN_KEY` → tenant → **Setup** → paste the new key → Save.

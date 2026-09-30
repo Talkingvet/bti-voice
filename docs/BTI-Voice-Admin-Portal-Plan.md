@@ -123,3 +123,49 @@ Railway service from template → set `TENANT_ADMIN_KEY` → portal "Add tenant"
 - Runtime test on a scratch Railway service: set `enabled_through` to yesterday-minus-15-days, confirm outbound blocked + inbound rings; set `suspended`, confirm login message; reset a password, confirm banner + forced change.
 - Client dial-pad could pre-empt the spoken "paused" message by reading `account.outbound_allowed` — cosmetic, deferred.
 - `company_name`/`brand_name` overrides are stored and returned (`/api/features.brand`) but AI-summary prompts and after-hours texts still read `COMPANY_NAME` from env — wire `displayNames()` in when Phase 2 lands.
+
+## 7. Phase 2 — BUILT 2026-09-30 (Danny, desktop). The portal exists
+
+Lives in the same repo at **`bti-voice/admin/`** and deploys as a **second Railway service, `bti-voice-admin`**, with its own tiny Postgres. Plain Node/Express + static HTML/JS (no build step, no framework) — Railway just runs `npm start`. 15 files, ~1,400 lines. Setup steps: **DEPLOY-RUNBOOK §8**.
+
+### 7a. What it stores (3 tables, that's all)
+- `portal_users` — Danny/Paul/Rick/Shawn. bcrypt passwords, `must_change_password`, `last_login_at`. First user bootstrapped from `PORTAL_ADMIN_USERNAME/PASSWORD` env vars when the table is empty (same pattern as the customer app's `ADMIN_USERNAME`).
+- `tenants` — one row per customer deploy: name, url, **`key_enc`** (the deploy's `TENANT_ADMIN_KEY`, AES-256-GCM encrypted with a key derived from `PORTAL_SECRET` — never stored or returned in the clear; only a `…last4` hint is shown), plan, notes, `is_active` (archive), `last_ok_at`, `last_error`.
+- `portal_audit` — who did what to which tenant (login, settings patch, extend, agent create/reset, usage export, tenant add/edit…). Shown per tenant in the **Activity log** tab. This is the paper trail for billing disputes.
+
+**Nothing about a customer's usage or settings is stored in the portal** — every screen pulls live from that deploy's `/api/tenant/*` (§6d). Pull model exactly as §1 option A.
+
+### 7b. Screens
+- **Login** → forced password change on temp passwords.
+- **Dashboard** — all active tenants sorted by severity: status pill (Unreachable / Blocked / Suspended / Outbound off / In grace / Renews in Nd / OK), renewal date, users vs seats, MTD calls/minutes/texts/AI minutes, which features are off. Company-wide totals across tenants at the top. Fan-out is parallel with an 8 s timeout per tenant (`TENANT_TIMEOUT_MS`), so one dead deploy shows "Unreachable" and never hangs the page.
+- **Add tenant** — name + URL + key (+ plan/notes). The portal **verifies the key against the deploy before saving** (`GET /settings`); a wrong key or URL is rejected with the exact reason. "Save anyway" checkbox for a deploy that isn't up yet. Duplicate URLs refused.
+- **Tenant page**, tabs:
+  - **Usage** — date range (This month / Last month presets), per-user filter, 13 stat tiles, per-user table with Unattributed + Total rows, **⬇ Export CSV** (one row per user + totals, filename `bti-voice-usage-<tenant>-<from>-to-<to>.csv`) for Zoho Billing.
+  - **Users** — the customer's agents: add (returns one-time temp password in a copyable modal), edit name/username/number, reset password (temp password), deactivate/reactivate (seat-limit errors surface from the deploy). Seat count shown.
+  - **Features** — the six toggles (Zoho, recording, AI summaries, SMS, voicemail transcription, mobile apps) as switches with a plain-English line each; a toggle the deploy can't support (no Zoho creds / no OpenAI key) is marked **not available**. Seat limit field. "Resolved right now" list. Changes save instantly on flip (PATCH per toggle) and take effect on the deploy within 30 s.
+  - **Billing** — `enabled_through` date picker, **+30 / +90 / +1 year** extend buttons, "No expiry", grace days, **Suspend / Lift suspension** (with confirm), plan (portal-side), billing notes (deploy-side). The **locked-in expiry rules from §4a #3 are printed on this tab** so nobody has to remember them.
+  - **Health** — server/desktop versions, uptime, DB size, last call/text/login, last Twilio webhooks, integrations configured, number routing table, **Test connection**.
+  - **Activity log** — audit rows for this tenant.
+  - **Setup** — rename, change URL, **rotate key** (paste new one), portal notes, **Archive** (hides from dashboard; deploy untouched; un-archive any time).
+- **Portal users** — add (temp password), reset, deactivate. Can't deactivate yourself or the last active user.
+
+### 7c. Security posture
+- Session = 12 h JWT signed with `PORTAL_SECRET`; user row re-read on every request so deactivation is immediate. 10 failed logins per username → 15-min lockout. `must_change_password` blocks every route except change-password.
+- `PORTAL_SECRET` is **required in production** (boot refuses without it) because a per-boot random value would make every stored tenant key undecryptable. **Losing/rotating it means re-entering every tenant key via Setup → rotate key.**
+- Tenant keys are decrypted only in memory for the outbound call; never logged, never returned.
+- `X-Frame-Options: DENY`, `nosniff`, `no-store` on API, `noindex`. No TOTP yet (§3 said "later").
+- Everything mutating is audited with username + IP.
+
+### 7d. API (portal's own, all under `/api`, Bearer JWT)
+`POST auth/login` · `GET auth/me` · `POST auth/change-password` · `GET/POST users` · `PATCH users/:id` · `GET dashboard` · `GET/POST tenants` · `PATCH tenants/:id` · `POST tenants/:id/test` · `GET/PATCH tenants/:id/settings` · `POST tenants/:id/settings/extend` · `GET tenants/:id/usage[.csv]` · `GET/POST tenants/:id/agents` · `PATCH tenants/:id/agents/:aid` · `GET tenants/:id/health` · `GET tenants/:id/audit` · `GET health` (unauthenticated, for Railway).
+The `tenants/:id/*` routes are thin passthroughs to §6d — the deploy does the validation, the portal relays its status code and error text unchanged.
+
+### 7e. Verification (2026-09-30, in Claude's sandbox — real Postgres 16, two mock tenants + one deliberately dead)
+`node --test` 5/5 (crypto round-trip + tamper detection, pill mapping, CSV shape). Runtime: boot → migrations → bootstrap user → login → forced password change → add tenant with WRONG key correctly refused → add with right key → dead tenant saved with `force` → dashboard shows OK/OK/Unreachable → toggle Zoho off + seat limit 3 → extend 30 d → reset agent password → create agent → CSV download with correct filename → audit trail complete → portal user add + self-deactivate guard → 401 unauth + 400 bad JSON → keys confirmed encrypted in the DB → SPA deep-link reload works. Headless Chromium walked every screen with **zero JS errors**. Two bugs found and fixed during this: array-as-attrs in the DOM helper; date-only strings rendering a day early in US time zones.
+**NOT yet done against a real Railway deploy** — that's DEPLOY-RUNBOOK §8 step 9.
+
+### 7f. Not done / next
+- **Deploy it** (DEPLOY-RUNBOOK §8) and register BTI's own deploy as tenant #1.
+- §6g leftovers still stand: runtime-test the lifecycle on a scratch deploy; wire `displayNames()` into AI prompts/after-hours texts.
+- TOTP for portal logins; Railway-API "create tenant service from template" button; automatic monthly CSV → Zoho Billing (today it's a manual download).
+- Main Railway service redeploys on every push, including admin-only commits (harmless — same code). Optional tidy: set Watch Paths on each service.
