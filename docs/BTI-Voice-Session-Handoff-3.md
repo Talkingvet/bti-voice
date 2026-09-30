@@ -433,6 +433,8 @@ Verification: 5/5 unit tests; full runtime pass in the sandbox against real Post
 
 Commit was handed to Danny (Claude's git can't write here). Claude's `git status` left `.git/index.lock` — delete before committing.
 
+**Same evening — DEPLOYED + visual redesign.** Danny created the Railway service (`bti-voice-admin`, root dir `/admin`, own `admin-postgres`), boot log showed all three lines, first login + forced password change done, BTI's own deploy registered as customer #1 and showing live numbers (6 users). Still on Danny: the Features round-trip test (runbook §8a step 12), adding Paul/Rick/Shawn, deleting `PORTAL_ADMIN_PASSWORD`. Then Danny asked for the portal to look less generic, closer to nVoq's admin: rebuilt `admin/public/` (only those 3 files) — dark left sidebar with icons (customers listed in it; the open customer's sections appear beneath it, nVoq-style), title bar per page, Lato at 17px for big monitors, filled inputs with the label inside, bigger toggles, 52px table rows, dark default with a Light/Dark button in the sidebar footer, "tenant" → "customer" in all UI copy, audit actions in plain English. Routes moved `#/t/:id` → `#/c/:id` (old ones still work). Backend untouched.
+
 ## 9. Security posture
 **Fixed & live:** Zoho + socket auth, webhook validation (soft), secret hardening, MMS hardening, crash safety, opt-out across all paths, throttles, quiet hours, recording notice, and the client/Electron bugs above.
 **Deferred (need more than a blind edit) — in BTI-Voice-Preprod-Audit.md:**
