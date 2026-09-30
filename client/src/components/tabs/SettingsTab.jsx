@@ -1712,10 +1712,16 @@ function AboutSection({ C }) {
 
   async function checkForUpdates() {
     setUpdateStatus('checking')
-    const result = await window.electronAPI.checkForUpdates()
+    let result
+    try { result = await window.electronAPI.checkForUpdates() }
+    catch (e) { result = { status: 'error', message: e.message } }
     if (result.status === 'up-to-date') setUpdateStatus('up-to-date')
-    else if (result.status === 'error')  { setUpdateStatus('error'); console.error('[update]', result.message) }
-    // 'available' is handled by the onUpdateAvailable listener
+    else if (result.status === 'available') { setUpdateVersion(result.version); setUpdateStatus('available') }
+    else { setUpdateStatus('error'); console.error('[update]', result.message) }
+    // NOTE: the manual check must handle 'available' itself — the
+    // 'update-available' IPC event is only emitted by the automatic startup
+    // check in main.js, so waiting on the listener here left the button stuck
+    // on "Checking…" whenever an update actually existed.
   }
 
   function downloadUpdate() {
