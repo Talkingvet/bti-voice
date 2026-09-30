@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { IS_TOUCH as T } from '../../utils/touch'
 import { api } from '../../api'
 import { useColors } from '../../useColors'
+import { useFeatures } from '../../features'
 import { useToast } from '../Toast'
 import { formatPhone, isPhoneLike, displayName, contactInitials } from '../../utils/phone'
 
@@ -195,6 +196,7 @@ export default function ContactsTab({ agent, onDial, onMessage }) {
 
 /* ── Contact detail view ─────────────────────────────────────────── */
 function ContactDetail({ contact, onBack, onUpdate, onDial, onMessage, C }) {
+  const zohoOn = !!useFeatures().zoho
   const { toast } = useToast()
   const [editing,    setEditing]    = useState(false)
   const [syncing,    setSyncing]    = useState(false)
@@ -300,8 +302,8 @@ function ContactDetail({ contact, onBack, onUpdate, onDial, onMessage, C }) {
         )}
       </div>
 
-      {/* Zoho sync */}
-      <div style={{ padding: '10px 16px' }}>
+      {/* Zoho sync (only on deploys with the Zoho add-on) */}
+      {zohoOn && <div style={{ padding: '10px 16px' }}>
         <button
           style={{
             ...D.zohoBtn,
@@ -319,7 +321,7 @@ function ContactDetail({ contact, onBack, onUpdate, onDial, onMessage, C }) {
             {syncResult.msg}
           </div>
         )}
-      </div>
+      </div>}
 
       {/* SMS consent audit trail (A2P/TCPA) */}
       <ConsentSection contact={contact} C={C} />
@@ -458,7 +460,8 @@ function ConsentSection({ contact, C }) {
 function ContactForm({ C, initial, onSave, onCancel }) {
   const isEdit = !!initial
   // CRM-matched contacts: name is managed in the CRM, not editable here
-  const crmLocked = !!initial?.zoho_contact_id
+  // (only when this deploy actually has the Zoho add-on)
+  const crmLocked = !!useFeatures().zoho && !!initial?.zoho_contact_id
   const [name,      setName]      = useState(initial?.name  || '')
   const [phone,     setPhone]     = useState(initial?.phone_number || '')
   const [notes,     setNotes]     = useState(initial?.notes || '')

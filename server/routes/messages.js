@@ -6,7 +6,7 @@ const { getIO } = require('../socket');
 
 // Fire-and-forget Zoho sync for outbound SMS
 function syncSMSToZoho(messageId) {
-  if (!process.env.ZOHO_REFRESH_TOKEN) return;
+  if (!require('../zoho').isZohoConfigured()) return;
   setImmediate(async () => {
     try {
       await fetch(`http://localhost:${process.env.PORT || 3000}/api/zoho/log-sms`, {

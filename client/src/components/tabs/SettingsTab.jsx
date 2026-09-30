@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { BRAND } from '../../brand'
 import { useTheme }    from '../../ThemeContext'
 import { useColors }   from '../../useColors'
+import { useFeatures } from '../../features'
 import { api }         from '../../api'
 import { getSoundPrefs, setSoundPref, startRingtone, stopRingtone, playDTMF } from '../../dtmf'
 import { applyFont }   from '../../utils/font'
@@ -35,7 +36,7 @@ const MOBILE_SUBS = {
   audio:      'Ringtones & notification sounds',
   appearance: 'Theme & font',
   calls:      'IVR, routing, auto-texts & compliance',
-  about:      'Zoho, version & report a problem',
+  about:      'Version, integrations & report a problem',
 }
 
 export default function SettingsTab({ agent, onLogout }) {
@@ -624,7 +625,7 @@ function StartupCard({ C }) {
 
 /* ── Appearance section ─────────────────────────────────────────────────────── */
 const DENSITIES = [
-  { key: 'compact',     label: 'Compact',     desc: 'Smaller, tighter — similar to Zoho Voice',   factor: 0.82, w: 345, h: 595 },
+  { key: 'compact',     label: 'Compact',     desc: 'Smaller, tighter — fits more on screen',   factor: 0.82, w: 345, h: 595 },
   { key: 'normal',      label: 'Normal',       desc: 'Default size',                                factor: 1.0,  w: 420, h: 720 },
   { key: 'comfortable', label: 'Comfortable',  desc: 'Larger text and buttons',                     factor: 1.12, w: 470, h: 806 },
 ]
@@ -1040,6 +1041,8 @@ function IVRSection({ C }) {
 /* ── About section ──────────────────────────────────────────────────────────── */
 /* ── Zoho CRM section ───────────────────────────────────────────────────────── */
 function ZohoCRMSection({ C }) {
+  // Optional add-on: a customer without Zoho never sees this section.
+  const zohoOn = !!useFeatures().zoho
   const [status,    setStatus]    = useState(null)   // { configured, present, missing }
   const [testing,   setTesting]   = useState(false)
   const [testResult,setTestResult]= useState(null)   // { ok, message, sample_contact } | { ok:false, error }
@@ -1049,7 +1052,7 @@ function ZohoCRMSection({ C }) {
     api.zohoStatus().then(setStatus).catch(console.error)
   }, [])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { if (zohoOn) load() }, [load, zohoOn])
 
   async function runTest() {
     setTesting(true)
@@ -1081,6 +1084,8 @@ function ZohoCRMSection({ C }) {
   ]
 
   const SCOPES = 'ZohoCRM.modules.calls.CREATE,ZohoCRM.modules.notes.CREATE,ZohoCRM.modules.contacts.READ,ZohoCRM.modules.contacts.WRITE'
+
+  if (!zohoOn) return null
 
   return (
     <div style={S.section}>
@@ -1684,7 +1689,7 @@ function CannedResponsesSection({ C }) {
               <textarea
                 rows={3}
                 style={{ width: '100%', boxSizing: 'border-box', background: C.inputBg, border: `1px solid ${C.inputBorder}`, color: C.text, borderRadius: 6, padding: '7px 10px', fontSize: 12, resize: 'vertical', fontFamily: 'inherit' }}
-                placeholder="Hi, this is [Name] from Talkingvet…"
+                placeholder="Hi, this is [Name] from [Company]…"
                 value={form.body}
                 onChange={e => setForm(f => ({ ...f, body: e.target.value }))}
               />
@@ -1838,7 +1843,7 @@ function AboutSection({ C }) {
       <SectionHeader title="ABOUT" C={C} />
       <Card C={C}>
         <div style={S.aboutHero}>
-          <div style={S.aboutLogo}>B</div>
+          <div style={S.aboutLogo}>{(BRAND || 'B').trim()[0].toUpperCase()}</div>
           <div style={{ ...S.rowLabel, color: C.text, fontSize: 15, fontWeight: 700 }}>{BRAND}</div>
           <div style={{ ...S.rowDesc, color: C.textMuted }}>Version {version}</div>
           <div style={{ ...S.rowDesc, color: C.textMuted, marginTop: 4 }}>

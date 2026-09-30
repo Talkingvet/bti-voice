@@ -4,6 +4,7 @@ const { pool }  = require('../db');
 const router = express.Router();
 
 const { ADMIN_KEY } = require('../secret'); // no hardcoded fallback — random per boot if unset
+const BRAND = process.env.BRAND_NAME || 'BTI Voice';
 
 const EVENT_LABELS = {
   login:        '🔑 Login',
@@ -75,7 +76,7 @@ router.get('/', async (req, res) => {
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>BTI Voice — Activity</title>
+  <title>${BRAND} — Activity</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; padding: 32px; }
@@ -96,7 +97,7 @@ router.get('/', async (req, res) => {
   </style>
 </head>
 <body>
-  <h1>BTI Voice · Activity Monitor</h1>
+  <h1>${BRAND} · Activity Monitor</h1>
   <p class="subtitle">Showing last ${limit} events · All times Eastern</p>
 
   <div class="layout">

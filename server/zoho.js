@@ -8,6 +8,14 @@ const http  = require('http');
 let _accessToken  = null;
 let _tokenExpires = 0;
 
+// ── Is the Zoho CRM add-on configured on this deploy? ─────────────────────────
+// Single source of truth for "does this customer run Zoho". All three OAuth
+// values are required; anything less and every Zoho feature stays off
+// (server skips syncs, client hides CRM UI via GET /api/features).
+function isZohoConfigured() {
+  return !!(process.env.ZOHO_REFRESH_TOKEN && process.env.ZOHO_CLIENT_ID && process.env.ZOHO_CLIENT_SECRET);
+}
+
 // ── Token refresh ──────────────────────────────────────────────────────────────
 async function getAccessToken() {
   if (_accessToken && Date.now() < _tokenExpires - 60_000) return _accessToken;
@@ -31,8 +39,8 @@ async function getAccessToken() {
 
 // ── Generic API call ───────────────────────────────────────────────────────────
 async function zohoAPI(method, path, data = null) {
-  if (!process.env.ZOHO_REFRESH_TOKEN) {
-    throw new Error('[Zoho] ZOHO_REFRESH_TOKEN not set — skipping CRM sync');
+  if (!isZohoConfigured()) {
+    throw new Error('[Zoho] CRM add-on not configured (ZOHO_CLIENT_ID / ZOHO_CLIENT_SECRET / ZOHO_REFRESH_TOKEN) — skipping');
   }
   const token = await getAccessToken();
   const base  = (process.env.ZOHO_API_DOMAIN || 'https://www.zohoapis.com').replace(/\/$/, '');
@@ -336,6 +344,7 @@ function post(url, body) {
 }
 
 module.exports = {
+  isZohoConfigured,
   zohoAPI,
   findContactByPhone,
   findAllContactsByPhone,

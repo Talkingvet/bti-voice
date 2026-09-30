@@ -6,7 +6,7 @@ const { recordConsent } = require('../helpers/consent');
 
 // Fire-and-forget Zoho sync — never blocks the Twilio webhook response
 function syncSMSToZoho(messageId) {
-  if (!process.env.ZOHO_REFRESH_TOKEN) return; // Zoho not configured, skip silently
+  if (!require('../zoho').isZohoConfigured()) return; // Zoho not configured, skip silently
   setImmediate(async () => {
     try {
       await fetch(`http://localhost:${process.env.PORT || 3000}/api/zoho/log-sms`, {

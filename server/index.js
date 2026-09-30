@@ -23,6 +23,16 @@ app.use(express.urlencoded({ extended: false })); // needed for Twilio webhooks
 // Unauthenticated liveness probe — the desktop app's offline page polls this
 // to know when to reconnect.
 app.get('/api/health', (req, res) => res.json({ ok: true }));
+// Feature flags for the client — which optional add-ons this deploy has.
+// Booleans only, never credential values. The client hides CRM UI when
+// zoho=false so a customer without Zoho never sees CRM panels or buttons.
+const { isZohoConfigured } = require('./zoho');
+app.get('/api/features', (req, res) => res.json({
+  zoho:        isZohoConfigured(),
+  zoho_widget: isZohoConfigured() && !!process.env.ZOHO_WIDGET_KEY,
+  recording:   process.env.ENABLE_RECORDING !== 'false',
+  brand:       process.env.BRAND_NAME || 'BTI Voice',
+}));
 app.use('/api/auth',          require('./routes/auth'));
 app.use('/api/agents',        require('./routes/agents'));
 app.use('/api/contacts',      require('./routes/contacts'));
@@ -85,7 +95,11 @@ const PORT = process.env.PORT || 3000;
   try {
     await migrate();
     await seed();
-    startWrapUpSweep(); // v1.4.0: catches calls the agent skipped wrap-up on
+    // v1.4.0: catches calls the agent skipped wrap-up on. Zoho-only — the
+    // sweep's sole job is pushing calls to the CRM, so skip it entirely on
+    // deploys without the Zoho add-on.
+    if (isZohoConfigured()) startWrapUpSweep();
+    else console.log('[boot] Zoho CRM add-on not configured — CRM sync + wrap-up sweep disabled');
     startScheduledSmsSweep(); // v1.5.x: sends due scheduled SMS
     server.listen(PORT, () => {
       console.log(`\n🚀 ${process.env.BRAND_NAME || 'BTI Voice'} running on port ${PORT}`);

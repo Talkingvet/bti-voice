@@ -401,6 +401,22 @@ Key facts for future Android work:
 - Verified pre-commit: vite build ✓, 19/19 server tests ✓, diff reviewed. **Live test pending after push** (mic prompt, caller ID, logging, recording).
 - Sandbox note: with Cowork delete permission granted, **plain `git commit` now works** — no `GIT_INDEX_FILE` dance needed (first confirmed this session). Pushes still need Danny (no GitHub creds in sandbox).
 
+## 8q. 2026-09-30 (Danny, desktop) — Zoho made genuinely optional for non-CRM customers
+
+Danny's framing: "if I create credentials for a customer that sells cement, they would not need anything Zoho or CRM related." Audit result: server was fine (every sync site checked `ZOHO_REFRESH_TOKEN`), client was not — it had no idea whether the deploy had Zoho and rendered every CRM affordance unconditionally, producing visible errors on a Zoho-less deploy.
+
+What changed (one commit):
+- `server/zoho.js` — `isZohoConfigured()` = all three of `ZOHO_CLIENT_ID`, `ZOHO_CLIENT_SECRET`, `ZOHO_REFRESH_TOKEN`. `zohoAPI()` throws on it. Every former `process.env.ZOHO_REFRESH_TOKEN` check (voice/sms webhooks, messages, contacts, syncCallToZoho, wrapUpSweep) now calls it.
+- `server/index.js` — `GET /api/features` (unauthenticated, booleans + brand only). Wrap-up sweep only starts when Zoho is configured.
+- `client/src/features.js` — module-level cache + `useFeatures()` hook; `App.jsx` calls `loadFeatures(true)` on login/restore and `resetFeatures()` on logout. Defaults are OFF so a failed fetch hides rather than shows.
+- Gated UI: `ChatPanel` (ZohoPanel + profile fetch; rename pencil always available without CRM), `PostCallScreen` (Spoke-with = local name, no create/task, note label), `ContactsTab` (sync button, CRM name-lock), `SettingsTab` (`ZohoCRMSection` returns null; About blurb generic).
+- Brand: `adminActivity.js` title/h1 and `btiVoiceModule.js` agent fallback use `BRAND_NAME`; About logo shows the brand initial; two Zoho Voice / Talkingvet strings genericised.
+- `server/.env.example` Zoho block rewritten to say exactly what hides.
+
+Verification: `node --check` on every touched server file ✓, `npm test` in `server/` ✓ (recordingNotice suite), `vite build` ✓. `isZohoConfigured()` truth table checked by hand (unset → false, token-only → false, all three → true). Not runtime-tested on a Zoho-less deploy yet — that's the first thing to do when the first customer Railway service exists (or temporarily unset the three vars on a scratch service).
+
+Also raised this session: **BTI-only admin portal** (cross-customer usage, per-customer feature toggles, credential resets, billing "enabled through" dates). Single-tenant architecture means this needs a small central control-plane; design options written up for Danny to choose.
+
 ## 9. Security posture
 **Fixed & live:** Zoho + socket auth, webhook validation (soft), secret hardening, MMS hardening, crash safety, opt-out across all paths, throttles, quiet hours, recording notice, and the client/Electron bugs above.
 **Deferred (need more than a blind edit) — in BTI-Voice-Preprod-Audit.md:**

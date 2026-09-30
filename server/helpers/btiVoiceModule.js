@@ -96,7 +96,7 @@ async function upsertSmsDigest({ conversationId, phoneNumber, contactName, when,
 
   const lines = msgs.map(m => {
     const t    = localTimeString(m.sent_at, tz);
-    const who  = m.direction === 'inbound' ? (contactName || phoneNumber) : (m.agent_name || 'BTI Voice');
+    const who  = m.direction === 'inbound' ? (contactName || phoneNumber) : (m.agent_name || process.env.BRAND_NAME || 'BTI Voice');
     const tag  = m.direction === 'inbound' ? '←' : '→';
     const body = (m.body || '') + (m.has_media ? (m.body ? ' ' : '') + '[attachment]' : '');
     return '[' + t + '] ' + tag + ' ' + who + ': ' + body;

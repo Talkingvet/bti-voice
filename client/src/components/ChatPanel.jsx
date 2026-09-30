@@ -4,6 +4,7 @@ import { IS_TOUCH } from '../utils/touch'
 import { api } from '../api'
 import { displayName } from '../utils/phone'
 import { useColors } from '../useColors'
+import { useFeatures } from '../features'
 import { useToast } from './Toast'
 
 function formatTime(dateStr) {
@@ -55,6 +56,9 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
   const [showSchedule, setShowSchedule] = useState(false)
   const [scheduleAt,   setScheduleAt]   = useState('')
   const [scheduling,   setScheduling]   = useState(false)
+
+  const features = useFeatures()
+  const zohoOn = !!features.zoho
 
   // Zoho profile state
   const [zohoProfile,   setZohoProfile]  = useState(null)
@@ -113,12 +117,13 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
   useEffect(() => {
     if (!conv?.contact_id) return
     setZohoProfile(null)
+    if (!zohoOn) { setZohoLoading(false); return } // no CRM on this deploy — rename always allowed
     setZohoLoading(true)
     api.zohoProfile(conv.contact_id)
       .then(p => setZohoProfile(p))
       .catch(() => setZohoProfile(null))
       .finally(() => setZohoLoading(false))
-  }, [conv?.contact_id])
+  }, [conv?.contact_id, zohoOn])
 
   // ── Re-sync with CRM: pull the authoritative name/profile from Zoho ──
   const [crmSyncing, setCrmSyncing] = useState(false)
@@ -479,8 +484,8 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
         </div>
       </div>
 
-      {/* ── Zoho CRM Panel ── */}
-      <ZohoPanel profile={zohoProfile} loading={zohoLoading} open={showZoho} onToggle={() => setShowZoho(v => !v)} onRefresh={resyncCrm} refreshing={crmSyncing} C={C} />
+      {/* ── Zoho CRM Panel (only on deploys with the Zoho add-on) ── */}
+      {zohoOn && <ZohoPanel profile={zohoProfile} loading={zohoLoading} open={showZoho} onToggle={() => setShowZoho(v => !v)} onRefresh={resyncCrm} refreshing={crmSyncing} C={C} />}
 
       {/* ── Messages tab ── */}
       {activeTab === 'messages' && (

@@ -170,7 +170,7 @@ router.patch('/:id', async (req, res) => {
       );
       if (!existing) return res.status(404).json({ error: 'Contact not found' });
       let crmMatched = !!existing.zoho_contact_id;
-      if (!crmMatched && process.env.ZOHO_REFRESH_TOKEN) {
+      if (!crmMatched && require('../zoho').isZohoConfigured()) {
         try {
           const { findContactByPhone } = require('../zoho');
           const zc = await findContactByPhone(existing.phone_number);
@@ -214,7 +214,7 @@ router.patch('/:id', async (req, res) => {
 // name edits are blocked for them), so a sync ALWAYS adopts the CRM name.
 // This powers the "Re-sync with CRM" buttons.
 router.post('/:id/sync-zoho', async (req, res) => {
-  if (!process.env.ZOHO_REFRESH_TOKEN) {
+  if (!require('../zoho').isZohoConfigured()) {
     return res.status(400).json({ error: 'Zoho is not configured' });
   }
 
@@ -285,7 +285,7 @@ router.post('/:id/sync-zoho', async (req, res) => {
 // Returns Contact record, related Deals, and Lead fallback from Zoho.
 // Used by the client-side Zoho context panel in the conversation view.
 router.get('/:id/zoho-profile', async (req, res) => {
-  if (!process.env.ZOHO_REFRESH_TOKEN) {
+  if (!require('../zoho').isZohoConfigured()) {
     return res.status(400).json({ error: 'Zoho is not configured' });
   }
 

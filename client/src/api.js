@@ -67,6 +67,7 @@ async function request(path, options = {}) {
 export const api = {
   login:         (username, password, remember = true) => request('/auth/login', { method: 'POST', body: { username, password, remember } }),
   me:            ()                    => request('/auth/me'),
+  features:      ()                    => request('/features'),
   refresh:       ()                    => request('/auth/refresh', { method: 'POST' }),
   agents:        ()                    => request('/agents'),
   updateAgentNumber: (id, phone_number) => request(`/agents/${id}/number`, { method: 'PATCH', body: { phone_number } }),

@@ -2,6 +2,7 @@ import { IS_TOUCH } from '../utils/touch'
 import { useState, useEffect, useMemo } from 'react'
 import { api } from '../api'
 import { useColors } from '../useColors'
+import { useFeatures } from '../features'
 
 /* v1.4.0 — Post-call wrap-up screen.
    Solves the shared-phone-number problem in Zoho where calls auto-attach to
@@ -34,6 +35,8 @@ function fmtDuration(sec) {
 
 export default function PostCallScreen({ call, onClose, onSaved }) {
   const C = useColors()
+  // Without the Zoho add-on the screen is local-only: contact name, disposition, note.
+  const zohoOn = !!useFeatures().zoho
 
   const [contacts,    setContacts]    = useState([])     // [{ id, Full_Name, Email, Account_Name, ... }]
   const [chosenId,    setChosenId]    = useState('')     // Zoho contact id (string)
@@ -71,6 +74,7 @@ export default function PostCallScreen({ call, onClose, onSaved }) {
       setContactErr('No phone number on this call.')
       return
     }
+    if (!zohoOn) { setLoadingContacts(false); return } // no CRM lookup on this deploy
     setLoadingContacts(true)
     api.zohoFindContactsByPhone(call.phone)
       .then(resp => {
@@ -86,7 +90,7 @@ export default function PostCallScreen({ call, onClose, onSaved }) {
         setContactErr(e.message || 'Failed to load contacts')
       })
       .finally(() => setLoadingContacts(false))
-  }, [call])
+  }, [call, zohoOn])
 
   // Esc key dismisses the screen (same as Skip).
   useEffect(() => {
@@ -244,7 +248,9 @@ export default function PostCallScreen({ call, onClose, onSaved }) {
           {/* Spoke with */}
           <div style={S.field}>
             <label style={{ ...S.label, color: C.textMuted }}>SPOKE WITH</label>
-            {loadingContacts ? (
+            {!zohoOn ? (
+              <div style={{ ...S.muted, color: C.text }}>{call.contact_name || call.phone}</div>
+            ) : loadingContacts ? (
               <div style={{ ...S.muted, color: C.textSec }}>Looking up contacts…</div>
             ) : contactErr ? (
               <div style={S.error}>{contactErr}</div>
@@ -356,7 +362,7 @@ export default function PostCallScreen({ call, onClose, onSaved }) {
 
           {/* Note */}
           <div style={S.field}>
-            <label style={{ ...S.label, color: C.textMuted }}>NOTE (optional — posted to Zoho)</label>
+            <label style={{ ...S.label, color: C.textMuted }}>{zohoOn ? 'NOTE (optional — posted to Zoho)' : 'NOTE (optional)'}</label>
             <textarea
               style={{
                 ...S.textarea,
@@ -371,8 +377,8 @@ export default function PostCallScreen({ call, onClose, onSaved }) {
             />
           </div>
 
-          {/* Follow-up task (collapsible) */}
-          <div style={S.field}>
+          {/* Follow-up task (collapsible; Zoho Tasks — only with the add-on) */}
+          {zohoOn && <div style={S.field}>
             {!taskOpen ? (
               <button
                 style={{ ...S.linkBtn, color: '#4f9cf9' }}
@@ -432,7 +438,7 @@ export default function PostCallScreen({ call, onClose, onSaved }) {
                 </div>
               </div>
             )}
-          </div>
+          </div>}
 
           {submitError && <div style={S.error}>{submitError}</div>}
         </div>

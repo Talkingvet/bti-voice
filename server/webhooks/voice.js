@@ -793,7 +793,7 @@ Keep it tight — this is for a CRM note, not a report.`,
       // Transcript and AI_Summary. The endpoint re-reads the row, so it picks
       // up chosen_zoho_contact_id set by the post-call wrap-up screen.
       // (Replaced the old POST /api/zoho/add-note path 2026-08-14.)
-      if (process.env.ZOHO_REFRESH_TOKEN && callRecord.contact_id) {
+      if (require('../zoho').isZohoConfigured() && callRecord.contact_id) {
         try {
           await fetch('http://localhost:' + (process.env.PORT || 3000) + '/api/zoho/update-call-record', {
             method:  'POST',

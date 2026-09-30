@@ -13,6 +13,7 @@
 
 const { pool }            = require('../db');
 const { fireZohoLogCall } = require('../helpers/syncCallToZoho');
+const { isZohoConfigured } = require('../zoho');
 
 const SWEEP_INTERVAL_MS    = 30 * 1000; // every 30 sec
 const TIMEOUT_THRESHOLD_S  = 60;        // calls older than 60 sec
@@ -21,6 +22,7 @@ let timer = null;
 
 function startWrapUpSweep() {
   if (timer) return;
+  if (!isZohoConfigured()) return; // nothing to sync to
   timer = setInterval(async function() {
     try {
       // Exponential backoff: attempt N waits 30s * 2^N since the last attempt

@@ -22,6 +22,7 @@ import ContactsTab                 from './components/tabs/ContactsTab'
 import CallsTab                    from './components/tabs/CallsTab'
 import SettingsTab                 from './components/tabs/SettingsTab'
 import { api, ensureMediaToken, clearMediaToken } from './api'
+import { loadFeatures, resetFeatures } from './features'
 import { applyFont } from './utils/font'
 
 const BASE_AT_KEY   = 'bti_notif_base_at'
@@ -233,6 +234,7 @@ function AppInner() {
         const data = await api.me()
         if (cancelled) return
         setAgent(data)
+        loadFeatures(true)
         setAgentStatus(data.status || 'online')
         setReconnecting(false)
         setLoading(false)
@@ -455,6 +457,7 @@ function AppInner() {
   function handleLogin(agentData, token, defaultPassword) {
     localStorage.setItem('bti_token', token)
     setAgent(agentData)
+    loadFeatures(true)
     setAgentStatus(agentData.status || 'online')
     setActiveTab('dialpad')
     setDefaultPw(!!defaultPassword)
@@ -464,6 +467,7 @@ function AppInner() {
     setDefaultPw(false)
     disconnectSocket()
     clearMediaToken()
+    resetFeatures()
     localStorage.removeItem('bti_token')
     setActivity([])
     setUnreadSms(0); setUnreadVm(0); setUnreadNotifs(0)

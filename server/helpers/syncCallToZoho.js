@@ -24,11 +24,12 @@
 // stop reading the wrap-up flag.
 
 const { pool } = require('../db');
+const { isZohoConfigured } = require('../zoho');
 
 const WRAP_UP_MIN_DURATION_SEC = 15;
 
 async function syncCallToZoho(callId, port) {
-  if (!process.env.ZOHO_REFRESH_TOKEN) return; // Zoho not configured, skip silently
+  if (!isZohoConfigured()) return; // Zoho not configured, skip silently
   if (!callId) return;
 
   try {
@@ -67,6 +68,7 @@ async function syncCallToZoho(callId, port) {
 // Fire the actual POST to /api/zoho/log-call. The endpoint stamps
 // zoho_logged_at + zoho_call_id on the row so we don't double-sync.
 function fireZohoLogCall(callId, opts) {
+  if (!isZohoConfigured()) return; // Zoho not configured, skip silently
   const port = (opts && opts.port) || process.env.PORT || 3000;
   const body = { call_id: callId };
   if (opts && opts.zoho_contact_id) body.zoho_contact_id = opts.zoho_contact_id;
