@@ -1742,7 +1742,8 @@ function AboutSection({ C }) {
   // Updates are Windows-only for now (the update feed serves a Windows .exe);
   // showing the button on Mac would download an installer it can't run.
   const canUpdate = isElectron && window.electronAPI?.platform === 'win32'
-  const [version,    setVersion]    = useState('1.0.0')
+  // Baked in by vite.config.js from electron/package.json; Electron overrides below
+  const [version,    setVersion]    = useState(typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.0.0')
   const [updateStatus, setUpdateStatus] = useState(null) // null | 'checking' | 'up-to-date' | 'available' | 'downloading' | 'ready' | 'error'
   const [updateVersion, setUpdateVersion] = useState(null)
   const [progress,   setProgress]   = useState(0)
