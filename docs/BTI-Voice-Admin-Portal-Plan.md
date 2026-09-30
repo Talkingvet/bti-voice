@@ -44,7 +44,7 @@ BTI can override any of this from the portal (extend date, set `suspended=true` 
 - `GET /agents`, `PATCH /agents/:id` (rename, username, reset password → returns a one-time temporary password and forces change on next login, activate/deactivate).
 - `GET /health-extended` — version, DB size, Twilio numbers, last webhook seen (spot a broken deploy from the portal).
 
-### 2d. Owner-only UI in the app itself
+### 2d. ~~Owner-only UI in the app itself~~ — DROPPED 2026-09-30 (see §4a #4: portal-only)
 A hidden **Account** section in Settings visible only when logged in with an `owner`-role agent (new role; BTI's login on each deploy). Shows settings + usage. This alone satisfies "we can see and control each customer" for the pilots, and the portal reuses the same endpoints.
 
 ## 3. Phase 2 — the BTI portal (Option A)
@@ -60,6 +60,18 @@ A hidden **Account** section in Settings visible only when logged in with an `ow
 3. **Expiry behaviour** in §2b — agree with "outbound off, inbound stays on" past grace? Grace 14 days?
 4. Is the **owner-only section inside the customer app** acceptable, or must all BTI admin live outside the customer's UI from day one?
 5. Portal login: Danny + Paul only? Rick?
+
+## 4a. DECISIONS — Danny, 2026-09-30
+1. **Order: C then A** — per-deploy admin foundation (Phase 1) first, BTI portal (Phase 2) on top. ✅
+2. **Toggleable features as proposed:** Zoho, call recording, AI summaries, SMS, voicemail transcription, mobile apps, seat limit. ✅
+3. **Expiry behaviour — LOCKED IN (Danny asked this be noted so he remembers):**
+   - 14 days before `enabled_through`: renewal banner for the customer's admin.
+   - Past the date → **14-day grace**: banner for everyone, app fully works.
+   - Past grace: **outbound calls + SMS OFF; inbound still rings and logs**; login + data reading still work.
+   - Grace + 30 days: login blocked ("contact BTI" screen). **Nothing is ever deleted.**
+   - BTI can extend the date or suspend immediately from the portal at any time.
+4. **Where BTI's controls live: PORTAL ONLY.** Danny: "I'd like all that to be toggleable from the portal, so when I make a pilot account I can decide what they have access to. No need to stuff it in the app." → **§2d (owner-only in-app section) is DROPPED.** Phase 1 is backend-only: `deploy_settings` table, expiry enforcement, `/api/tenant/*` endpoints keyed by `TENANT_ADMIN_KEY`. Every control (features, seats, renewal date, user resets) is exercised only from the Phase 2 portal. Consequence: nothing is *usable* by BTI until the portal exists, so Phase 1 and Phase 2 should be built back-to-back; a bare-bones portal (tenant list + settings form + usage table) is the minimum before the first pilot account is created. **Pilot onboarding flow:** portal → Add tenant (URL + key) → tick features + seat limit + enabled_through → customer logs in for the first time already scoped. ✅
+5. **Portal logins: Danny, Paul, Rick, Shawn.** ✅
 
 ## 5. Not in scope (noted so they aren't forgotten)
 Per-customer branded installers · Railway-API automated provisioning · multi-tenancy · customer self-service billing/Stripe.
