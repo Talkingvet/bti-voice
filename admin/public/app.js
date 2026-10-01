@@ -77,7 +77,7 @@ function confirmModal(title, text, { danger, okLabel = 'Confirm' } = {}) {
     modal(title, (close) => h('div', h('p', text),
       h('div', { class: 'row end', style: 'margin-top:1rem' },
         h('button', { class: 'btn', onclick: () => { close(); resolve(false); } }, 'Cancel'),
-        h('button', { class: 'btn primary' + (danger ? ' danger' : ''), onclick: () => { close(); resolve(true); } }, okLabel))),
+        h('button', { class: 'btn primary' + (danger ? ' danger' : ''), onclick: () => { resolve(true); close(); } }, okLabel))),
       { onClose: () => resolve(false) });
   });
 }
