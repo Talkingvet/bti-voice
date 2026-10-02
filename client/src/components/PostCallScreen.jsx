@@ -17,7 +17,7 @@ import { useFeatures } from '../features'
    Submit POSTs /api/calls/:id/wrap-up which handles all the Zoho writes.
 */
 
-const DISPOSITIONS = [
+export const DISPOSITIONS = [
   { code: 'demo_scheduled',             label: 'Demo scheduled' },
   { code: 'callback_requested',         label: 'Callback requested' },
   { code: 'not_interested',             label: 'Not interested' },

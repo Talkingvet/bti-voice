@@ -4,6 +4,9 @@ import { IS_TOUCH as T } from '../../utils/touch'
 import { api } from '../../api'
 import { useColors } from '../../useColors'
 import { getSocket } from '../../socket'
+import { DISPOSITIONS } from '../PostCallScreen'
+
+const dispositionLabel = code => (DISPOSITIONS.find(d => d.code === code) || {}).label || (code ? code.replace(/_/g, ' ') : '')
 
 // Authenticated recording URL — uses the short-lived media token minted by
 // api.ensureMediaToken() (audio/download links can't send Authorization headers)
@@ -482,6 +485,17 @@ function CallDetailBody({ call, onDial, onMessage, C }) {
                 onClick={e => { e.stopPropagation(); onMessage && onMessage(call.contact_number) }}
                 style={{ display: 'flex', alignItems: 'center', gap: 6, border: '1px solid rgba(79,156,249,0.4)', background: 'rgba(79,156,249,0.12)', color: '#4f9cf9', borderRadius: 8, padding: '5px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
               >💬 Message</button>
+            </div>
+          )}
+          {(call.disposition || call.wrap_up_note) && (
+            <div>
+              <div style={{ ...S.rowTime, color: C.textMuted, marginBottom: 4 }}>OUTCOME</div>
+              {call.disposition && (
+                <div style={{ fontSize: 12, color: C.text, fontWeight: 600 }}>{dispositionLabel(call.disposition)}</div>
+              )}
+              {call.wrap_up_note && (
+                <div style={{ fontSize: 12, color: C.text, lineHeight: 1.6, whiteSpace: 'pre-wrap', marginTop: call.disposition ? 3 : 0 }}>{call.wrap_up_note}</div>
+              )}
             </div>
           )}
           {call.recording_opt_out && !call.recording_url && (

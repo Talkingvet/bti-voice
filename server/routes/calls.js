@@ -16,7 +16,7 @@ router.get('/', requireAuth, async (req, res) => {
         ca.started_at, ca.ended_at,
         ca.recording_url, ca.transcription, ca.ai_summary, ca.recording_opt_out,
         ca.needs_wrap_up, ca.chosen_zoho_contact_id, ca.chosen_zoho_module,
-        ca.disposition, ca.wrap_up_completed_at,
+        ca.disposition, ca.wrap_up_note, ca.wrap_up_completed_at,
         a.name     AS agent_name,
         a.color    AS agent_color,
         a.initials AS agent_initials,

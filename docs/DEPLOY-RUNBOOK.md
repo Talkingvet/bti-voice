@@ -201,16 +201,16 @@ Twilio properly per §3 under their identity; the Railway service and portal rec
    - **Do NOT set** `SEED_DEMO`, `ZOHO_*`, `LATEST_VERSION`, `GH_TOKEN`.
    - Twilio vars come in §9b; `SERVER_URL` in step 4.
 4. Settings → Networking → **Generate Domain** → put it in `SERVER_URL` (https, no trailing slash).
-5. Deploy log must show `[db] Migrations complete.` and `[seed] Bootstrap admin account created: admin`.
+5. Deploy log must show `[db] Migrations complete.` and `[seed] Bootstrap admin account created: admin`. (It also prints webhook URLs with `YOUR-DOMAIN` — hardcoded text, not a sign SERVER_URL is missing.)
 
 ### 9b. Twilio, in BTI's main account (~15 min)
-1. **Buy a number** (Phone Numbers → Buy, local, voice + SMS + MMS capable, their area code). → `TWILIO_PHONE_NUMBER`. Add BTI's E911 address to it.
-2. **TwiML App**: Voice → TwiML Apps → Create → name `<prospect>-voice`, Request URL `SERVER_URL/webhooks/voice/outbound` (POST) → SID → `TWILIO_TWIML_APP_SID`.
+1. **Buy a number** (new console: Communications → Numbers & senders; direct link `https://console.twilio.com/us1/develop/phone-numbers/manage/incoming` lists active numbers. The post-purchase "Manage compliance" wizard: pick **Voice**, skip Messaging (that path starts a new A2P registration); Voice Integrity registration is optional — use case **Customer Support**, BTI's details, skip CNAM/Branded Calling for a trial; local, voice + SMS + MMS capable, their area code). → `TWILIO_PHONE_NUMBER`. Add BTI's E911 address to it.
+2. **TwiML App** (new console: Builder tools → TwiML host & config → TwiML apps; or paste `https://console.twilio.com/us1/develop/voice/manage/twiml-apps`): Create → name `<prospect>-voice`, Request URL `SERVER_URL/webhooks/voice/outbound` (POST) → SID → `TWILIO_TWIML_APP_SID`.
 3. On the new number: Voice "A call comes in" = `SERVER_URL/webhooks/voice/inbound` (POST); Messaging "A message comes in" = `SERVER_URL/webhooks/sms` (POST).
 4. `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_API_KEY` / `TWILIO_API_SECRET` = **same values as BTI's own service** (it's the same account).
-5. **Texting**: add the new number to BTI's Messaging Service sender pool. Then check the service's **Integration → Incoming messages** setting: it must be **"Defer to sender's webhook"** so this number's own SMS URL (step 3) is used rather than BTI's deploy. If it's "Send a webhook" today, switch it — BTI's own numbers keep working because they carry the same URL at number level (verify with `server/scripts/fix-sms-urls.js` or by eye). Set `TWILIO_MESSAGING_SERVICE_SID` on the demo service to the same SID as BTI's.
+5. **Texting** (direct link `https://console.twilio.com/us1/develop/sms/services`): add the new number to BTI's Messaging Service sender pool. Then check the service's **Integration → Incoming messages** setting: it must be **"Defer to sender's webhook"** so this number's own SMS URL (step 3) is used rather than BTI's deploy. If it's "Send a webhook" today, switch it — BTI's own numbers keep working because they carry the same URL at number level (verify with `server/scripts/fix-sms-urls.js` or by eye). Set `TWILIO_MESSAGING_SERVICE_SID` on the demo service to the same SID as BTI's.
 6. **SHAKEN/STIR**: add the number to the "Talkingvet Dialer" Trust Product (Business Profile first, then Trust Product) so outbound isn't "Spam Likely".
-7. Redeploy the demo service after the Twilio vars are in. Log prints the webhook URLs — compare against steps 2–3.
+7. Redeploy the demo service after the Twilio vars are in. (The boot log's "Twilio webhook URLs" lines always print `YOUR-DOMAIN` — that text is hardcoded, not read from SERVER_URL. Ignore it; just confirm `SERVER_URL` exists in Variables.)
 
 ### 9c. Portal (~5 min)
 1. Portal → **Add customer** → name, the demo service's domain, its `TENANT_ADMIN_KEY` → Verify and add.
