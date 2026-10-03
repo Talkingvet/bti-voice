@@ -136,3 +136,8 @@ select.field { appearance: none; }
 .meter { margin-top: 10px; height: 10px; border-radius: 999px; background: var(--surface); overflow: hidden; }
 .meter-fill { height: 100%; background: linear-gradient(90deg, var(--green), var(--amber) 70%, var(--red)); transition: width 60ms linear; }
 .hint { color: var(--text-sec); font-size: 12.5px; margin-top: 6px; }
+
+/* macOS desktop app: the window's traffic-light buttons sit at the top-left,
+   so push the sidebar logo down below them. */
+.mac-desktop .sidebar { padding-top: 52px; }
+.mac-desktop .room .header, .mac-desktop .topbar { padding-left: 16px; }

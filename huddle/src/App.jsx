@@ -82,8 +82,9 @@ export default function App() {
 
   const roomMatch = path.match(new RegExp(`^${BASE_PATH}/m/([a-z0-9-]+)`, 'i'))
 
+  const isMacDesktop = window.huddleAPI?.isDesktop && window.huddleAPI?.platform === 'darwin'
   return (
-    <div className="shell">
+    <div className={`shell ${isMacDesktop ? 'mac-desktop' : ''}`}>
       <aside className="sidebar">
         <div className="logo">BH</div>
         <button className={`nav-btn ${!roomMatch ? 'active' : ''}`} onClick={() => navigate(BASE_PATH)}><Icon.People /> People</button>
