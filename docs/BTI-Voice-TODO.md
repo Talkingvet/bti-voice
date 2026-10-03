@@ -1,9 +1,15 @@
 # BTI Voice — To-Do Checklist (as of 2026-08-19, end of day)
 
 Running list of what still needs doing, in rough priority. Check items off as you go.
-Full context for anything here lives in `BTI-Voice-Session-Handoff 3.md` (see §8f for the 8/17–8/18 sessions).
+Full context for anything here lives in `BTI-Voice-Session-Handoff-3.md` (latest: §8u, 2026-10-02 Huddle).
 
 ## ⚡ WHAT'S NEXT (start a new session here)
+
+**▶ NEXT UP (2026-10-03) — BTI HUDDLE v0.1 is in the repo, flag-gated OFF (handoff §8u):**
+- **Turn it on for BTI and test it for real:** Railway → `bti-voice` → Variables → `ENABLE_HUDDLE=true` → redeploy → `https://bti-voice-production.up.railway.app/huddle` in two browsers (Danny + Paul): sign in with the normal Voice login, call each other, mute/camera, share a screen, create a meeting link and join by code, send a DM + a group chat, change status in Settings and confirm Voice shows it. Note anything broken in this file.
+- **Docs that still don't know Huddle exists:** DEPLOY-RUNBOOK (a §10 "enabling Huddle on a deploy": the env var, the Twilio NTS dependency, `/huddle` URL, desktop app), the portal plan's feature list, and check the portal Features tab actually shows the `huddle` toggle.
+- **Desktop app:** only `electron-huddle/build-mac.sh` exists (unsigned DMG, ad-hoc signed, outputs to `dist-electron-huddle/`). Windows installer not started. Fix the stale `1.2.0` in the script header; make sure the server address isn't hardcoded to BTI's URL before any customer gets it (same issue as the Voice desktop app below).
+- Leave the Co-Authored-By trailers on `d7b164d`…`5db8880` alone — just don't add new ones.
 
 **▶ NEXT UP (2026-10-01):**
 - **Desktop app for trials/customers — one installer, server chosen on first launch.** `electron/main.js` hardcodes `APP_URL` (BTI's Railway URL). Add a first-launch "server address" screen (or field under login), persist in userData, make `APP_URL` / `APP_ORIGIN` / updater calls follow it. Build Windows installer + Mac DMG → **1.6.0**, GitHub release, Railway `LATEST_VERSION`. Handoff §8t. Blocks giving CBIA the desktop app.

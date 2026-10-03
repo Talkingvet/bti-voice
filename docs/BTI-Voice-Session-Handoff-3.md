@@ -447,6 +447,25 @@ Commit was handed to Danny (Claude's git can't write here). Claude's `git status
 
 Also: Danny's Mac now has `~/Dev/bti-voice` at the dialog-fix commit; desktop was behind it with uncommitted edits (docs + this call-history change) — desktop must `git pull` before committing.
 
+## 8u. 2026-10-02 (Danny, Mac) — BTI HUDDLE v0.1 built: video calls, screen share, meetings, team chat (flag-gated, OFF by default)
+
+**What it is.** A sibling app to BTI Voice living in the same repo, same server, same login (`bti_token`): internal video calls, screen share, meeting links, and agent-to-agent chat — the "Teams/Slack-lite" for BTI's own team and, later, a toggleable product feature per customer. Four commits from the Mac, all pushed (`d7b164d` core, `d1e72dc` Settings panel, `e698cd6` macOS sidebar spacing, `5db8880` chat). Desktop pulled 2026-10-03.
+
+**It ships INERT.** Every Huddle surface 404s / falls through to the Voice SPA unless the deploy sets **`ENABLE_HUDDLE=true`**. `deploySettings.js` has a new feature key `huddle`, and unlike the other keys a *missing* toggle means OFF (`on('huddle') && env.ENABLE_HUDDLE === 'true'`), so BTI / CBIA / any existing deploy saw zero behaviour change from the push. The portal toggle can still switch it off on a deploy that has the env var.
+
+**Server** — `server/routes/huddle.js` (`GET /api/huddle/ice` = Twilio Network Traversal STUN/TURN creds, cached; `POST/GET /api/huddle/rooms`, `GET /rooms/:code`), `server/routes/huddleChat.js` (list / create with DM dedupe / history paging / send / mark read / pin / rename / add members / leave), `socket.js` (WebRTC signaling relay, room presence, direct-call ringing, `chat:*` fan-out + typing relay), `db.js` tables `huddle_rooms`, `huddle_chats`, `huddle_chat_members`, `huddle_chat_messages`. Chat messages are Postgres rows over the existing socket — **never SMS/Twilio**, so volume costs nothing. `index.js` mounts `/api/huddle` + `/api/huddle/chats` and serves `server/public-huddle` at `/huddle` only when the flag is on. Root `npm run build` now also builds `huddle/`.
+
+**Web client** — `huddle/` (Vite + React, served at `/huddle`): shared login, people list with presence + Call, meeting links `/huddle/m/<code>` (create / copy / join by code), peer-to-peer mesh WebRTC with perfect negotiation, mute / camera / screen share as a second track, presenter layout, incoming-call banner. **Settings** (avatar or gear, bottom-left): status chips (Available / Busy / DND / BRB / Away — writes the same `agents.status` Voice shows), camera picker with preview, mic picker with level meter, speaker picker + test sound (where `setSinkId` is supported), About, Sign out; device choices persist per install in localStorage. **Chat tab**: Pinned + Recent, DMs and named groups, day separators, typing indicator, Enter to send, scroll-up history, "Call" rings everyone in the chat, toast on new messages when not viewing that chat.
+
+**Desktop shell** — `electron-huddle/` (`bti-huddle-desktop` 0.1.0, productName "BTI Huddle", appId `com.businesstechnologyinsight.bti-huddle`): big-window Electron app loading `/huddle`, remembers bounds, native screen-share picker (macOS 15+ system picker), camera + mic entitlements, dock-bounce on new chat message (preload hook — needs an app rebuild to take effect). `build-mac.sh` mirrors Voice's unsigned-then-ad-hoc-sign flow and outputs to `dist-electron-huddle/`. **No Windows build yet.** ⚠ `build-mac.sh`'s header comment still says `BTI Huddle-1.2.0` — copy-paste from Voice; the real version is 0.1.0. ⚠ Same `APP_URL` hardcoding problem as Voice's `electron/main.js` (§8t) — check before building for anyone outside BTI.
+
+**Not done / unverified:**
+- Not runtime-tested on Railway or between two real people yet. First test: set `ENABLE_HUDDLE=true` on BTI's own service, open `/huddle` in two browsers (Danny + Paul), call, share screen, send a chat.
+- Nothing in the docs mentioned Huddle until this entry: `.env.example` had no `ENABLE_HUDDLE` (added 2026-10-03), DEPLOY-RUNBOOK doesn't cover it, the portal plan's feature list predates it.
+- Does the portal's Features tab render the new `huddle` key? (BTI Portal's btivoice module and the old `admin/` both read `/api/tenant/settings` — if the key list is hardcoded there, the toggle is missing.)
+- Twilio NTS (TURN) relays are billed per GB when a direct P2P path fails — fine for internal use, worth watching before customers get it. Mesh WebRTC also means call quality drops with more than ~4–5 participants; an SFU is a later problem.
+- The four commits carry `Co-Authored-By: Claude` trailers despite the no-attribution rule — already pushed, left alone; don't repeat.
+
 ## 9. Security posture
 **Fixed & live:** Zoho + socket auth, webhook validation (soft), secret hardening, MMS hardening, crash safety, opt-out across all paths, throttles, quiet hours, recording notice, and the client/Electron bugs above.
 **Deferred (need more than a blind edit) — in BTI-Voice-Preprod-Audit.md:**
