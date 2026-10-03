@@ -66,6 +66,7 @@ app.use('/api/tenant',        require('./routes/tenant'));
 app.use('/api/zoho-widget',   require('./routes/zohoWidget'));
 // BTI Huddle (video / screen share / meetings). 404s unless ENABLE_HUDDLE=true.
 app.use('/api/huddle',        require('./routes/huddle'));
+app.use('/api/huddle/chats',  require('./routes/huddleChat'));
 
 // ── Twilio Webhooks ───────────────────────────────────────────
 const { validateTwilio } = require('./webhooks/validateTwilio');

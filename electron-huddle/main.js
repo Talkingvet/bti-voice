@@ -139,6 +139,12 @@ ipcMain.on('incoming-call', (_, name) => {
   mainWindow.setTitle(`${name} is calling — BTI Huddle`)
   setTimeout(() => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setTitle('BTI Huddle') }, 15000)
 })
+// New chat message while the window isn't focused: gentle dock bounce / taskbar flash.
+ipcMain.on('incoming-message', () => {
+  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.isFocused()) return
+  if (process.platform === 'darwin') app.dock?.bounce('informational')
+  else mainWindow.flashFrame(true)
+})
 ipcMain.handle('get-app-version', () => app.getVersion())
 
 // ── App lifecycle ────────────────────────────────────────────────────────────

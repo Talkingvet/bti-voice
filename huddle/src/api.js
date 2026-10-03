@@ -44,4 +44,13 @@ export const api = {
   rooms:      () => request('/huddle/rooms'),
   createRoom: (name) => request('/huddle/rooms', { method: 'POST', body: { name } }),
   room:       (code) => request(`/huddle/rooms/${encodeURIComponent(code)}`),
+  // chat
+  chats:        () => request('/huddle/chats'),
+  createChat:   (type, member_ids, name) => request('/huddle/chats', { method: 'POST', body: { type, member_ids, name } }),
+  chatMessages: (id, before) => request(`/huddle/chats/${id}/messages${before ? `?before=${encodeURIComponent(before)}` : ''}`),
+  sendMessage:  (id, body) => request(`/huddle/chats/${id}/messages`, { method: 'POST', body: { body } }),
+  markRead:     (id) => request(`/huddle/chats/${id}/read`, { method: 'POST' }),
+  updateChat:   (id, patch) => request(`/huddle/chats/${id}`, { method: 'PATCH', body: patch }),
+  addMembers:   (id, agent_ids) => request(`/huddle/chats/${id}/members`, { method: 'POST', body: { agent_ids } }),
+  leaveChat:    (id) => request(`/huddle/chats/${id}/members/me`, { method: 'DELETE' }),
 }

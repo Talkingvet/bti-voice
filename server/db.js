@@ -352,6 +352,30 @@ async function migrate() {
       created_at  TIMESTAMPTZ DEFAULT NOW(),
       last_used_at TIMESTAMPTZ
     );
+    -- BTI Huddle internal chat (2026-10-02). Agent-to-agent only; never SMS.
+    CREATE TABLE IF NOT EXISTS huddle_chats (
+      id          SERIAL PRIMARY KEY,
+      type        TEXT NOT NULL CHECK (type IN ('dm','group')),
+      name        TEXT,
+      created_by  INTEGER REFERENCES agents(id),
+      created_at  TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS huddle_chat_members (
+      chat_id      INTEGER REFERENCES huddle_chats(id) ON DELETE CASCADE,
+      agent_id     INTEGER REFERENCES agents(id),
+      pinned       BOOLEAN NOT NULL DEFAULT false,
+      last_read_at TIMESTAMPTZ,
+      joined_at    TIMESTAMPTZ DEFAULT NOW(),
+      PRIMARY KEY (chat_id, agent_id)
+    );
+    CREATE TABLE IF NOT EXISTS huddle_chat_messages (
+      id          SERIAL PRIMARY KEY,
+      chat_id     INTEGER REFERENCES huddle_chats(id) ON DELETE CASCADE,
+      sender_id   INTEGER REFERENCES agents(id),
+      body        TEXT NOT NULL,
+      created_at  TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS huddle_chat_messages_chat_time ON huddle_chat_messages (chat_id, created_at DESC);
     CREATE TABLE IF NOT EXISTS deploy_settings (
       id              INTEGER PRIMARY KEY DEFAULT 1,
       features        JSONB   NOT NULL DEFAULT '{}',

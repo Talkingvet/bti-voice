@@ -94,6 +94,19 @@ function init(httpServer) {
       io.to('agent_' + id).emit('huddle:declined', { by: me().agent, code });
     });
 
+    // Chat typing indicator: relay to the other members of a chat.
+    socket.on('chat:typing', async ({ chatId } = {}) => {
+      if (!huddleOn()) return;
+      const id = parseInt(chatId, 10);
+      if (!Number.isInteger(id)) return;
+      try {
+        const { pool } = require('./db');
+        const { rows } = await pool.query('SELECT agent_id FROM huddle_chat_members WHERE chat_id = $1', [id]);
+        if (!rows.some(r => r.agent_id === socket.agent.id)) return;
+        for (const r of rows) if (r.agent_id !== socket.agent.id) io.to('agent_' + r.agent_id).emit('chat:typing', { chatId: id, agent: me().agent });
+      } catch { /* ignore */ }
+    });
+
     socket.on('disconnect', () => {
       for (const room of [...huddleRooms]) leaveHuddle(room);
       console.log('[socket] Client disconnected:', socket.id);
