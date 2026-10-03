@@ -14,7 +14,9 @@ client/.env.local
 # ── Build outputs ──────────────────────────────────────────────
 dist/
 dist-electron/
+dist-electron-huddle/
 server/public/
+server/public-huddle/
 build/
 *.tsbuildinfo
 

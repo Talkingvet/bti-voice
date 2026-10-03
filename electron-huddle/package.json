@@ -1,0 +1,75 @@
+{
+  "name": "bti-huddle-desktop",
+  "version": "0.1.0",
+  "description": "BTI Huddle \u2013 Video calls, screen sharing and meetings for the BTI family",
+  "author": "Business Technology Insight",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build:win": "electron-builder --win --x64",
+    "build:mac": "electron-builder --mac --x64 --arm64",
+    "create-icons": "node create-icons.js"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "electron": "^41.2.0",
+    "electron-builder": "^26.8.1",
+    "sharp": "^0.33.2"
+  },
+  "build": {
+    "appId": "com.businesstechnologyinsight.bti-huddle",
+    "productName": "BTI Huddle",
+    "copyright": "Business Technology Insight",
+    "directories": {
+      "output": "../../dist-electron-huddle"
+    },
+    "afterPack": "./afterPack.js",
+    "electronLanguages": [
+      "en-US"
+    ],
+    "files": [
+      "main.js",
+      "preload.js",
+      "assets/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "BTI Huddle"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.png",
+      "category": "public.app-category.business",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "identity": null,
+      "extendInfo": {
+        "NSCameraUsageDescription": "BTI Huddle uses your camera for video calls.",
+        "NSMicrophoneUsageDescription": "BTI Huddle uses your microphone for calls.",
+        "NSScreenCaptureUsageDescription": "BTI Huddle needs screen recording permission to share your screen."
+      }
+    }
+  }
+}

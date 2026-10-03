@@ -34,7 +34,7 @@ const RENEWS_SOON_DAYS   = 14;
 const BLOCK_AFTER_GRACE_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-const FEATURE_KEYS = ['zoho', 'recording', 'ai_summaries', 'sms', 'voicemail_transcription', 'mobile_apps'];
+const FEATURE_KEYS = ['zoho', 'recording', 'ai_summaries', 'sms', 'voicemail_transcription', 'mobile_apps', 'huddle'];
 
 const DEFAULT_ROW = {
   id: 1, features: {}, seat_limit: null, enabled_through: null, grace_days: 14,
@@ -97,6 +97,11 @@ function resolveFeatures(toggles = cached.features, env = process.env) {
     sms:                    on('sms'),
     voicemail_transcription: on('voicemail_transcription') && hasOpenAI,
     mobile_apps:            on('mobile_apps'),
+    // BTI Huddle (video / screen share / meetings, 2026-10-02). OFF unless the
+    // deploy explicitly sets ENABLE_HUDDLE=true — unlike the other keys, a
+    // missing toggle must NOT mean on, because Huddle ships inert to every
+    // existing Voice deploy. The portal toggle can still turn it off.
+    huddle:                 on('huddle') && env.ENABLE_HUDDLE === 'true',
   };
 }
 

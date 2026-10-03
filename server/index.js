@@ -64,6 +64,8 @@ app.use('/admin/activity',    require('./routes/adminActivity'));
 // never a customer login. The Phase 2 portal is its only intended client.
 app.use('/api/tenant',        require('./routes/tenant'));
 app.use('/api/zoho-widget',   require('./routes/zohoWidget'));
+// BTI Huddle (video / screen share / meetings). 404s unless ENABLE_HUDDLE=true.
+app.use('/api/huddle',        require('./routes/huddle'));
 
 // ── Twilio Webhooks ───────────────────────────────────────────
 const { validateTwilio } = require('./webhooks/validateTwilio');
@@ -72,6 +74,19 @@ app.use('/webhooks/voice',     validateTwilio, require('./webhooks/voice'));
 
 // ── Zoho CRM widget (static page, tracked in git — server/public is build output) ──
 app.use('/zoho-widget', express.static(path.join(__dirname, 'zoho-widget')));
+
+// ── Serve BTI Huddle frontend (separate Vite app, built into server/public-huddle) ──
+// Served only when the flag is on, so a Voice-only deploy has no /huddle page.
+// Flag off → falls through to the Voice SPA below, which shows its normal UI.
+const HUDDLE_PUBLIC = path.join(__dirname, 'public-huddle');
+const huddleEnabled = (req, res, next) => (deploySettings.featureOn('huddle') ? next() : next('router'));
+const huddleRouter = express.Router();
+huddleRouter.use(huddleEnabled);
+huddleRouter.use(express.static(HUDDLE_PUBLIC));
+huddleRouter.get('*', (req, res, next) => {
+  res.sendFile(path.join(HUDDLE_PUBLIC, 'index.html'), (err) => { if (err) next(); });
+});
+app.use('/huddle', huddleRouter);
 
 // ── Serve React Frontend ──────────────────────────────────────
 const PUBLIC = path.join(__dirname, 'public');

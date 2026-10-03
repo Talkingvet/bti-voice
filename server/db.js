@@ -342,6 +342,16 @@ async function migrate() {
   //   company_name/brand_name  override the env vars when set.
   //   notes              BTI-internal (plan tier, invoice #, contact).
   await pool.query(`
+    -- BTI Huddle meeting rooms (2026-10-02). A room is just a shareable code;
+    -- media is peer-to-peer and never touches the server.
+    CREATE TABLE IF NOT EXISTS huddle_rooms (
+      id          SERIAL PRIMARY KEY,
+      code        TEXT UNIQUE NOT NULL,
+      name        TEXT,
+      created_by  INTEGER REFERENCES agents(id),
+      created_at  TIMESTAMPTZ DEFAULT NOW(),
+      last_used_at TIMESTAMPTZ
+    );
     CREATE TABLE IF NOT EXISTS deploy_settings (
       id              INTEGER PRIMARY KEY DEFAULT 1,
       features        JSONB   NOT NULL DEFAULT '{}',
