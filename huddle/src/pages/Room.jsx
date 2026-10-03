@@ -2,12 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 import { HuddleCall } from '../webrtc'
 import { getSocket } from '../socket'
 import { Avatar, Icon, absoluteUrl, copyText, navigate, BASE_PATH } from '../ui'
+import { applySpeaker } from '../devices'
 
 function Video({ stream, muted = false, mirror = false, contain = false }) {
   const ref = useRef(null)
   useEffect(() => {
-    if (ref.current && ref.current.srcObject !== stream) ref.current.srcObject = stream || null
-  }, [stream])
+    if (ref.current && ref.current.srcObject !== stream) { ref.current.srcObject = stream || null; if (!muted) applySpeaker(ref.current) }
+  }, [stream, muted])
   return <video ref={ref} autoPlay playsInline muted={muted} className={contain ? 'contain' : ''} style={mirror ? { transform: 'scaleX(-1)' } : undefined} />
 }
 

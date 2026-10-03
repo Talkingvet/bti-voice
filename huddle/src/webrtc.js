@@ -12,6 +12,7 @@
 
 import { getSocket } from './socket'
 import { api } from './api'
+import { mediaConstraints } from './devices'
 
 export class HuddleCall {
   constructor({ code, onChange }) {
@@ -38,11 +39,11 @@ export class HuddleCall {
     } catch (e) { console.warn('[huddle] ICE fetch failed, STUN only:', e.message) }
 
     try {
-      this.localStream = await navigator.mediaDevices.getUserMedia({ video, audio })
+      this.localStream = await navigator.mediaDevices.getUserMedia(mediaConstraints({ video, audio }))
     } catch (e) {
       // No camera? Try audio only so the call still works.
       console.warn('[huddle] getUserMedia failed, retrying audio-only:', e.message)
-      this.localStream = await navigator.mediaDevices.getUserMedia({ video: false, audio })
+      this.localStream = await navigator.mediaDevices.getUserMedia(mediaConstraints({ video: false, audio }))
     }
 
     this.socket.on('huddle:peer-joined', this._bound.joined)

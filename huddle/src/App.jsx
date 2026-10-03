@@ -4,6 +4,7 @@ import { getSocket, disconnectSocket } from './socket'
 import Login from './pages/Login'
 import Home from './pages/Home'
 import Room from './pages/Room'
+import Settings from './pages/Settings'
 import { Avatar, Icon, BRAND, BASE_PATH, navigate } from './ui'
 
 function usePath() {
@@ -23,6 +24,8 @@ export default function App() {
   const [ring, setRing] = useState(null)   // { from, code }
   const [toast, setToast] = useState('')
   const [enabled, setEnabled] = useState(true)
+  const [showSettings, setShowSettings] = useState(false)
+  const [status, setStatus] = useState('available')
   const path = usePath()
 
   // Validate the saved session once on start (same sliding-session call Voice makes).
@@ -47,6 +50,7 @@ export default function App() {
   // Socket: incoming direct calls ring here. Mark ourselves available.
   useEffect(() => {
     if (!me) return
+    api.agents().then(list => { const mine = list.find(a => a.id === me.id); if (mine?.status) setStatus(mine.status) }).catch(() => {})
     const s = getSocket()
     const onRing = ({ from, code }) => {
       if (window.location.pathname.startsWith(`${BASE_PATH}/m/`)) return // already in a call; ignore
@@ -84,8 +88,8 @@ export default function App() {
         <div className="logo">BH</div>
         <button className={`nav-btn ${!roomMatch ? 'active' : ''}`} onClick={() => navigate(BASE_PATH)}><Icon.People /> People</button>
         <div className="spacer" />
-        <button className="nav-btn" title="Sign out" onClick={logout}><Icon.Logout /> Sign out</button>
-        <div style={{ marginTop: 8 }}><Avatar agent={me} status="available" /></div>
+        <button className="nav-btn" title="Settings" onClick={() => setShowSettings(true)}><Icon.Gear /> Settings</button>
+        <button className="avatar-btn" title="Profile & settings" onClick={() => setShowSettings(true)}><Avatar agent={me} status={status} /></button>
       </aside>
       <main className="main">
         {roomMatch
@@ -108,6 +112,7 @@ export default function App() {
           </div>
         </div>
       )}
+      {showSettings && <Settings me={me} status={status} onStatus={setStatus} onClose={() => setShowSettings(false)} onLogout={logout} onToast={showToast} />}
       {toast && <div className="toast">{toast}</div>}
     </div>
   )
