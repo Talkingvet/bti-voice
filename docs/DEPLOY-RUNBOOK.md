@@ -100,7 +100,7 @@ Do all of this INSIDE a new subaccount, from BTI's parent console:
 1. In the CUSTOMER's Zoho org: create custom module `BTI_Voice` (fields per
    `BTI-Voice-Session-Handoff 3.md` §"Zoho BTI Voice tab") — **BTI_Ref must be
    marked "Do not allow duplicate values"** or every sync duplicates.
-2. Self Client in their org, scopes `ZohoCRM.modules.ALL,ZohoCRM.users.READ` →
+2. Self Client in their org, scopes `ZohoCRM.modules.ALL,ZohoCRM.users.READ,ZohoCRM.settings.custom_views.READ` (the last one is only needed for Call Lists' view import) →
    `ZOHO_CLIENT_ID/SECRET/REFRESH_TOKEN`.
 3. Optional SMS widget: register in their Developer Hub (Type: Related List,
    External, Base URL `SERVER_URL/zoho-widget/sms.html?key=<ZOHO_WIDGET_KEY>`),

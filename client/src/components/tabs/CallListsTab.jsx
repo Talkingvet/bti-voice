@@ -4,7 +4,7 @@
    Outcomes are recorded by the wrap-up screen / outcome strip in App.jsx — this
    tab only shows state and lets you manage the list. Only mounted when
    features.call_lists is on (BTI). */
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { IS_TOUCH as T } from '../../utils/touch'
 import { api } from '../../api'
 import { useColors } from '../../useColors'
@@ -58,6 +58,7 @@ function LocalTime({ tz, C }) {
 export default function CallListsTab({ agent, onDialEntry, onMessage }) {
   const C = useColors()
   const { toast } = useToast()
+  const toastRef = useRef(toast); toastRef.current = toast   // stable handle — see note on loadLists
   const features = useFeatures()
   const zohoOn = !!features.zoho
 
@@ -80,11 +81,14 @@ export default function CallListsTab({ agent, onDialEntry, onMessage }) {
     return () => window.removeEventListener('resize', onResize)
   }, [])
 
+  // NOTE: `toast` from useToast() is a new object on every provider render, so
+  // it must not be a dependency here — it would re-create these callbacks on
+  // every toast and the effects below would refetch (and re-toast) in a loop.
   const loadLists = useCallback(async () => {
     try { setLists(await api.callLists()) }
-    catch (e) { console.error('[call-lists]', e); toast.error(e.message || 'Could not load lists') }
+    catch (e) { console.error('[call-lists]', e); toastRef.current.error(e.message || 'Could not load lists') }
     finally { setLoading(false) }
-  }, [toast])
+  }, [])
 
   const loadList = useCallback(async (id, v) => {
     if (!id) { setList(null); return }
@@ -93,9 +97,9 @@ export default function CallListsTab({ agent, onDialEntry, onMessage }) {
     catch (e) {
       console.error('[call-lists]', e)
       if (/not found/i.test(e.message || '')) { setSelectedId(null); setList(null); loadLists() }
-      else toast.error(e.message || 'Could not load list')
+      else toastRef.current.error(e.message || 'Could not load list')
     } finally { setListLoading(false) }
-  }, [toast, loadLists])
+  }, [loadLists])
 
   useEffect(() => { loadLists() }, [loadLists])
   useEffect(() => { loadList(selectedId, view) }, [selectedId, view, loadList])
@@ -431,10 +435,11 @@ function ZohoImporter({ C, list, onClose, onDone }) {
   const [busy,    setBusy]    = useState(false)
   const [result,  setResult]  = useState(null)
 
+  const [viewsErr, setViewsErr] = useState('')
   useEffect(() => {
-    setViews(null)
-    api.callListZohoViews(module_).then(r => setViews(r.views || [])).catch(e => { setViews([]); toast.error(e.message || 'Could not load Zoho views') })
-  }, [module_, toast])
+    setViews(null); setViewsErr('')
+    api.callListZohoViews(module_).then(r => setViews(r.views || [])).catch(e => { setViews([]); setViewsErr(e.message || 'Could not load Zoho views') })
+  }, [module_])
 
   async function run() {
     const v = (views || []).find(x => x.id === viewId)
@@ -473,6 +478,7 @@ function ZohoImporter({ C, list, onClose, onDone }) {
           <input style={inputStyle(C)} placeholder="Filter views…" value={filter} onChange={e => setFilter(e.target.value)} />
           <div style={{ maxHeight: 260, overflowY: 'auto', marginTop: 6, border: `1px solid ${C.borderSoft}`, borderRadius: 8 }}>
             {views === null ? <div style={{ padding: 12, fontSize: 12, color: C.textMuted }}>Loading views from Zoho…</div>
+            : viewsErr ? <div style={{ padding: 12, fontSize: 12, color: '#ef4444', lineHeight: 1.5 }}>{viewsErr}</div>
             : shown.length === 0 ? <div style={{ padding: 12, fontSize: 12, color: C.textMuted }}>No views.</div>
             : shown.map(v => (
               <div key={v.id} onClick={() => setViewId(v.id)} style={{ padding: '8px 10px', fontSize: 12.5, cursor: 'pointer', color: C.text, background: viewId === v.id ? C.active : 'transparent', borderBottom: `1px solid ${C.borderItem}`, display: 'flex', justifyContent: 'space-between' }}>
