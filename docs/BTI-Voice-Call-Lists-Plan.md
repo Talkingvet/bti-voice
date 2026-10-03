@@ -73,7 +73,7 @@ Local time: `server/helpers/areaCodeTz.js` — static NANP area-code → IANA zo
 
 Everything in §3 works with CSV + Contacts. Hidden without Zoho: the "From Zoho CRM view" option, the Zoho contact picker inside the wrap-up (already gated), and the Zoho record id columns are simply null. Tested the same way as 2026-09-30: log in on the CBIA deploy and confirm no CRM wording anywhere in the tab.
 
-## 6. Decisions for Danny (the bracketed ones from the ask, plus Paul's)
+## 6. Decisions for Danny (the bracketed ones from the ask, plus Paul's) — DECIDED 2026-10-03, see §6a
 
 1. **List source v1** — proposed: **all three** (CSV, pick from Contacts, Zoho view behind the flag). Dropping Zoho view would save ~a third of the build but BTI's own use is Zoho views. Keep all three?
 2. **Per agent or shared** — proposed: **owner + share setting** (just me / everyone / pick agents). Default for a new list: just me. OK?
@@ -83,6 +83,16 @@ Everything in §3 works with CSV + Contacts. Hidden without Zoho: the "From Zoho
 6. **Local time** — area-code based, in v1. OK?
 7. **Parked items** (scripts, saved searches, cross-list badge in v1.5) — agree to park, and use this doc as the agenda for the call with Paul?
 
+### 6a. Decisions recorded 2026-10-03 (Danny + Paul)
+1. **Source:** Zoho CRM custom view ("make a saved search in Zoho like we do now") is the one import; CSV dropped for v1 — **only BTI gets this feature**, so it's flag-gated OFF like Huddle (`ENABLE_CALL_LISTS=true`). "Add number" (paste lines) kept as the cheap manual path.
+2. **Owner + share setting** (just me / everyone / pick people). Default: just me.
+3. **No answer / voicemail keep the entry** with an attempt count; optional per-list max attempts, default off.
+4. **Closed rows go grey (Done view)** + a **"Remove completed"** button.
+5. **Callback date** via the existing *Callback requested* pill. **Tasks:** no separate task system — the wrap-up's existing Zoho follow-up task is pre-filled from the callback date; non-Zoho has the date on the entry.
+6. **Local time** from the area code; Zoho State refines split codes.
+7. **Dated order:** every entry carries `added_at` + an import batch number; untried entries sort oldest-added first; shown on the row ("not tried · added Oct 3").
+8. Build it now, **tweak after Paul has tested it**; parked items stay parked.
+
 ## 7. Build order
 
 Two sessions, each ending in a commit Danny pushes (no Co-Authored-By lines):
@@ -91,3 +101,9 @@ Two sessions, each ending in a commit Danny pushes (no Co-Authored-By lines):
 - **Session B — polish.** Shared-list live updates + hold, Done view + reopen, CSV export, phone layout (IS_TOUCH), portal Features tab shows `call_lists`, DEPLOY-RUNBOOK note, handoff §8v, TODO. Test on the CBIA deploy as a non-Zoho customer.
 
 No new Electron build needed — this is all server + web client, so it reaches the desktop apps on push (gotcha #1).
+
+## 8. Built 2026-10-03 (Session A — everything in §7's two sessions landed in one)
+
+Handoff §8v has the full inventory and the sandbox test record. Files: `server/db.js` (4 tables), `server/helpers/callLists.js`, `server/helpers/areaCodeTz.js`, `server/routes/callLists.js`, `server/routes/calls.js` (wrap-up hook), `server/helpers/deploySettings.js` + `server/index.js` (`call_lists` key, mount), `server/test/callLists.test.js`, `server/.env.example`, `admin/public/app.js` (feature labels), `client/src/components/tabs/CallListsTab.jsx`, `client/src/components/ListOutcomeStrip.jsx`, `client/src/App.jsx`, `client/src/components/PostCallScreen.jsx`, `client/src/components/BottomNav.jsx`, `client/src/features.js`, `client/src/api.js`. No Electron change — reaches the desktop apps on push.
+
+Left for after Paul's test: real-call verification, live Zoho view import check, phone-size strip, and whatever he asks for from the parked list.

@@ -1,9 +1,16 @@
 # BTI Voice — To-Do Checklist (as of 2026-08-19, end of day)
 
 Running list of what still needs doing, in rough priority. Check items off as you go.
-Full context for anything here lives in `BTI-Voice-Session-Handoff-3.md` (latest: §8u, 2026-10-02 Huddle).
+Full context for anything here lives in `BTI-Voice-Session-Handoff-3.md` (latest: §8v, 2026-10-03 Call Lists).
 
 ## ⚡ WHAT'S NEXT (start a new session here)
+
+**▶ NEXT UP (2026-10-03 pm) — CALL LISTS v1 built, OFF until the var is set (handoff §8v, plan `docs/BTI-Voice-Call-Lists-Plan.md`):**
+- **Turn it on for BTI:** Railway → `bti-voice` → Variables → `ENABLE_CALL_LISTS=true` → redeploy. Reload the app (desktop: tray → Quit, reopen) → new **Lists** tab between Calls and Dialpad.
+- **First real test (Danny or Paul):** New list → Import Zoho view (Leads) → pick a view → entries show name/company/local time/added date → **Next** → let it ring out → outcome strip → *No answer* (stays, 1 attempt) → call someone who answers, talk > 15 s → wrap-up → *Callback requested* + a date → entry shows ↩ call back …, ⏰ when due. Try *Demo scheduled* → entry moves to Done → ⋯ → Remove completed. Share the list with Paul ("Everyone") and have both work it — a row held by the other person shows 📞 and can't be dialled.
+- **Not tested yet:** real Twilio call → entry attribution; Zoho view import against the live CRM (look at the Railway log for `[call-lists] zoho` if the view list is empty — the `ZohoCRM.settings.custom_views.READ` scope may be needed on the Self Client); outcome strip on a phone.
+- **After Paul's feedback, v1.5 candidates (plan §2):** more quick outcomes on the strip, "on N other lists" is already shown — decide if it should block, saved default sort, scripts box → keep as list notes unless he insists.
+- Update the handoff pointer at the top of this file to §8v when convenient.
 
 **▶ NEXT UP (2026-10-03) — BTI HUDDLE v0.1 is in the repo, flag-gated OFF (handoff §8u):**
 - **Turn it on for BTI and test it for real:** Railway → `bti-voice` → Variables → `ENABLE_HUDDLE=true` → redeploy → `https://bti-voice-production.up.railway.app/huddle` in two browsers (Danny + Paul): sign in with the normal Voice login, call each other, mute/camera, share a screen, create a meeting link and join by code, send a DM + a group chat, change status in Settings and confirm Voice shows it. Note anything broken in this file.

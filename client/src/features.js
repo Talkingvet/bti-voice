@@ -15,6 +15,7 @@ import { api } from './api'
 const DEFAULTS = {
   zoho: false, zoho_widget: false, recording: true,
   sms: true, ai_summaries: true, voicemail_transcription: true, mobile_apps: true,
+  call_lists: false, // dialer lists — BTI only, ENABLE_CALL_LISTS=true on the deploy
   brand: null, account: null, loaded: false,
 }
 

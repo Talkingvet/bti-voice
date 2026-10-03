@@ -198,4 +198,26 @@ export const api = {
 
   // Activity tracking (fire-and-forget)
   track: (event, detail) => request('/track', { method: 'POST', body: { event, detail } }).catch(e => console.warn('[track]', e.message)),
+
+  // Call Lists (dialer lists, 2026-10-03) — all 404 unless features.call_lists
+  callLists:            ()              => request('/call-lists'),
+  createCallList:       (data)          => request('/call-lists', { method: 'POST', body: data }),
+  updateCallList:       (id, data)      => request(`/call-lists/${id}`, { method: 'PATCH', body: data }),
+  deleteCallList:       (id)            => request(`/call-lists/${id}`, { method: 'DELETE' }),
+  callList:             (id, view)      => request(`/call-lists/${id}?view=${view || 'open'}`),
+  addCallListEntries:   (id, entries)   => request(`/call-lists/${id}/entries`, { method: 'POST', body: { entries } }),
+  removeCallListEntry:  (id, eid)       => request(`/call-lists/${id}/entries/${eid}`, { method: 'DELETE' }),
+  removeCompletedCallListEntries: (id)  => request(`/call-lists/${id}/remove-completed`, { method: 'POST' }),
+  holdCallListEntry:    (id, eid)       => request(`/call-lists/${id}/entries/${eid}/hold`, { method: 'POST' }),
+  releaseCallListEntry: (id, eid)       => request(`/call-lists/${id}/entries/${eid}/release`, { method: 'POST' }),
+  callListOutcome:      (id, eid, data) => request(`/call-lists/${id}/entries/${eid}/outcome`, { method: 'POST', body: data }),
+  reopenCallListEntry:  (id, eid)       => request(`/call-lists/${id}/entries/${eid}/reopen`, { method: 'POST' }),
+  callListAttempts:     (id, eid)       => request(`/call-lists/${id}/entries/${eid}/attempts`),
+  callListZohoViews:    (module)        => request(`/call-lists/zoho/views?module=${module || 'Leads'}`),
+  importCallListZoho:   (id, data)      => request(`/call-lists/${id}/import/zoho`, { method: 'POST', body: data }),
+  exportCallListCsv:    async (id) => {
+    const res = await fetch(`${BASE}/call-lists/${id}/export.csv`, { headers: { Authorization: `Bearer ${getToken()}` } })
+    if (!res.ok) throw new Error('Export failed')
+    return res.blob()
+  },
 }

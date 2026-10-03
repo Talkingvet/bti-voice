@@ -1,23 +1,29 @@
 /* Bottom navigation bar — Contacts | Messages | Calls | Dialpad | Notifications | Settings */
 import { useColors } from '../useColors'
+import { useFeatures } from '../features'
 
 const TABS = [
   { id: 'contacts',      label: 'Contacts', Icon: ContactsIcon },
   { id: 'sms',           label: 'Messages', Icon: ChatIcon     },
   { id: 'calls',         label: 'Calls',    Icon: CallHistIcon },
+  // Call Lists (dialer lists) — only on deploys with the call_lists feature (BTI).
+  { id: 'lists',         label: 'Lists',    Icon: ListIcon,    feature: 'call_lists' },
   { id: 'dialpad',       label: 'Dialpad',  Icon: DialpadIcon  },
   { id: 'settings',      label: 'Settings', Icon: SettingsIcon },
 ]
 
-export default function BottomNav({ activeTab, onChange, notifCount = 0, smsCount = 0, vmCount = 0 }) {
+export default function BottomNav({ activeTab, onChange, notifCount = 0, smsCount = 0, vmCount = 0, listsDue = 0 }) {
   const C = useColors()
+  const features = useFeatures()
+  const tabs = TABS.filter(t => !t.feature || features[t.feature])
 
   return (
     <div style={{ ...S.bar, background: C.navBg, borderTop: `1px solid ${C.navBorder}` }}>
-      {TABS.map(({ id, label, Icon }) => {
+      {tabs.map(({ id, label, Icon }) => {
         const active = activeTab === id
         const badge  = id === 'sms'   ? smsCount
                      : id === 'calls' ? vmCount
+                     : id === 'lists' ? listsDue
                      : 0
         return (
           <button
@@ -41,6 +47,16 @@ export default function BottomNav({ activeTab, onChange, notifCount = 0, smsCoun
 }
 
 /* ── Icons ───────────────────────────────────────────────────────── */
+function ListIcon({ size = 20 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 6h12M9 12h12M9 18h12" />
+      <path d="M3.5 6l1 1 2-2" />
+      <path d="M3.5 12l1 1 2-2" />
+      <circle cx="4.5" cy="18" r="1" fill="currentColor" />
+    </svg>
+  )
+}
 function ContactsIcon({ size = 20 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">

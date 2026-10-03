@@ -21,6 +21,8 @@ import DialpadTab                  from './components/tabs/DialpadTab'
 import ContactsTab                 from './components/tabs/ContactsTab'
 import CallsTab                    from './components/tabs/CallsTab'
 import SettingsTab                 from './components/tabs/SettingsTab'
+import CallListsTab                from './components/tabs/CallListsTab'
+import ListOutcomeStrip            from './components/ListOutcomeStrip'
 import { api, ensureMediaToken, clearMediaToken } from './api'
 import { loadFeatures, resetFeatures, useFeatures } from './features'
 import { applyFont } from './utils/font'
@@ -82,6 +84,11 @@ function AppInner() {
   const callStartRef = useRef(null)   // timestamp when call was answered
   const activeCallRef = useRef(null)  // mirrors activeCall state — accessible in IPC closures
   const handlingEndRef = useRef(false)  // dedup flag for handleCallEnded — prevents double-fire when SDK disconnect AND onHangup both invoke it
+  // Call Lists (2026-10-03): the list entry the current outbound call was dialled
+  // from — { id, list_id, list_name, display_name, phone }. Set by dialFromList,
+  // consumed (and cleared) by handleCallEnded so the outcome lands on the entry.
+  const listEntryRef = useRef(null)
+  const [listOutcome, setListOutcome] = useState(null)  // { entry, callId } → ListOutcomeStrip
 
   useEffect(() => {
     if (!agent) return
@@ -442,6 +449,14 @@ function AppInner() {
     setActiveTab('dialpad')
   }
 
+  // Call Lists: dial an entry and remember which one, so the wrap-up screen /
+  // outcome strip can record the attempt against it when the call ends.
+  function dialFromList(entry) {
+    if (!entry || !entry.phone) return
+    listEntryRef.current = entry
+    dialTo(entry.phone)
+  }
+
   // messageTo: resolve (or create) the conversation for this number, then jump
   // straight into that SMS thread.
   async function messageTo(number) {
@@ -546,6 +561,13 @@ function AppInner() {
     setCallerInfo(null)
     window.electronAPI?.callEnd?.()
 
+    // Call Lists: only attribute this call to the list entry if it really was
+    // that number (guards against a stale ref if a list dial never connected).
+    const digits = v => String(v || '').replace(/\D/g, '').slice(-10)
+    const listEntry = listEntryRef.current && phone && digits(listEntryRef.current.phone) === digits(phone)
+      ? listEntryRef.current : null
+    listEntryRef.current = null
+
     try {
       if (!phone) return
       const callRecord = await api.logCallByPhone(
@@ -561,13 +583,19 @@ function AppInner() {
         setWrapUpCall({
           id:           callRecord.id,
           phone:        phone,
-          contact_name: callRecord.contact_name || null,
+          contact_name: callRecord.contact_name || (listEntry && listEntry.display_name) || null,
           duration:     duration,
           direction:    direction,
+          list_entry:   listEntry,   // wrap-up Save also records the list outcome
         })
+      } else if (listEntry) {
+        // Unanswered / short list call: the wrap-up won't open, so ask with the
+        // quick outcome strip (No answer / Left voicemail / Busy / Wrong number).
+        setListOutcome({ entry: listEntry, callId: callRecord && callRecord.id ? callRecord.id : null })
       }
     } catch (e) {
       console.error('[handleCallEnded]', e)
+      if (listEntry) setListOutcome({ entry: listEntry, callId: null })
     } finally {
       // Reset dedup so the NEXT call can be handled. Tiny delay so any straggler
       // disconnect event from the same call still hits the guard.
@@ -790,6 +818,7 @@ function AppInner() {
           />
         )}
         {activeTab === 'settings'       && <SettingsTab       agent={agent} onLogout={handleLogout} />}
+        {activeTab === 'lists' && features.call_lists && <CallListsTab agent={agent} onDialEntry={dialFromList} onMessage={messageTo} />}
 
         {/* Active call panel — overlays the content area during any call */}
         {activeCall && (
@@ -823,8 +852,23 @@ function AppInner() {
       {wrapUpCall && (
         <PostCallScreen
           call={wrapUpCall}
-          onClose={() => setWrapUpCall(null)}
-          onSaved={() => { /* badge clears via socket call_logged */ }}
+          onClose={() => {
+            // Skipped a list call's wrap-up → let go of the entry so a teammate can take it.
+            const le = wrapUpCall.list_entry
+            if (le && !wrapUpCall._saved) api.releaseCallListEntry(le.list_id, le.id).catch(() => {})
+            setWrapUpCall(null)
+          }}
+          onSaved={() => {
+            // badge clears via socket call_logged; for a list call, go back to the list.
+            if (wrapUpCall.list_entry) { wrapUpCall._saved = true; setActiveTab('lists') }
+          }}
+        />
+      )}
+      {listOutcome && (
+        <ListOutcomeStrip
+          entry={listOutcome.entry}
+          callId={listOutcome.callId}
+          onDone={() => { setListOutcome(null); setActiveTab('lists') }}
         />
       )}
     </div>

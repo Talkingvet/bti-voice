@@ -442,6 +442,24 @@ router.post('/:id/wrap-up', requireAuth, async (req, res) => {
       [callId, choseId, choseModule, body.disposition || null, body.note || null]
     );
 
+    // Call Lists (2026-10-03): when this call was dialled from a list, the same
+    // Save also records the attempt on that entry (closing dispositions take it
+    // off the list; left_voicemail / callback_requested keep it). Never fails
+    // the wrap-up itself — the list is secondary to logging the call.
+    if (body.list_entry_id && body.disposition) {
+      try {
+        const CL = require('../helpers/callLists');
+        if (CL.isKnownOutcome(body.disposition)) {
+          await CL.recordOutcome({
+            entryId: parseInt(body.list_entry_id, 10), agentId: req.agent.id, outcome: body.disposition,
+            note: body.note || null, callbackAt: body.callback_at || null, callId,
+          });
+        }
+      } catch (e) {
+        console.error('[wrap-up] call-list outcome failed:', e.message);
+      }
+    }
+
     const targetZohoId     = choseId     || call.chosen_zoho_contact_id || null;
     const targetZohoModule = choseModule || call.chosen_zoho_module     || 'Contacts';
 

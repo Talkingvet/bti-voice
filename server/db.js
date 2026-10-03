@@ -398,6 +398,69 @@ async function migrate() {
     ALTER TABLE agents ADD COLUMN IF NOT EXISTS last_login_at        TIMESTAMPTZ;
   `);
 
+  // ── Call Lists (dialer lists, 2026-10-03) ────────────────────────────────────
+  // A list of people to call, worked from inside the app. Entries close only on
+  // a closing disposition; no-answer / voicemail keep them with an attempt
+  // count. Gated by the `call_lists` feature (ENABLE_CALL_LISTS=true) — BTI only
+  // for now. See docs/BTI-Voice-Call-Lists-Plan.md.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS call_lists (
+      id              SERIAL PRIMARY KEY,
+      name            TEXT NOT NULL,
+      notes           TEXT,
+      owner_agent_id  INTEGER REFERENCES agents(id),
+      visibility      VARCHAR(10) NOT NULL DEFAULT 'owner',   -- owner | all | agents
+      source          VARCHAR(20) NOT NULL DEFAULT 'manual',  -- manual | zoho_view
+      zoho_module     VARCHAR(20),
+      zoho_view_id    VARCHAR(50),
+      zoho_view_name  TEXT,
+      max_attempts    INTEGER,
+      created_at      TIMESTAMPTZ DEFAULT NOW(),
+      last_import_at  TIMESTAMPTZ,
+      archived_at     TIMESTAMPTZ
+    );
+    CREATE TABLE IF NOT EXISTS call_list_agents (
+      list_id   INTEGER REFERENCES call_lists(id) ON DELETE CASCADE,
+      agent_id  INTEGER REFERENCES agents(id),
+      PRIMARY KEY (list_id, agent_id)
+    );
+    CREATE TABLE IF NOT EXISTS call_list_entries (
+      id                 SERIAL PRIMARY KEY,
+      list_id            INTEGER NOT NULL REFERENCES call_lists(id) ON DELETE CASCADE,
+      contact_id         INTEGER REFERENCES contacts(id),
+      phone_number       VARCHAR(20) NOT NULL,
+      display_name       TEXT,
+      company            TEXT,
+      region             TEXT,                 -- state/province (Zoho), refines local time
+      zoho_record_id     VARCHAR(50),
+      zoho_module        VARCHAR(20),
+      status             VARCHAR(10) NOT NULL DEFAULT 'open',   -- open | done
+      attempts           INTEGER NOT NULL DEFAULT 0,
+      last_outcome       VARCHAR(50),
+      last_attempt_at    TIMESTAMPTZ,
+      callback_at        TIMESTAMPTZ,
+      held_by_agent_id   INTEGER REFERENCES agents(id),
+      held_at            TIMESTAMPTZ,
+      closed_at          TIMESTAMPTZ,
+      closed_by_agent_id INTEGER REFERENCES agents(id),
+      added_at           TIMESTAMPTZ DEFAULT NOW(),
+      import_batch       INTEGER NOT NULL DEFAULT 1,
+      UNIQUE (list_id, phone_number)
+    );
+    CREATE INDEX IF NOT EXISTS idx_call_list_entries_list_status ON call_list_entries(list_id, status);
+    CREATE INDEX IF NOT EXISTS idx_call_list_entries_phone       ON call_list_entries(phone_number);
+    CREATE TABLE IF NOT EXISTS call_list_attempts (
+      id           SERIAL PRIMARY KEY,
+      entry_id     INTEGER NOT NULL REFERENCES call_list_entries(id) ON DELETE CASCADE,
+      call_id      INTEGER REFERENCES calls(id),
+      agent_id     INTEGER REFERENCES agents(id),
+      outcome      VARCHAR(50) NOT NULL,
+      note         TEXT,
+      callback_at  TIMESTAMPTZ,
+      created_at   TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
+
   console.log('[db] Migrations complete.');
 }
 

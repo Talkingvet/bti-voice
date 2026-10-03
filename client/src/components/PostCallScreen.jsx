@@ -48,6 +48,11 @@ export default function PostCallScreen({ call, onClose, onSaved }) {
 
   const [disposition, setDisposition] = useState('')     // disposition code
   const [note,        setNote]        = useState('')
+  // Call Lists (2026-10-03): when the call was dialled from a list, call.list_entry
+  // = { id, list_id, list_name, display_name }. Saving then also records the
+  // attempt on that entry. "Callback requested" asks for a date in that case.
+  const listEntry = call && call.list_entry ? call.list_entry : null
+  const [callbackAt,  setCallbackAt]  = useState('')     // datetime-local string
 
   // Follow-up task (collapsed by default)
   const [taskOpen,        setTaskOpen]        = useState(false)
@@ -187,6 +192,13 @@ export default function PostCallScreen({ call, onClose, onSaved }) {
       disposition: disposition || null,
       note:        note.trim() || null,
     }
+    if (listEntry) {
+      payload.list_entry_id = listEntry.id
+      if (disposition === 'callback_requested' && callbackAt) {
+        const d = new Date(callbackAt)
+        if (!Number.isNaN(d.getTime())) payload.callback_at = d.toISOString()
+      }
+    }
     if (taskOpen && taskSubject.trim()) {
       payload.task = {
         subject:     taskSubject.trim(),
@@ -237,6 +249,7 @@ export default function PostCallScreen({ call, onClose, onSaved }) {
             Wrap up call
             <span style={{ ...S.headerMeta, color: C.textMuted }}>
               {fmtDuration(call.duration)} · {call.phone}
+              {listEntry && listEntry.list_name ? ' · list: ' + listEntry.list_name : ''}
             </span>
           </div>
           <button style={{ ...S.closeBtn, color: C.textMuted }} onClick={handleSkip}>×</button>
@@ -359,6 +372,28 @@ export default function PostCallScreen({ call, onClose, onSaved }) {
               })}
             </div>
           </div>
+
+          {/* Callback date — list calls only; keeps the entry on the list and
+              sorts it to the top when due. */}
+          {listEntry && disposition === 'callback_requested' && (
+            <div style={S.field}>
+              <label style={{ ...S.label, color: C.textMuted }}>CALL BACK ON (optional)</label>
+              <input
+                type="datetime-local"
+                style={{ ...S.input, background: C.inputBg, border: '1px solid ' + C.inputBorder, color: C.text }}
+                value={callbackAt}
+                onChange={e => {
+                  setCallbackAt(e.target.value)
+                  // Zoho deploys: offer the same date as a follow-up task with one click.
+                  if (zohoOn && e.target.value && !taskSubject.trim()) {
+                    setTaskSubject('Call back ' + (listEntry.display_name || call.contact_name || call.phone))
+                    setTaskDueDate(e.target.value.slice(0, 10))
+                    setTaskOpen(true)
+                  }
+                }}
+              />
+            </div>
+          )}
 
           {/* Note */}
           <div style={S.field}>

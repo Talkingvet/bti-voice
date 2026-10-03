@@ -117,6 +117,8 @@ const FEATURE_LABELS = {
   sms: ['Text messaging (SMS/MMS)', 'Off refuses every outgoing text. Incoming texts still arrive.'],
   voicemail_transcription: ['Voicemail transcription', 'The audio is still saved when this is off.'],
   mobile_apps: ['iPhone and Android apps', 'Off refuses sign-in from phones. Desktop and browser still work.'],
+  huddle: ['BTI Huddle (video, screen share, team chat)', 'Also needs ENABLE_HUDDLE=true on the deploy — this switch can only turn it off.'],
+  call_lists: ['Call lists (dialer lists)', 'Also needs ENABLE_CALL_LISTS=true on the deploy — this switch can only turn it off. BTI-only for now.'],
 };
 const SECTIONS = [['usage', 'Usage', I.usage], ['users', 'Users', I.people], ['features', 'Features', I.feat], ['billing', 'Billing', I.bill], ['health', 'Health', I.health], ['log', 'Activity', I.log], ['setup', 'Setup', I.setup]];
 
