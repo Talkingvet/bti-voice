@@ -307,6 +307,14 @@ router.patch('/voicemails/:id/played', requireAuth, async (req, res) => {
 // These use the Twilio REST API to redirect the PSTN caller's call leg.
 // The browser SDK gives us the child call SID; we look up the parent SID
 // (the inbound PSTN leg) so we can redirect the caller, not just our browser.
+//
+// Review §5 A5 (2026-10-05): every route validates callSid / agent ids, builds
+// TwiML with twilio.twiml.VoiceResponse (helpers/callControl.js) and refuses to
+// touch a call that doesn't belong to the requesting agent (403).
+
+const {
+  parseAgentId, isCallSid, holdTwiml, dialAgentTwiml, callBelongsToAgent,
+} = require('../helpers/callControl');
 
 function getTwilioClient() {
   const sid    = process.env.TWILIO_ACCOUNT_SID;
@@ -315,70 +323,115 @@ function getTwilioClient() {
   return require('twilio')(sid, token);
 }
 
-// Resolve the PSTN (parent) call SID from whichever SID the browser gives us
-async function resolveParentSid(client, callSid) {
+// Fetch the call the browser gave us plus its parent (the PSTN leg) if any.
+// Returns null when Twilio doesn't know the SID.
+async function resolveCall(client, callSid) {
+  let call;
   try {
-    const call = await client.calls(callSid).fetch();
-    return call.parentCallSid || callSid;
+    call = await client.calls(callSid).fetch();
   } catch (e) {
-    console.warn(`[resolveParentSid] Could not fetch ${callSid}:`, e.message);
-    return callSid;
+    console.warn(`[callControl] Could not fetch ${callSid}:`, e.message);
+    return null;
   }
+  let parent = null;
+  if (call.parentCallSid) {
+    try {
+      parent = await client.calls(call.parentCallSid).fetch();
+    } catch (e) {
+      console.warn(`[callControl] Could not fetch parent ${call.parentCallSid}:`, e.message);
+    }
+  }
+  return { call, parent, targetSid: call.parentCallSid || call.sid };
+}
+
+// Shared preamble: validate the SID, find the call, prove it's the requester's.
+// Sends the error response itself and returns null when the caller must stop.
+async function authorizeCallControl(req, res, label) {
+  const { callSid } = req.body || {};
+  if (!isCallSid(callSid)) {
+    res.status(400).json({ error: 'A valid callSid is required' });
+    return null;
+  }
+  const client   = getTwilioClient();
+  const resolved = await resolveCall(client, callSid);
+  if (!resolved) {
+    res.status(404).json({ error: 'Call not found' });
+    return null;
+  }
+  const { rows } = await pool.query(
+    'SELECT id, phone_number FROM agents WHERE id = $1 AND is_active = true',
+    [req.agent.id]
+  );
+  const me = rows[0];
+  if (!me || !callBelongsToAgent(resolved, me)) {
+    console.warn(`[${label}] agent ${req.agent.id} denied control of ${callSid} (from=${resolved.call.from} to=${resolved.call.to})`);
+    res.status(403).json({ error: "This call isn't yours to control" });
+    return null;
+  }
+  return { client, ...resolved };
+}
+
+function twilioFailure(res, label, e) {
+  console.error(`[${label}]`, e.message);
+  const msg = e.message === 'Twilio credentials not configured'
+    ? 'Calling is not configured on this server'
+    : 'Call control failed — please try again';
+  res.status(502).json({ error: msg });
 }
 
 // PUT caller on hold — plays hold music to the PSTN caller
 router.post('/hold', requireAuth, async (req, res) => {
-  const { callSid } = req.body;
-  if (!callSid) return res.status(400).json({ error: 'callSid required' });
   try {
-    const client    = getTwilioClient();
-    const targetSid = await resolveParentSid(client, callSid);
-    console.log(`[hold] Putting ${targetSid} on hold`);
-    await client.calls(targetSid).update({
-      twiml: '<Response><Play loop="50">https://com.twilio.music.classical.s3.amazonaws.com/BachGavotteShort.mp3</Play></Response>',
-    });
+    const ctx = await authorizeCallControl(req, res, 'hold');
+    if (!ctx) return;
+    console.log(`[hold] Putting ${ctx.targetSid} on hold`);
+    await ctx.client.calls(ctx.targetSid).update({ twiml: holdTwiml() });
     res.json({ success: true });
   } catch (e) {
-    console.error('[hold]', e.message);
-    res.status(500).json({ error: e.message });
+    twilioFailure(res, 'hold', e);
   }
 });
 
-// Resume from hold — reconnects caller to this agent
+// Resume from hold — reconnects caller to the requesting agent.
+// `agentId` in the body is accepted for backwards compatibility but must be
+// the requester; you cannot "resume" a call onto someone else (use /transfer).
 router.post('/resume', requireAuth, async (req, res) => {
-  const { callSid, agentId } = req.body;
-  if (!callSid || !agentId) return res.status(400).json({ error: 'callSid and agentId required' });
+  const { agentId } = req.body || {};
+  if (agentId !== undefined && agentId !== null && agentId !== '') {
+    const id = parseAgentId(agentId);
+    if (!id) return res.status(400).json({ error: 'agentId must be a positive integer' });
+    if (id !== req.agent.id) return res.status(403).json({ error: 'You can only resume a call to yourself' });
+  }
   const serverUrl = process.env.SERVER_URL || '';
   try {
-    const client    = getTwilioClient();
-    const targetSid = await resolveParentSid(client, callSid);
-    console.log(`[resume] Reconnecting ${targetSid} to agent_${agentId}`);
-    await client.calls(targetSid).update({
-      twiml: `<Response><Dial timeout="30" action="${serverUrl}/webhooks/voice/no-answer" method="POST"><Client>agent_${agentId}</Client></Dial></Response>`,
-    });
+    const ctx = await authorizeCallControl(req, res, 'resume');
+    if (!ctx) return;
+    console.log(`[resume] Reconnecting ${ctx.targetSid} to agent_${req.agent.id}`);
+    await ctx.client.calls(ctx.targetSid).update({ twiml: dialAgentTwiml(req.agent.id, serverUrl) });
     res.json({ success: true });
   } catch (e) {
-    console.error('[resume]', e.message);
-    res.status(500).json({ error: e.message });
+    twilioFailure(res, 'resume', e);
   }
 });
 
 // Blind transfer — redirects PSTN caller to a different agent's browser client
 router.post('/transfer', requireAuth, async (req, res) => {
-  const { callSid, targetAgentId } = req.body;
-  if (!callSid || !targetAgentId) return res.status(400).json({ error: 'callSid and targetAgentId required' });
+  const targetId = parseAgentId((req.body || {}).targetAgentId);
+  if (!targetId) return res.status(400).json({ error: 'targetAgentId must be a positive integer' });
   const serverUrl = process.env.SERVER_URL || '';
   try {
-    const client    = getTwilioClient();
-    const targetSid = await resolveParentSid(client, callSid);
-    console.log(`[transfer] Transferring ${targetSid} to agent_${targetAgentId}`);
-    await client.calls(targetSid).update({
-      twiml: `<Response><Dial timeout="30" action="${serverUrl}/webhooks/voice/no-answer" method="POST"><Client>agent_${targetAgentId}</Client></Dial></Response>`,
-    });
+    const { rows } = await pool.query(
+      'SELECT id FROM agents WHERE id = $1 AND is_active = true', [targetId]
+    );
+    if (rows.length === 0) return res.status(400).json({ error: 'Unknown or inactive agent' });
+
+    const ctx = await authorizeCallControl(req, res, 'transfer');
+    if (!ctx) return;
+    console.log(`[transfer] Transferring ${ctx.targetSid} to agent_${targetId}`);
+    await ctx.client.calls(ctx.targetSid).update({ twiml: dialAgentTwiml(targetId, serverUrl) });
     res.json({ success: true });
   } catch (e) {
-    console.error('[transfer]', e.message);
-    res.status(500).json({ error: e.message });
+    twilioFailure(res, 'transfer', e);
   }
 });
 
