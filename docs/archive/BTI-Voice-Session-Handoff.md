@@ -36,7 +36,7 @@ Internal VOIP/SMS desktop app (Electron + React client served from Railway, Node
 3. **Mac Electron build:** Terminal → `cd .../bti-voice/electron && bash build-mac.sh`. Both-arch DMGs to sibling `dist-electron/`. Rename with dashes before upload. Must run on the Mac itself.
 4. **Mac + Claude:** Claude's sandbox cannot git-clone into the mounted folder — clone in /tmp then copy. Claude CAN commit; pushes need Paul/Danny in Terminal (keychain has GitHub creds).
 5. Claude file tools truncate files at template-literal `${...}` — edit server/client JS via python3/bash heredoc instead.
-6. External DB access (scripts/direct fixes): `postgresql://postgres:EpfANoVcBduEofAFrNFZmvOhAotreUuV@maglev.proxy.rlwy.net:19870/railway` (Railway public proxy).
+6. External DB access (scripts/direct fixes): `DATABASE_PUBLIC_URL` from Railway → Postgres → Variables (Railway public proxy). *(Credential removed from this archived doc 2026-10-05 and rotated.)*
 7. Agent phone numbers: no UI to assign; use `PATCH /api/agents/me/number` or direct DB update. Agents without numbers silently skip Twilio on send. Only "danny" has the test number.
 8. Editing the A2P campaign costs ~$15 vetting + days of wait — only when necessary. Keep Privacy Policy §12 (SMS) intact on talkingvet.com.
 9. Zoho refresh token scopes: `ZohoCRM.modules.ALL,ZohoCRM.users.READ`.

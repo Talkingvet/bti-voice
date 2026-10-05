@@ -63,11 +63,7 @@ That's your live app. Share it with the team.
 
 The app auto-creates three accounts on first boot:
 
-| Name | Username | Password |
-|------|----------|----------|
-| Shawn | `shawn` | `shawn123` |
-| Danny | `danny` | `danny123` |
-| Raven | `raven` | `raven123` |
+Seed accounts (`shawn`, `danny`, `raven`) are only created when `SEED_DEMO=true`; their default passwords are in `server/seed.js`. *(Superseded by `docs/DEPLOY-RUNBOOK.md` — new deploys use the admin bootstrap, not seed accounts.)*
 
 **Change passwords after first login** (Settings → Change Password).
 

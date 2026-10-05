@@ -20,13 +20,13 @@ Key fact about architecture: **the desktop app loads the client UI from Railway 
 - **Live server / web app:** https://bti-voice-production.up.railway.app (works in any browser too).
 - **Mac repo:** `~/Documents/Claude/Projects/BTI Voice/bti-voice` (git clone). Old July copy kept beside it as `bti-voice-old` (safe to delete). Build output goes to sibling `~/Documents/Claude/Projects/BTI Voice/dist-electron/`.
 - **Windows desktop repo:** `C:\Users\Doero\OneDrive\Documents\Claude\Projects\Talkingvet Help\bti-voice`. ⚠ The `OneDrive` in that path is a **leftover folder name — OneDrive is NOT running and nothing syncs.** See §8k. **Windows laptop repo:** `C:\Dev\bti-voice`.
-- **External DB access** (scripts/direct fixes): `postgresql://postgres:EpfANoVcBduEofAFrNFZmvOhAotreUuV@maglev.proxy.rlwy.net:19870/railway` (Railway public proxy; internal URL only works inside Railway).
+- **External DB access** (scripts/direct fixes): copy `DATABASE_PUBLIC_URL` from Railway → Postgres service → Variables (the public proxy URL; the internal URL only works inside Railway). **Never paste it into docs or chat** — it was rotated 2026-10-05 after living in this file; see review §5 A1.
 - **Railway env vars of note:** `JWT_SECRET` (set — keep it), `TWILIO_ACCOUNT_SID`/`TWILIO_AUTH_TOKEN`/`TWILIO_PHONE_NUMBER`, `TWILIO_MESSAGING_SERVICE_SID`, `LATEST_VERSION` (drives update prompts), `ZOHO_CLIENT_ID/SECRET/REFRESH_TOKEN`, `OPENAI_API_KEY`, `ENABLE_RECORDING`, `SERVER_URL`. NEW optional: `TWILIO_STRICT_WEBHOOKS` (set to `true` to enforce webhook signatures), `ADMIN_KEY`.
 - **Current version:** v1.5.0 — **fully released on both platforms as of 2026-08-13.** Mac DMGs (signed+notarized) and `BTI-Voice-Setup-1.5.0.exe` (86.94 MiB) are all attached to the v1.5.0 GitHub release, and Railway `LATEST_VERSION=1.5.0`.
 - **Latest commit on main:** `0816440` (2026-08-14 feature batch: Zoho SMS widget, per-agent caller ID, click-to-call, BTI_Voice module rerouting) — **pushed and live on Railway as of 2026-08-14 ~1pm.** `ZOHO_WIDGET_KEY` is set in Railway and matches the Zoho widget registration. Widget "BTI Voice SMS" registered (Type Related List, External) and live in a dedicated **BTI Voice SMS** Canvas tab on Contacts — verified working on Danny Test. See §8e for the Zoho registration gotchas (module attach via standard view, floating-widget fallback, + tab nesting). Remaining: Leads attach, desktop-app verifications (caller ID, icons), Notes migration — see TODO "Go-live status".
 
 ## 3. Logins / accounts (BTI Voice agents)
-From the live DB (2026-08-12). Default password for every seeded account is `username + 123` (e.g. `danny123`) — **all are still on the default; everyone should change theirs in Settings → Profile → Change Password before wider rollout.**
+From the live DB (2026-08-12). Seeded accounts were created with a predictable default password (the app flags these and shows a nag banner on sign-in) — **everyone should change theirs in Settings → Profile → Change Password before wider rollout.** Credentials live in the password manager, not here.
 
 | id | username | name | phone | active |
 |----|----------|------|-------|--------|
@@ -36,7 +36,7 @@ From the live DB (2026-08-12). Default password for every seeded account is `use
 | 4 | rick | Rick Almendras | none | yes |
 | 5 | paul | Paul Messino | none | yes |
 | 6 | warren | Warren Anderson | none | yes |
-| 7 | ryan | Ryan | none | yes (added 2026-08-12, pw `ryan123`) |
+| 7 | ryan | Ryan | none | yes (added 2026-08-12, default pw — must change) |
 
 Only **danny** has a Twilio number, so only danny can actually send/receive from a number. Others can log in and view, but sends silently skip Twilio until they get a number. There is no UI to assign numbers yet — use `PATCH /api/agents/me/number` (as that agent) or a direct DB update. To add an agent: INSERT into `agents (name, username, password_hash, color, initials, is_active)` with a bcryptjs hash (that's how ryan was added).
 
@@ -74,7 +74,7 @@ Messaging-Service routing on all 3 send sites; STOP/START opt-out (contacts.opte
    - **D (Electron):** banner Accept/Decline actually work now + dismiss properly; updater is Windows-only (Mac no longer downloads a .exe); nav/window-open guards; mic permission scoped to app origin; offline retry page; crash handlers; mac mic usage strings.
 6. **Mac signing + notarization** set up and working; DMGs rebuilt small (~73/85MB) and Apple-Accepted.
 7. **Deployed:** pushed to main; Railway live. JWT_SECRET already existed (kept, no forced re-login). Verified in prod: /api/zoho/status → 401, /api/agents → 401, unknown /api → JSON 404. App restarted: socket auth OK, bell sane, dark mode switches.
-8. Added agent **ryan** (pw ryan123).
+8. Added agent **ryan** (seeded default pw — must change).
 
 ## 8b. 2026-08-13 session (Windows) — what happened
 
@@ -155,7 +155,7 @@ Widget registration reference: name "BTI Voice SMS", API name `BTI_Voice_SMS`, T
 3. **CRITICAL Zoho lesson:** upsert `duplicate_check_fields` silently INSERTS unless the field is marked unique ("Do not allow duplicate values"). BTI_Ref wasn't → every sync duplicated the whole module (3× = 318 records). Fixed: deduped to 106 via API (bulk deleteRecords MCP tool is broken — single deletes only), then set unique on BTI_Ref in the layout editor (dedupe MUST precede uniqueness), verified upsert returns `action:"update"`. Confirmed holding under live traffic 8/18.
 4. **Voicemail review FINISHED** — 17/18 junk rows merged with an end-time rule (candidate call ending 4–5s before the recording row = the callback latency; beat the old ±4min window and cracked the 52-min T-Mobile call 112/113). Only row 80 (6s "testing") remains, on 'Unknown caller'.
 5. **Malformed contacts fixed:** dup `2395959310` merged into Danny Test (6); `239-231-6219` → `+12392316219`; misdial `+239595931` contact removed (call 137 re-filed); empty `client:agent_2` removed. Left, pending Danny's go: contacts 7/10/11 (all test junk).
-6. **Commit `0aeceeb` (pushed, live):** default-password nag banner (login flags `username+123`, amber banner till changed; also fixed change-password showing success on HTTP 400); agent number-assignment UI (Team section "edit" → `PATCH /api/agents/:id/number`, E.164); light-mode conversion for Login/toasts/TitleBar (ActiveCallPanel deliberately stays dark — call-screen convention). STALE TODO discoveries: check-for-updates button already shipped in 1.5.0 (a49cc6c); BottomNav already themed.
+6. **Commit `0aeceeb` (pushed, live):** default-password nag banner (login flags accounts still on the seeded default, amber banner till changed; also fixed change-password showing success on HTTP 400); agent number-assignment UI (Team section "edit" → `PATCH /api/agents/:id/number`, E.164); light-mode conversion for Login/toasts/TitleBar (ActiveCallPanel deliberately stays dark — call-screen convention). STALE TODO discoveries: check-for-updates button already shipped in 1.5.0 (a49cc6c); BottomNav already themed.
 7. **`TWILIO_STRICT_WEBHOOKS=true`** set in Railway, redeployed, verified healthy — and proven 8/18 by live inbound SMS passing validation. Rollback: set `false` if inbound 403s. (Also: `ADMIN_KEY` unset — random per boot; set it if admin endpoints are ever needed.)
 8. **dist-electron pruned** (835 MB of 1.0.0–1.4.x installers deleted; 1.5.0 kept).
 9. **8/18: inbound SMS to Rick/Paul's numbers was broken** — their numbers still had Twilio's DEMO SMS URL (`demo.twilio.com/welcome/sms/reply`; the 8/14 setup did voice webhook + A2P pool only). Fixed via `server/scripts/fix-sms-urls.js` (`railway run node server/scripts/fix-sms-urls.js`, idempotent) → both now point at `/webhooks/sms`. Verified end-to-end: Danny's cell → Paul's number → DB message 37 → today's Zoho digest updated in place (no dup). **Per-number inbound CALL routing still missing** (all numbers hit the same IVR).
@@ -166,7 +166,7 @@ Widget registration reference: name "BTI Voice SMS", API name `BTI_Voice_SMS`, T
 **Full plan: `BTI-Voice-Productization-Plan.md`** (codebase tenancy audit + Twilio ISV/A2P research + competitor pricing, all 2026-current). Decisions:
 - **Target: BTI's MSP clients** (vets maybe later via Talkingvet). 1–5 pilots year one.
 - **Single-tenant deploy per customer** (own Railway project/DB/env). Audit found zero tenant awareness (16 tables, no org column; `ivr_settings CHECK (id=1)` singleton; unscoped queries) but clean per-process isolation — multi-tenancy is a multi-week rewrite, not worth it under ~5 customers.
-- **#1 deploy blocker: `seed.js` boots 5 named BTI agents with `username123` passwords on every deploy**, plus Talkingvet strings in the after-hours SMS default and the AI summary prompt, `ADMIN_KEY` fallback `'bti-admin-2026'` on an unauthed route, JWT_SECRET random-per-boot if unset. All trivial fixes — Phase 0 in the TODO.
+- **#1 deploy blocker: `seed.js` boots 5 named BTI agents with predictable default passwords on every deploy**, plus Talkingvet strings in the after-hours SMS default and the AI summary prompt, `ADMIN_KEY` fallback `'bti-admin-2026'` on an unauthed route, JWT_SECRET random-per-boot if unset. All trivial fixes — Phase 0 in the TODO.
 - **Twilio: subaccount per customer; each customer needs their OWN A2P brand+campaign under THEIR EIN** (Low-Volume Standard $4.50 + Low-Volume Mixed campaign $15 + $1.50/mo). Campaign vetting 10–15 days; customer data collection + website compliance is the real bottleneck (4–6 weeks typical onboarding). Voice can go live in ~3 days — sell voice-first. BTI must re-register its Primary Profile as "ISV Reseller or Partner" first.
 - **Pricing: $35/user/mo + $250–500 onboarding fee.** COGS ~$11/user for a typical 10-user client → ~65–70% margin. Competitive band for equivalent feature set is $23–50/user/mo (RingCentral charges +$60/user just for AI call intelligence).
 - **Zoho = optional add-on** (Danny's point: the integration is BTI's Zoho; customers only benefit if they run Zoho CRM themselves). App degrades gracefully without Zoho env vars. Zoho customers need the `BTI_Voice` module + unique `BTI_Ref` created in THEIR org.
@@ -485,6 +485,13 @@ Also: Danny's Mac now has `~/Dev/bti-voice` at the dialog-fix commit; desktop wa
 **Today view (2026-10-05, Danny's ask):** third toggle Remaining / **Today** / Done. Today = open entries whose `callback_at` is on or before the agent's local end-of-day (overdue included; the client sends `?before=<local 23:59 ISO>`, server returns `today_count`). Feeds: the wrap-up's "Call back on" date (now shown for *Callback requested* **and** *Left voicemail*), or — if left blank — the follow-up task's due date at 9:00 local. Rule change in `helpers/callLists.js`: a callback date sticks for any retaining outcome, not only callback_requested (test updated). Next on the Today view dials the earliest due callback. Rows render like Remaining with ⏰ when due.
 
 **Turn it on (Danny):** Railway → `bti-voice` → Variables → `ENABLE_CALL_LISTS=true` → redeploy → the Lists tab appears after a reload (desktop app: quit from tray + reopen). First real test: New list → Import Zoho view (Leads) → Next → let it ring out → strip → No answer; call again, answer, > 15 s → wrap-up → Callback requested + date → entry shows ⏰ when due.
+
+## 8w. 2026-10-05 (Danny, desktop) — Review Pass 2, batch 1: credential scrub
+- Review report `docs/BTI-Voice-Review-2026-10.md` §2 row 1 (§5 A1/A2). Docs-only change, no code.
+- Removed every live secret from the working tree: Railway public `DATABASE_URL` (§2 above + `docs/archive/BTI-Voice-Session-Handoff.md`), Zoho Voice port-out account number + transfer PIN (TODO), App Audit StatiCrypt password (`App-Audit-Handoff.md`), seed-account password tables (`SETUP.md`, `_claude-context/context_2026-04-15.md`), and the lines naming which team accounts were still on the `username123` default. Replaced each with a pointer to the password manager / Railway Variables.
+- Left in place on purpose: Twilio Messaging Service / TwiML App SIDs and phone numbers (identifiers, not credentials); `server/seed.js` demo passwords (code, gated by `SEED_DEMO` — review §3 D5 handles that in a later batch).
+- **Danny:** rotate the BTI Postgres password in Railway (Credentials tab) and redeploy `bti-voice`; see TODO "REVIEW PASS 2". History still contains the old password until rotated or `git filter-repo` is run.
+- Rule going forward: **no secret values in `docs/`, the handoff, the TODO or context snapshots** — write "in the password manager under <name>" or "Railway → <service> → Variables" instead.
 
 ## 9. Security posture
 **Fixed & live:** Zoho + socket auth, webhook validation (soft), secret hardening, MMS hardening, crash safety, opt-out across all paths, throttles, quiet hours, recording notice, and the client/Electron bugs above.

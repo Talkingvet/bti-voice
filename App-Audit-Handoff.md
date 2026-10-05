@@ -31,10 +31,10 @@ Opens by double-clicking — no server, no install. Works in any browser.
 ## The website (password-protected public copy)
 
 - Goal: team can view the audit on any device. Decided 2026-08-12: Netlify free hosting + StatiCrypt encryption (content is AES-encrypted; the link alone shows only a password prompt).
-- **Password: `harbor-signal-9214`** (30-day remember per device).
+- **Password:** in the password manager under "App Audit website" (30-day remember per device). *(Removed from this file 2026-10-05 — it was committed to the repo; rotate it next time the site is re-published.)*
 - **Status: NOT yet deployed.** Paul still needs to drag `App-Audit-Website/` onto https://app.netlify.com/drop and create the free account. Once done, record the URL here.
 - Re-encrypt after any change to the master file (run from this folder):
-  `npx staticrypt App-Audit.html -p "harbor-signal-9214" -d App-Audit-Website --remember 30 --template-title "BTI App Audit" --template-instructions "Team access only. Ask Paul or Danny for the password."`
+  `npx staticrypt App-Audit.html -p "<password from the password manager>" -d App-Audit-Website --remember 30 --template-title "BTI App Audit" --template-instructions "Team access only. Ask Paul or Danny for the password."`
   then rename the output `App-Audit-Website/App-Audit.html` → `index.html`. Re-drag the folder into Netlify's Deploys page.
 - Website viewers' checkbox ticks save only in their own browser — the master file is the source of truth.
 
@@ -57,7 +57,7 @@ Git log at snapshot time showed audit fix batches A (security), B (compliance), 
 
 ## Conventions / decisions made
 
-1. **No secrets in App-Audit.html** — it's meant to be shared. No passwords, no DB URLs, no tokens. (The Railway DB URL with password lives in BTI-Voice-Session-Handoff.md — flagged in the punchlist as a risk.)
+1. **No secrets in App-Audit.html** — it's meant to be shared. No passwords, no DB URLs, no tokens. (The Railway DB URL used to live in BTI-Voice-Session-Handoff.md — removed and rotated 2026-10-05.)
 2. Twilio Campaign/Brand/Messaging-Service SIDs are OK to include (identifiers, not credentials).
 3. Name history: started as "App Tracker" / App-Tracker.html; renamed to **App Audit** / App-Audit.html on 2026-08-12 (Paul's choice). Note the similarly-named BTI-Voice-Preprod-Audit.md is a different thing (the security audit).
 4. Paul is a total beginner — explain steps one at a time, define jargon, never assume terminal comfort. He's on Mac here; Windows gotchas (Git Bash only, OneDrive/git conflicts) are in the BTI Voice handoff.

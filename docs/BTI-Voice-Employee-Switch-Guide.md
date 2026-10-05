@@ -43,7 +43,7 @@
 ### Step 1 — Before anything else (admin: Danny)
 
 - [ ] Confirm the employee already has a BTI Voice login and can sign in on the desktop app or in the browser. (Rick: account `rick`, agent 4 — done.)
-- [ ] Have them change their password (Settings → Profile → Change Password). Everyone is still on the default `username123`.
+- [ ] Have them change their password (Settings → Profile → Change Password) if the app still shows the default-password banner.
 - [ ] Write down what they use in Zoho Voice today: transfer? mobile app? desk phone? voicemail greeting? Anything in the **CONFIRM** rows above that they depend on must be checked in BTI Voice first.
 - [ ] Write down their Zoho Voice number exactly (with area code).
 
