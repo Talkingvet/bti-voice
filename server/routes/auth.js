@@ -5,11 +5,15 @@ const { generateToken, requireAuth, generateMediaToken, MEDIA_TOKEN_TTL_SEC } = 
 const { logActivity } = require('../helpers/logActivity');
 const { loginAllowed, accountStatus, featureOn } = require('../helpers/deploySettings');
 const sessions = require('../helpers/sessions');
+const { throttled, recordFailure, clearFailures } = require('../helpers/loginThrottle');
 
 const router = express.Router();
 
 router.post('/login', async (req, res) => {
-  const { username, password, remember, platform } = req.body;
+  const { remember, platform } = req.body || {};
+  const username = String(req.body?.username || '').trim().toLowerCase();
+  const password = String(req.body?.password || '');
+  if (!username || !password) return res.status(400).json({ error: 'Username and password are required' });
   // Subscription lifecycle: blocked deploys refuse every login with the
   // "contact BTI" message (plan §4a #3). Checked BEFORE the password so we
   // never confirm/deny credentials on a blocked account.
@@ -22,16 +26,25 @@ router.post('/login', async (req, res) => {
   if ((platform === 'ios' || platform === 'android') && !featureOn('mobile_apps')) {
     return res.status(403).json({ error: 'The mobile apps are not enabled on this account. Please sign in from the desktop app or a browser, or contact BTI.', code: 'mobile_disabled' });
   }
+  // Brute-force throttle (review §5 A4): 10 failed attempts per username per
+  // 15 minutes, same as the admin portal. Checked before the password so a
+  // throttled account never leaks whether the guess was right.
+  if (throttled(username)) {
+    return res.status(429).json({ error: 'Too many failed attempts. Try again in 15 minutes.' });
+  }
   try {
     const { rows } = await pool.query(
       'SELECT * FROM agents WHERE username = $1 AND is_active = true',
-      [username.toLowerCase().trim()]
+      [username]
     );
-    if (!rows.length) return res.status(401).json({ error: 'Invalid username or password' });
-
     const agent = rows[0];
-    const valid = await bcrypt.compare(password, agent.password_hash);
-    if (!valid) return res.status(401).json({ error: 'Invalid username or password' });
+    const valid = agent && await bcrypt.compare(password, agent.password_hash);
+    if (!valid) {
+      recordFailure(username);
+      console.warn(`[auth] failed login for "${username}" from ${req.ip}`);
+      return res.status(401).json({ error: 'Invalid username or password' });
+    }
+    clearFailures(username);
 
     // Nag-banner support: flag logins that still use the seeded default password,
     // OR a one-time temporary password handed out by BTI from the portal

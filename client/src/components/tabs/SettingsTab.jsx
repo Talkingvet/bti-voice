@@ -208,22 +208,17 @@ function ProfileSection({ agent, C }) {
 
   async function savePassword() {
     if (next !== confirm) { setPwMsg('Passwords do not match'); return }
+    if (next.length < 10) { setPwMsg('New password must be at least 10 characters'); return }
     try {
-      const res = await fetch('/api/agents/me/password', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('bti_token')}` },
-        body: JSON.stringify({ current_password: curr, new_password: next }),
-      })
-      if (!res.ok) throw new Error('bad status')
+      const data = await api.changePassword(curr, next)
       // The server signed out every OTHER device and handed this one a fresh
       // token — store it, or our next request would be rejected.
-      const data = await res.json().catch(() => ({}))
       if (data?.token) localStorage.setItem('bti_token', data.token)
       setPwMsg('Password changed ✓')
       setCurr(''); setNext(''); setConfirm('')
       window.dispatchEvent(new Event('bti-password-changed'))
-    } catch { setPwMsg('Failed — check current password') }
-    setTimeout(() => setPwMsg(''), 3000)
+    } catch (e) { setPwMsg(e.message || 'Failed — check current password') }
+    setTimeout(() => setPwMsg(''), 4000)
   }
 
   return (

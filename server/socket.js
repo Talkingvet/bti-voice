@@ -6,8 +6,11 @@ function init(httpServer) {
   const jwt = require('jsonwebtoken');
   const { JWT_SECRET } = require('./secret');
 
+  // Same origin allow-list as the HTTP API (helpers/origins.js) — was '*'.
+  // Same-origin clients (web, Electron, Huddle) never hit this check.
+  const { corsOriginFn } = require('./helpers/origins');
   io = new Server(httpServer, {
-    cors: { origin: '*', methods: ['GET', 'POST'] },
+    cors: { origin: corsOriginFn(), methods: ['GET', 'POST'] },
   });
 
   // Require a valid agent token to open a socket. Without this, anyone could

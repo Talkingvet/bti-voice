@@ -121,6 +121,11 @@ export const api = {
     request('/conversations/new-message', { method: 'POST', body: { to_number, from_agent_id, body } }),
   activity:      () => request('/activity'),
   sendDiagnostics: (payload) => request('/diagnostics', { method: 'POST', body: payload }),
+  // Goes through request() so the server's message (min length, wrong current
+  // password) reaches the UI, and so it works on iOS/Android where a relative
+  // fetch('/api/…') would hit capacitor://localhost instead of the server.
+  changePassword: (current_password, new_password) =>
+    request('/agents/me/password', { method: 'PATCH', body: { current_password, new_password } }),
 
   // Voicemails
   voicemails:        ()           => request('/calls/voicemails'),

@@ -2,6 +2,9 @@ require('dotenv').config();
 const express    = require('express');
 const http       = require('http');
 const cors       = require('cors');
+const helmet     = require('helmet');
+const rateLimit  = require('express-rate-limit');
+const { corsOriginFn } = require('./helpers/origins');
 const path       = require('path');
 const { migrate } = require('./db');
 const { init: initSocket } = require('./socket');
@@ -14,10 +17,62 @@ const server = http.createServer(app);
 initSocket(server);
 
 // ── Middleware ────────────────────────────────────────────────
-app.set('trust proxy', true); // Railway terminates TLS; trust X-Forwarded-* 
-app.use(cors());
-app.use(express.json());
+// Railway terminates TLS behind ONE proxy hop. `1` (not `true`) so req.ip is
+// the real client as reported by Railway and can't be spoofed by a client-
+// supplied X-Forwarded-For — the rate limiters below key on it, and the
+// activity log stores it. Same setting as the admin portal (review §3 B12).
+app.set('trust proxy', 1);
+
+// Security headers (review §5 B8). Deliberate exemptions — each one breaks a
+// real client if left at helmet's default:
+//   contentSecurityPolicy   off — a real CSP for the SPA + Twilio SDK is its own batch
+//   crossOriginOpenerPolicy off — the Zoho widget opens the call popup with
+//                                 window.open() from inside Zoho CRM; COOP would
+//                                 sever the opener and the popup-blocked check
+//   crossOriginResourcePolicy = cross-origin — the iOS/Android apps load
+//                                 recordings + MMS images from this server
+//   frameguard              off here, applied below to everything EXCEPT
+//                                 /zoho-widget, which lives in an iframe in Zoho CRM
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginOpenerPolicy: false,
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  frameguard: false,
+}));
+const frameguard = helmet.frameguard({ action: 'sameorigin' });
+app.use((req, res, next) => (req.path.startsWith('/zoho-widget') ? next() : frameguard(req, res, next)));
+
+// CORS: explicit allow-list instead of `*` (helpers/origins.js — SERVER_URL,
+// the mobile apps' capacitor://localhost + https://localhost, localhost dev,
+// plus optional CORS_ORIGINS). Same-origin callers (web app, Electron, Huddle,
+// Zoho widget) are unaffected by CORS entirely.
+app.use(cors({ origin: corsOriginFn(), methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'] }));
+app.use(express.json({ limit: '100kb' }));          // explicit; diagnostics logs stay under this (utils/logBuffer.js)
 app.use(express.urlencoded({ extended: false })); // needed for Twilio webhooks
+
+// Rate limits (review §5 A4 / B8), per client IP. Twilio webhooks (/webhooks)
+// are signature-validated and NOT limited. socket.io traffic isn't under /api.
+// 429s are JSON with `error` so the app shows the message like any other error.
+const limiter = (opts) => rateLimit({
+  standardHeaders: 'draft-7', legacyHeaders: false,
+  message: { error: 'Too many requests — please wait a minute and try again.' },
+  ...opts,
+});
+// Whole API: generous — an office behind one IP with every app open and
+// refetching on socket events stays far below this.
+const apiLimiter = limiter({ windowMs: 60 * 1000, limit: 300,
+  skip: (req) => req.path === '/health' || req.path === '/features' });
+// Login: 30 attempts / 15 min per IP (the per-username throttle in
+// routes/auth.js is the other axis — 10 fails / 15 min, copied from the portal).
+const loginLimiter = limiter({ windowMs: 15 * 60 * 1000, limit: 30,
+  message: { error: 'Too many login attempts from this network. Try again in 15 minutes.' } });
+// /track fires on a handful of UI events; /diagnostics is a manual button.
+const trackLimiter = limiter({ windowMs: 15 * 60 * 1000, limit: 60 });
+const diagLimiter  = limiter({ windowMs: 15 * 60 * 1000, limit: 10 });
+app.use('/api', apiLimiter);
+app.use('/api/auth/login', loginLimiter);
+app.use('/api/track', trackLimiter);
+app.post('/api/diagnostics', diagLimiter);
 
 // ── API Routes ────────────────────────────────────────────────
 // Unauthenticated liveness probe — the desktop app's offline page polls this

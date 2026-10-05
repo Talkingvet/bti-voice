@@ -136,6 +136,16 @@ Do all of this INSIDE a new subaccount, from BTI's parent console:
   `curl -H "X-Tenant-Key: $KEY" $SERVER_URL/api/tenant/settings` (also `/usage`,
   `/agents`, `/health-extended`; `PATCH /settings` with JSON, `POST /settings/extend
   {"days":30}`). Full contract in `docs/BTI-Voice-Admin-Portal-Plan.md` §6.
+- **Security middleware (2026-10-05, review batch 3):** every deploy now has a
+  login throttle (10 failed tries per username / 15 min), per-IP rate limits
+  (`/api` 300/min; login 30 / 15 min; a 429 shows as "Too many…" in the app),
+  `helmet()` headers and a CORS allow-list built from `SERVER_URL` + the phone
+  apps' origins. **Nothing to configure** — but `SERVER_URL` must be the real
+  https URL (it always had to be, for Twilio). If a browser on ANOTHER domain
+  ever needs to call this deploy's API (e.g. `app.btivoice.com` while the
+  Railway URL is still live), add it to the optional `CORS_ORIGINS` variable
+  (comma-separated) and redeploy. The Zoho CRM widget, the desktop app and the
+  phone apps need no entry.
 - Billing: software fee via BTI invoice; Twilio usage lands on the subaccount —
   decide per the agent-model tax strategy (plan §8) before first invoice.
 

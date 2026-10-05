@@ -68,8 +68,16 @@ router.patch('/me/status', requireAuth, async (req, res) => {
 });
 
 // Change own password
+// Minimum length matches the admin portal's change-password rule (admin/routes/auth.js).
+const MIN_PASSWORD_LENGTH = 10;
 router.patch('/me/password', requireAuth, async (req, res) => {
-  const { current_password, new_password } = req.body;
+  const current_password = String(req.body?.current_password || '');
+  const new_password     = String(req.body?.new_password || '');
+  if (!current_password) return res.status(400).json({ error: 'Current password is required' });
+  if (new_password.length < MIN_PASSWORD_LENGTH) {
+    return res.status(400).json({ error: `New password must be at least ${MIN_PASSWORD_LENGTH} characters` });
+  }
+  if (new_password === current_password) return res.status(400).json({ error: 'New password must be different from the current one' });
   const { rows } = await pool.query('SELECT * FROM agents WHERE id = $1', [req.agent.id]);
   const valid = await bcrypt.compare(current_password, rows[0].password_hash);
   if (!valid) return res.status(400).json({ error: 'Current password incorrect' });
