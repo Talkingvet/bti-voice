@@ -239,19 +239,27 @@ export default function CallListsTab({ agent, onDialEntry, onMessage }) {
                   )}
                 </div>
                 {list.notes && <div style={{ fontSize: 12, color: C.textSec, marginTop: 6, whiteSpace: 'pre-wrap' }}>{list.notes}</div>}
-                <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: 6, marginTop: 8, alignItems: 'center' }}>
                   <button style={{ ...S.viewBtn, ...(view === 'open' ? S.viewBtnOn : { color: C.textSec, border: `1px solid ${C.borderSoft}` }) }} onClick={() => setView('open')}>Remaining ({list.open_count})</button>
                   <button style={{ ...S.viewBtn, ...(view === 'done' ? S.viewBtnOn : { color: C.textSec, border: `1px solid ${C.borderSoft}` }) }} onClick={() => setView('done')}>Done ({list.done_count})</button>
                   <span style={{ flex: 1 }} />
-                  {zohoOn && <button style={{ ...S.smallBtn, color: C.btnText, background: C.btnBg, border: `1px solid ${C.btnBorder}` }} onClick={() => setImporter(true)}>{list.zoho_view_id ? 'Re-import view' : 'Import Zoho view'}</button>}
-                  <button style={{ ...S.smallBtn, color: C.btnText, background: C.btnBg, border: `1px solid ${C.btnBorder}` }} onClick={() => setAdder(true)}>+ Add number</button>
+                  {zohoOn && isWide && <button style={{ ...S.smallBtn, color: C.btnText, background: C.btnBg, border: `1px solid ${C.btnBorder}` }} onClick={() => setImporter(true)}>{list.zoho_view_id ? 'Re-import view' : 'Import Zoho view'}</button>}
+                  {isWide && <button style={{ ...S.smallBtn, color: C.btnText, background: C.btnBg, border: `1px solid ${C.btnBorder}` }} onClick={() => setAdder(true)}>+ Add number</button>}
                   <MoreMenu C={C} items={[
+                    !isWide && zohoOn && { label: list.zoho_view_id ? 'Re-import Zoho view' : 'Import Zoho view', onClick: () => setImporter(true) },
+                    !isWide && { label: 'Add number', onClick: () => setAdder(true) },
                     { label: 'Export CSV', onClick: exportCsv },
                     list.is_owner && { label: 'Edit list / sharing', onClick: () => setEditor({ mode: 'edit', list }) },
                     { label: 'Remove completed (' + list.done_count + ')', onClick: removeCompleted, disabled: !list.done_count },
                     list.is_owner && { label: 'Delete list', onClick: deleteList, danger: true },
                   ].filter(Boolean)} />
                 </div>
+                {!isWide && (
+                  <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                    {zohoOn && <button style={{ ...S.smallBtn, flex: 1, color: C.btnText, background: C.btnBg, border: `1px solid ${C.btnBorder}` }} onClick={() => setImporter(true)}>{list.zoho_view_id ? 'Re-import Zoho view' : 'Import Zoho view'}</button>}
+                    <button style={{ ...S.smallBtn, flex: 1, color: C.btnText, background: C.btnBg, border: `1px solid ${C.btnBorder}` }} onClick={() => setAdder(true)}>+ Add number</button>
+                  </div>
+                )}
               </div>
 
               {/* Entries */}
@@ -344,17 +352,32 @@ export default function CallListsTab({ agent, onDialEntry, onMessage }) {
 /* ── "⋯" menu ─────────────────────────────────────────────────────────────── */
 function MoreMenu({ C, items }) {
   const [open, setOpen] = useState(false)
+  const [pos,  setPos]  = useState({ top: 0, left: 0 })
+  const btnRef = useRef(null)
+  const MENU_W = 220
   useEffect(() => {
     if (!open) return
     const close = () => setOpen(false)
     window.addEventListener('click', close)
-    return () => window.removeEventListener('click', close)
+    window.addEventListener('resize', close)
+    window.addEventListener('scroll', close, true)
+    return () => { window.removeEventListener('click', close); window.removeEventListener('resize', close); window.removeEventListener('scroll', close, true) }
   }, [open])
+  function toggle() {
+    if (!open && btnRef.current) {
+      // Position below the button, right-aligned to it, but never off-screen —
+      // on a phone-width window the button can sit anywhere in the row.
+      const r = btnRef.current.getBoundingClientRect()
+      const left = Math.max(8, Math.min(r.right - MENU_W, window.innerWidth - MENU_W - 8))
+      setPos({ top: r.bottom + 4, left })
+    }
+    setOpen(o => !o)
+  }
   return (
-    <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
-      <button style={{ ...S.smallBtn, color: C.btnText, background: C.btnBg, border: `1px solid ${C.btnBorder}`, padding: '4px 9px' }} onClick={() => setOpen(o => !o)} title="More">⋯</button>
+    <div onClick={e => e.stopPropagation()}>
+      <button ref={btnRef} style={{ ...S.smallBtn, color: C.btnText, background: C.btnBg, border: `1px solid ${C.btnBorder}`, padding: '4px 9px' }} onClick={toggle} title="More">⋯</button>
       {open && (
-        <div style={{ position: 'absolute', right: 0, top: '110%', zIndex: 20, minWidth: 190, background: C.panel, border: `1px solid ${C.border}`, borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.25)', padding: 4 }}>
+        <div style={{ position: 'fixed', top: pos.top, left: pos.left, width: MENU_W, zIndex: 60, background: C.panel, border: `1px solid ${C.border}`, borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.25)', padding: 4 }}>
           {items.map((it, i) => (
             <button key={i} disabled={it.disabled} onClick={() => { setOpen(false); it.onClick() }}
               style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', fontSize: 12.5, background: 'transparent', border: 'none', cursor: it.disabled ? 'default' : 'pointer', color: it.danger ? '#ef4444' : C.text, opacity: it.disabled ? 0.45 : 1, borderRadius: 6 }}>
