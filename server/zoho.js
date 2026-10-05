@@ -332,6 +332,18 @@ async function updateZohoCallContact(zohoCallId, newZohoContactId, opts) {
   return record.details;
 }
 
+// Patch fields on an existing Zoho Call record (used to add the wrap-up
+// outcome after the call was already logged by the sweep). 2026-10-05.
+async function updateZohoCall(zohoCallId, fields) {
+  if (!zohoCallId) throw new Error('zohoCallId is required');
+  const result = await zohoAPI('PUT', '/Calls/' + zohoCallId, { data: [{ id: zohoCallId, ...fields }] });
+  const record = result && result.data && result.data[0];
+  if (!record || record.status === 'error') {
+    throw Object.assign(new Error('[Zoho] Call update failed'), { body: record });
+  }
+  return record.details;
+}
+
 // ── Simple HTTPS POST helper (no extra deps) ───────────────────────────────────
 function post(url, body) {
   return new Promise(function(resolve, reject) {
@@ -371,4 +383,5 @@ module.exports = {
   createZohoContact,
   createZohoTask,
   updateZohoCallContact,
+  updateZohoCall,
 };

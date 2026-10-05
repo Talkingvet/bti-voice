@@ -4,6 +4,10 @@
 
 const express = require('express');
 const router  = express.Router();
+// Human label for a wrap-up disposition code (shared with Call Lists).
+const { OUTCOME_LABELS } = require('../helpers/callLists');
+const outcomeLabel = (code) => code ? (OUTCOME_LABELS[code] || String(code).replace(/_/g, ' ')) : '';
+
 const { internalOrAuth } = require('../auth');
 const { pool } = require('../db');
 
@@ -83,7 +87,7 @@ router.post('/log-call', async (req, res) => {
       'SELECT ca.id, ca.direction, ca.status, ca.duration, ca.started_at, ' +
       '       ca.recording_url, ca.transcription, ca.ai_summary, ' +
       '       ca.chosen_zoho_contact_id, ca.chosen_zoho_module, ' +
-      '       ca.zoho_call_id, ca.zoho_logged_at, ' +
+      '       ca.zoho_call_id, ca.zoho_logged_at, ca.disposition, ' +
       '       c.contact_id, ' +
       '       co.phone_number, co.name AS contact_name, ' +
       '       a.name AS agent_name ' +
@@ -134,9 +138,13 @@ router.post('/log-call', async (req, res) => {
     const startedIso = (call.started_at ? new Date(call.started_at) : new Date())
       .toISOString().replace(/\.\d{3}Z$/, '+00:00');
 
-    const subject     = callType + ' call - ' + (call.contact_name || call.phone_number);
+    // 2026-10-05: the wrap-up outcome (disposition) rides along when it's
+    // already set — e.g. the agent saved the wrap-up before the 60 s sweep ran.
+    // Otherwise routes/calls.js patches it onto the Zoho record at wrap-up time.
+    const outcome     = outcomeLabel(call.disposition);
+    const subject     = callType + ' call - ' + (call.contact_name || call.phone_number) + (outcome ? ' — ' + outcome : '');
     const description = `Logged by ${process.env.BRAND_NAME || 'BTI Voice'}. Agent: ` + (call.agent_name || 'Unknown') +
-                        '. Status: ' + (call.status || 'completed') + '.';
+                        '. Status: ' + (call.status || 'completed') + '.' + (outcome ? ' Outcome: ' + outcome + '.' : '');
 
     const payload = {
       data: [{

@@ -474,6 +474,29 @@ router.post('/:id/wrap-up', requireAuth, async (req, res) => {
           console.error('[wrap-up] Zoho call re-attach failed:', e.message);
         }
       }
+      // 2026-10-05: the outcome pill goes onto the Zoho Call record too, so a
+      // Zoho-only user sees "Demo scheduled" without opening the note.
+      if (body.disposition && call.zoho_call_id) {
+        setImmediate(async function() {
+          try {
+            const { OUTCOME_LABELS } = require('../helpers/callLists');
+            const outcome = OUTCOME_LABELS[body.disposition] || String(body.disposition).replace(/_/g, ' ');
+            const { rows: [info] } = await pool.query(
+              'SELECT ca.direction, ca.status, a.name AS agent_name, co.name AS contact_name, co.phone_number ' +
+              'FROM calls ca LEFT JOIN agents a ON a.id = ca.agent_id ' +
+              'LEFT JOIN conversations c ON c.id = ca.conversation_id LEFT JOIN contacts co ON co.id = c.contact_id ' +
+              'WHERE ca.id = $1', [callId]);
+            const callType = info.status === 'missed' ? 'Missed' : info.direction === 'inbound' ? 'Inbound' : 'Outbound';
+            await require('../zoho').updateZohoCall(call.zoho_call_id, {
+              Subject:     callType + ' call - ' + (info.contact_name || info.phone_number) + ' — ' + outcome,
+              Description: `Logged by ${process.env.BRAND_NAME || 'BTI Voice'}. Agent: ` + (info.agent_name || 'Unknown') +
+                           '. Status: ' + (info.status || 'completed') + '. Outcome: ' + outcome + '.',
+            });
+          } catch (e) {
+            console.error('[wrap-up] Zoho outcome update failed:', e.message);
+          }
+        });
+      }
     } else {
       // Not yet synced — fire to chosen record (or auto-match if null)
       fireZohoLogCall(callId, { zoho_contact_id: targetZohoId, zoho_module: targetZohoModule });
