@@ -59,7 +59,13 @@ async function request(path, options = {}) {
     const body = await res.json().catch(() => ({ error: res.statusText }))
     const err = new Error(body.error || 'Request failed')
     err.status = res.status
-    err.code   = body.code || null   // e.g. 'account_blocked', 'sms_blocked', 'mobile_disabled'
+    err.code   = body.code || null   // e.g. 'account_blocked', 'sms_blocked', 'mobile_disabled', 'session_revoked'
+    // Session revoked mid-use (deactivated, password reset from the portal,
+    // password changed on another device, or signed out on this one): tell
+    // App to sign out now instead of leaving a half-dead screen up.
+    if (res.status === 401 && err.code === 'session_revoked') {
+      try { window.dispatchEvent(new CustomEvent('bti-session-revoked', { detail: err.message })) } catch {}
+    }
     throw err
   }
   return res.json()
@@ -80,6 +86,7 @@ export const api = {
   me:            ()                    => request('/auth/me'),
   features:      ()                    => request('/features'),
   refresh:       ()                    => request('/auth/refresh', { method: 'POST' }),
+  logout:        ()                    => request('/auth/logout',  { method: 'POST' }),
   agents:        ()                    => request('/agents'),
   updateAgentNumber: (id, phone_number) => request(`/agents/${id}/number`, { method: 'PATCH', body: { phone_number } }),
   conversations: ()                    => request('/conversations'),

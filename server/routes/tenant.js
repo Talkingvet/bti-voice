@@ -32,6 +32,7 @@ const bcrypt  = require('bcryptjs');
 const { pool } = require('../db');
 const ds = require('../helpers/deploySettings');
 const { getLastSeen } = require('../helpers/lastSeen');
+const sessions = require('../helpers/sessions');
 
 const router = express.Router();
 
@@ -385,6 +386,11 @@ router.patch('/agents/:id', async (req, res) => {
     const { rows: [agent] } = await pool.query(
       `UPDATE agents SET ${sets.join(', ')} WHERE id = $${vals.length + 1} RETURNING ${AGENT_COLS}`, [...vals, id]
     );
+    // Deactivating or resetting the password signs the user out of EVERY
+    // device immediately (review §5 A3) — desktop app included.
+    if (b.is_active === false || b.reset_password === true) {
+      await sessions.revokeAllSessions(id);
+    }
     console.log(`[tenant] agent #${id} updated: ${Object.keys(b).join(', ')}`);
     res.json(temporary_password ? { agent, temporary_password } : { agent });
   } catch (e) {

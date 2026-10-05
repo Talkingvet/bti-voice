@@ -11,7 +11,9 @@ export function getSocket() {
     socket = io(SERVER, {
       transports: ['websocket', 'polling'],
       // Auth handshake — server rejects sockets without a valid agent token.
-      auth: { token: localStorage.getItem('bti_token') },
+      // A function, not a value: socket.io calls it on every (re)connect, so
+      // a token renewed by /auth/refresh or a password change is what's sent.
+      auth: (cb) => cb({ token: localStorage.getItem('bti_token') }),
     })
   }
   return socket

@@ -398,6 +398,27 @@ async function migrate() {
     ALTER TABLE agents ADD COLUMN IF NOT EXISTS last_login_at        TIMESTAMPTZ;
   `);
 
+  // ── Session revocation (review 2026-10 §5 A3, batch 2) ──────────────────────
+  // token_version: bumped to sign an agent out of EVERY device (deactivate,
+  // portal password reset, own password change). sessions: one row per
+  // sign-in so "Sign out" only ends that device. See helpers/sessions.js.
+  await pool.query(`
+    ALTER TABLE agents ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0;
+    CREATE TABLE IF NOT EXISTS sessions (
+      id           VARCHAR(64) PRIMARY KEY,
+      agent_id     INTEGER NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+      remember     BOOLEAN DEFAULT false,
+      platform     VARCHAR(20),
+      user_agent   TEXT,
+      created_at   TIMESTAMPTZ DEFAULT NOW(),
+      last_seen_at TIMESTAMPTZ DEFAULT NOW(),
+      expires_at   TIMESTAMPTZ NOT NULL,
+      revoked_at   TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS sessions_agent_idx ON sessions (agent_id);
+    DELETE FROM sessions WHERE expires_at < NOW() - INTERVAL '7 days';
+  `);
+
   // ── Call Lists (dialer lists, 2026-10-03) ────────────────────────────────────
   // A list of people to call, worked from inside the app. Entries close only on
   // a closing disposition; no-answer / voicemail keep them with an attempt

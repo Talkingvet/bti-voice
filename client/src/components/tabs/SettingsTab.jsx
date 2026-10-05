@@ -215,6 +215,10 @@ function ProfileSection({ agent, C }) {
         body: JSON.stringify({ current_password: curr, new_password: next }),
       })
       if (!res.ok) throw new Error('bad status')
+      // The server signed out every OTHER device and handed this one a fresh
+      // token — store it, or our next request would be rejected.
+      const data = await res.json().catch(() => ({}))
+      if (data?.token) localStorage.setItem('bti_token', data.token)
       setPwMsg('Password changed ✓')
       setCurr(''); setNext(''); setConfirm('')
       window.dispatchEvent(new Event('bti-password-changed'))

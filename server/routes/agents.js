@@ -1,7 +1,8 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { pool } = require('../db');
-const { requireAuth } = require('../auth');
+const { requireAuth, generateToken } = require('../auth');
+const sessions = require('../helpers/sessions');
 
 const router = express.Router();
 
@@ -74,7 +75,19 @@ router.patch('/me/password', requireAuth, async (req, res) => {
   if (!valid) return res.status(400).json({ error: 'Current password incorrect' });
   const hash = await bcrypt.hash(new_password, 10);
   await pool.query('UPDATE agents SET password_hash = $1, must_change_password = false WHERE id = $2', [hash, req.agent.id]);
-  res.json({ success: true });
+  // A password change signs out every OTHER device (review §5 A3). This device
+  // keeps its session: it gets a fresh token carrying the new token_version.
+  try {
+    let sid = req.agent.sid || null;
+    const token_version = await sessions.revokeAllSessions(req.agent.id, { except: sid });
+    if (!sid) sid = await sessions.createSession(req.agent.id, { remember: !!req.agent.remember, userAgent: req.headers['user-agent'] });
+    const { id, username, name } = rows[0];
+    const token = generateToken({ id, username, name, token_version }, { remember: !!req.agent.remember, sid });
+    res.json({ success: true, token });
+  } catch (e) {
+    console.error('[agents/me/password] revoke', e);
+    res.json({ success: true });
+  }
 });
 
 module.exports = router;

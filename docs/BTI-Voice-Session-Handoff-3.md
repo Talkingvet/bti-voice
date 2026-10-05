@@ -493,6 +493,22 @@ Also: Danny's Mac now has `~/Dev/bti-voice` at the dialog-fix commit; desktop wa
 - **Rotation DONE 2026-10-05 ~14:10 ET** (commit `eb73f6d` = the scrub). Procedure that actually worked is in DEPLOY-RUNBOOK §10. `bti-voice` → `DATABASE_URL` is now the reference `${{Postgres.DATABASE_URL}}` (it had been a pasted string). The password in git history is dead; `git filter-repo` deferred.
 - Rule going forward: **no secret values in `docs/`, the handoff, the TODO or context snapshots** — write "in the password manager under <name>" or "Railway → <service> → Variables" instead.
 
+## 8x. 2026-10-05 (Danny, desktop) — Review Pass 2, batch 2: session revocation (per-device)
+- Review §2 row 2 / §5 A3. Before: `requireAuth` only verified the JWT signature, `/auth/refresh` re-minted from the old payload, portal deactivate/reset and a self password change only touched the `agents` row → a removed employee's desktop app kept working (and renewing itself) for up to 30 days.
+- **Design (Danny's call: per-device, "separate apps, not two windows into one login"):**
+  - `agents.token_version` (new column, default 0) = the *sign-out-everywhere* switch; the JWT carries it as `tv`.
+  - New `sessions` table = one row per sign-in / device (`id` = 48-hex random, `agent_id`, `remember`, `platform`, `user_agent`, `expires_at`, `last_seen_at`, `revoked_at`); the JWT carries its id as `sid`. Rows past expiry + 7 days are deleted at boot.
+  - `server/helpers/sessions.js`: `check(payload)` — one query (`agents` ⟕ `sessions`), **30 s cache per session id** → rejects if the agent is inactive, `tv` ≠ `token_version`, or the session row is missing/revoked. `createSession`, `touchSession` (sliding 30 d on refresh), `revokeSession(sid)` (one device), `revokeAllSessions(agentId, {except})` (bumps `token_version`, revokes every row, force-disconnects the agent's sockets — except the kept device). Pattern copied from `admin/auth.js` (fresh-from-DB per request) plus the cache.
+  - `server/auth.js`: `requireAuth` and `requireMediaAuth` are now **async** and run the check; failures are `401 { code: 'session_revoked' }` with a human message. Media-scope tokens only need the agent to still be active. `generateToken(agent, { remember, sid })` adds `sid` + `tv`.
+  - `server/socket.js`: handshake runs the same check; `socket.data.sid` lets a per-device sign-out drop only that socket.
+  - `server/routes/auth.js`: `/login` creates the session row; `/refresh` re-reads the agent row (picks up renames + current `tv`), touches the session, and **upgrades legacy tokens** (no `sid`) into a session row; new **`POST /auth/logout`** revokes *this device only*.
+  - `server/routes/agents.js` `/me/password`: revokes every *other* device, returns a fresh `token` for this one. `server/routes/tenant.js` PATCH `/agents/:id`: `is_active:false` or `reset_password:true` → `revokeAllSessions`.
+  - Client: `api.js` fires `bti-session-revoked` on any `401 session_revoked` → `App.jsx` signs out and shows the server's message on the login screen (reuses `bti_blocked_msg`); Sign out calls `/auth/logout` first; `SettingsTab` stores the fresh token after a password change; `socket.js` reads the token on every (re)connect instead of once at creation.
+- **Compatibility:** tokens minted before this deploy have no `sid`/`tv` → treated as version 0 with no session row → keep working, get a session row on the next app start, and die with everyone else on a `token_version` bump. **Nobody is logged out by the deploy itself.** Revocation lands within ≤ 30 s (cache) — immediately for the socket.
+- Tests: `server/test/sessions.test.js` (12 cases, injected query, no DB) — 57/57 pass; `vite build` clean. **Not runtime-tested on Postgres** — verify after deploy (TODO batch 2 entry has the checklist).
+- No new env vars; migration is automatic at boot (`[db] Migrations complete.`). Railway redeploys `bti-voice` and `cbia-voice` on push (same repo).
+- Left for later batches: login throttle / min password length (A4, batch 3); socket `scope` + `loginAllowed()` (B4); a "Sessions" list in Settings / portal (sign out one device from another) — the table already has what it needs (`platform`, `user_agent`, `last_seen_at`).
+
 ## 9. Security posture
 **Fixed & live:** Zoho + socket auth, webhook validation (soft), secret hardening, MMS hardening, crash safety, opt-out across all paths, throttles, quiet hours, recording notice, and the client/Electron bugs above.
 **Deferred (need more than a blind edit) — in BTI-Voice-Preprod-Audit.md:**

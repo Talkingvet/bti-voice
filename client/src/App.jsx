@@ -489,7 +489,22 @@ function AppInner() {
     setDefaultPw(!!defaultPassword)
   }
 
-  function handleLogout() {
+  // Server said this device's session is dead (deactivated / reset / changed
+  // password elsewhere) → sign out and carry the reason to the login screen.
+  useEffect(() => {
+    const onRevoked = (e) => {
+      try { sessionStorage.setItem('bti_blocked_msg', e.detail || 'You have been signed out. Please sign in again.') } catch {}
+      handleLogout({ notifyServer: false })
+    }
+    window.addEventListener('bti-session-revoked', onRevoked)
+    return () => window.removeEventListener('bti-session-revoked', onRevoked)
+  }, [])
+
+  // notifyServer: the user clicked Sign out → revoke THIS device's session on
+  // the server (other devices stay signed in). False when the server already
+  // revoked it (nothing to tell it, and the token is dead anyway).
+  function handleLogout({ notifyServer = true } = {}) {
+    if (notifyServer) api.logout().catch(() => {})
     setDefaultPw(false)
     disconnectSocket()
     clearMediaToken()
@@ -817,7 +832,7 @@ function AppInner() {
             }}
           />
         )}
-        {activeTab === 'settings'       && <SettingsTab       agent={agent} onLogout={handleLogout} />}
+        {activeTab === 'settings'       && <SettingsTab       agent={agent} onLogout={() => handleLogout()} />}
         {activeTab === 'lists' && features.call_lists && <CallListsTab agent={agent} onDialEntry={dialFromList} onMessage={messageTo} />}
 
         {/* Active call panel — overlays the content area during any call */}

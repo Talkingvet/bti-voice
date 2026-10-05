@@ -4,6 +4,7 @@ const { pool } = require('../db');
 const { generateToken, requireAuth, generateMediaToken, MEDIA_TOKEN_TTL_SEC } = require('../auth');
 const { logActivity } = require('../helpers/logActivity');
 const { loginAllowed, accountStatus, featureOn } = require('../helpers/deploySettings');
+const sessions = require('../helpers/sessions');
 
 const router = express.Router();
 
@@ -38,10 +39,16 @@ router.post('/login', async (req, res) => {
     const default_password = password === agent.username + '123' || !!agent.must_change_password;
 
     pool.query('UPDATE agents SET last_login_at = NOW() WHERE id = $1', [agent.id]).catch(() => {});
+    // One session row per device (per-device sign-out — helpers/sessions.js).
+    const sid = await sessions.createSession(agent.id, {
+      remember: remember !== false, platform: platform || null, userAgent: req.headers['user-agent'],
+    });
+    const token = generateToken(agent, { remember: remember !== false, sid });
     delete agent.password_hash;
     delete agent.must_change_password;
+    delete agent.token_version;
     logActivity(req, agent, 'login');
-    res.json({ agent, token: generateToken(agent, { remember: remember !== false }), default_password });
+    res.json({ agent, token, default_password });
   } catch (e) {
     console.error('[auth/login]', e);
     res.status(500).json({ error: 'Server error' });
@@ -57,10 +64,38 @@ router.post('/media-token', requireAuth, (req, res) => {
 // POST /refresh — sliding session. Called by the client on every successful
 // app start. Only "keep me signed in" tokens are renewed; short sessions get
 // { token: null } and simply expire on schedule.
-router.post('/refresh', requireAuth, (req, res) => {
+router.post('/refresh', requireAuth, async (req, res) => {
   if (!req.agent.remember) return res.json({ token: null });
-  const { id, username, name } = req.agent;
-  res.json({ token: generateToken({ id, username, name }, { remember: true }) });
+  try {
+    // Re-read the agent (not the old payload) so a portal rename and the
+    // current token_version land in the new token. Legacy tokens (minted
+    // before per-device sessions existed) get a session row here.
+    const { rows: [agent] } = await pool.query(
+      'SELECT id, username, name, token_version FROM agents WHERE id = $1 AND is_active = true', [req.agent.id]
+    );
+    if (!agent) return res.status(401).json({ error: 'This account has been deactivated.', code: 'session_revoked' });
+    let sid = req.agent.sid || null;
+    if (sid) await sessions.touchSession(sid);
+    else sid = await sessions.createSession(agent.id, { remember: true, userAgent: req.headers['user-agent'] });
+    res.json({ token: generateToken(agent, { remember: true, sid }) });
+  } catch (e) {
+    console.error('[auth/refresh]', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// POST /logout — signs out THIS device only (revokes its session row and
+// drops its socket). Other devices stay signed in. Legacy tokens without a
+// session id have nothing to revoke server-side; the client discards them.
+router.post('/logout', requireAuth, async (req, res) => {
+  try {
+    await sessions.revokeSession(req.agent.sid || null, req.agent.id);
+    logActivity(req, req.agent, 'logout');
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[auth/logout]', e);
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 router.get('/me', requireAuth, async (req, res) => {

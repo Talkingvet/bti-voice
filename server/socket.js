@@ -12,15 +12,24 @@ function init(httpServer) {
 
   // Require a valid agent token to open a socket. Without this, anyone could
   // connect and join a conversation room to stream every message in real time.
-  io.use((socket, next) => {
+  // Same revocation check as requireAuth (helpers/sessions.js): a deactivated
+  // agent or a signed-out device can't open a socket either, and the session
+  // id is kept on socket.data so a per-device sign-out can drop just that one.
+  io.use(async (socket, next) => {
     const token = socket.handshake.auth && socket.handshake.auth.token;
     if (!token) return next(new Error('Unauthorized'));
+    let payload;
+    try { payload = jwt.verify(token, JWT_SECRET); } catch { return next(new Error('Unauthorized')); }
     try {
-      socket.agent = jwt.verify(token, JWT_SECRET);
-      next();
-    } catch {
-      next(new Error('Unauthorized'));
+      const { sessionProblem } = require('./auth');
+      if (await sessionProblem(payload)) return next(new Error('Unauthorized'));
+    } catch (e) {
+      console.error('[socket] session check', e);
+      return next(new Error('Unauthorized'));
     }
+    socket.agent = payload;
+    socket.data.sid = payload.sid || null;
+    next();
   });
 
   io.on('connection', (socket) => {
