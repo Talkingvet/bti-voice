@@ -490,7 +490,7 @@ Also: Danny's Mac now has `~/Dev/bti-voice` at the dialog-fix commit; desktop wa
 - Review report `docs/BTI-Voice-Review-2026-10.md` §2 row 1 (§5 A1/A2). Docs-only change, no code.
 - Removed every live secret from the working tree: Railway public `DATABASE_URL` (§2 above + `docs/archive/BTI-Voice-Session-Handoff.md`), Zoho Voice port-out account number + transfer PIN (TODO), App Audit StatiCrypt password (`App-Audit-Handoff.md`), seed-account password tables (`SETUP.md`, `_claude-context/context_2026-04-15.md`), and the lines naming which team accounts were still on the `username123` default. Replaced each with a pointer to the password manager / Railway Variables.
 - Left in place on purpose: Twilio Messaging Service / TwiML App SIDs and phone numbers (identifiers, not credentials); `server/seed.js` demo passwords (code, gated by `SEED_DEMO` — review §3 D5 handles that in a later batch).
-- **Danny:** rotate the BTI Postgres password in Railway (Credentials tab) and redeploy `bti-voice`; see TODO "REVIEW PASS 2". History still contains the old password until rotated or `git filter-repo` is run.
+- **Rotation DONE 2026-10-05 ~14:10 ET** (commit `eb73f6d` = the scrub). Procedure that actually worked is in DEPLOY-RUNBOOK §10. `bti-voice` → `DATABASE_URL` is now the reference `${{Postgres.DATABASE_URL}}` (it had been a pasted string). The password in git history is dead; `git filter-repo` deferred.
 - Rule going forward: **no secret values in `docs/`, the handoff, the TODO or context snapshots** — write "in the password manager under <name>" or "Railway → <service> → Variables" instead.
 
 ## 9. Security posture

@@ -224,3 +224,15 @@ Twilio properly per §3 under their identity; the Railway service and portal rec
 - Tell them: recording disclosure plays on outbound calls; texts work from the new number.
 - You watch usage on the dashboard. Day 16 they see the renewal banner; day 31 they enter grace; you extend or let it lapse from Billing.
 - **This deploy is also the runtime test plan §6g asked for** — when the trial lapses, confirm outbound blocked / inbound rings / then the blocked-login screen.
+
+## 10. Rotating the Postgres password (done 2026-10-05; repeat for any deploy if a credential leaks)
+
+Railway's Postgres template here has **no "Credentials" tab** — the regenerate button is under **Database → Config**. Do NOT edit `POSTGRES_PASSWORD`/`PGPASSWORD` by hand on the Variables tab; Railway warns that this changes the variable without changing the real password.
+
+1. Railway → the project → click the **Postgres** service that the app uses (`Postgres` for BTI, `cbia-postgres` for CBIA, `admin-postgres` for the portal).
+2. **Database** tab → **Config** sub-tab → Connection → **Regenerate** (password) → confirm **Regenerate Password**. Railway sets the new password in the DB, updates `DATABASE_URL`/`DATABASE_PUBLIC_URL`, and restarts the service (~30 s).
+3. Wait for the Postgres service to show **Online**.
+4. Postgres → **Variables** → copy `DATABASE_PUBLIC_URL` into the password manager ("<deploy> Postgres (public URL)"). Never paste it into docs or chat.
+5. App service (e.g. `bti-voice`) → **Variables** → `DATABASE_URL`. It must be the reference `${{Postgres.DATABASE_URL}}` (service name is case-sensitive). If it is a pasted `postgresql://…` string, replace it with the reference so future rotations need no edit.
+6. App service → **Deployments** → ⋯ on the latest → **Redeploy** (a running container keeps the old password in memory until it restarts). Wait for green.
+7. Open the app and load Messages. Conversations showing = done.
