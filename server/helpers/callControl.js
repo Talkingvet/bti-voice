@@ -7,7 +7,10 @@
 //   - callBelongsToAgent        : does this Twilio call belong to the requester?
 const twilio = require('twilio');
 
-const HOLD_MUSIC_URL = 'https://com.twilio.music.classical.s3.amazonaws.com/BachGavotteShort.mp3';
+// Path-style S3 URL on purpose: the bucket-as-hostname form fails TLS (dotted
+// bucket name vs Amazon's wildcard cert) and BachGavotteShort.mp3 was removed
+// from the bucket—callers heard "an application error has occurred" (2026-10-05).
+const HOLD_MUSIC_URL = 'https://s3.amazonaws.com/com.twilio.music.classical/ClockworkWaltz.mp3';
 
 // Accepts 5 or "5". Rejects "", "5abc", "5</Client>", 5.5, 0, negatives, arrays.
 function parseAgentId(value) {
