@@ -232,7 +232,7 @@ export default function CallListsTab({ agent, onDialEntry, onMessage }) {
                       {list.last_import_at ? ' · imported ' + fmtWhen(list.last_import_at) : ''}
                     </div>
                   </div>
-                  {view === 'open' && nextEntry && (
+                  {view !== 'done' && nextEntry && (
                     <button style={S.nextBtn} onClick={() => dial(nextEntry)} title={'Call ' + (nextEntry.display_name || fmtPhone(nextEntry.phone_number))}>
                       ▶ Next
                     </button>
@@ -241,6 +241,7 @@ export default function CallListsTab({ agent, onDialEntry, onMessage }) {
                 {list.notes && <div style={{ fontSize: 12, color: C.textSec, marginTop: 6, whiteSpace: 'pre-wrap' }}>{list.notes}</div>}
                 <div style={{ display: 'flex', gap: 6, marginTop: 8, alignItems: 'center' }}>
                   <button style={{ ...S.viewBtn, ...(view === 'open' ? S.viewBtnOn : { color: C.textSec, border: `1px solid ${C.borderSoft}` }) }} onClick={() => setView('open')}>Remaining ({list.open_count})</button>
+                  <button style={{ ...S.viewBtn, ...(view === 'today' ? S.viewBtnOn : { color: list.today_count ? '#f59e0b' : C.textSec, border: `1px solid ${list.today_count ? 'rgba(245,158,11,0.5)' : C.borderSoft}` }) }} onClick={() => setView('today')} title="Callbacks due today (and overdue)">Today ({list.today_count || 0})</button>
                   <button style={{ ...S.viewBtn, ...(view === 'done' ? S.viewBtnOn : { color: C.textSec, border: `1px solid ${C.borderSoft}` }) }} onClick={() => setView('done')}>Done ({list.done_count})</button>
                   <span style={{ flex: 1 }} />
                   {zohoOn && isWide && <button style={{ ...S.smallBtn, color: C.btnText, background: C.btnBg, border: `1px solid ${C.btnBorder}` }} onClick={() => setImporter(true)}>{list.zoho_view_id ? 'Re-import view' : 'Import Zoho view'}</button>}
@@ -269,6 +270,8 @@ export default function CallListsTab({ agent, onDialEntry, onMessage }) {
                   <div style={{ ...S.empty, color: C.textMuted }}>
                     {view === 'open'
                       ? (list.done_count ? '🎉 Everyone on this list has been reached.' : 'Nothing here yet — ' + (zohoOn ? 'import a Zoho view or add a number.' : 'add a number.'))
+                      : view === 'today'
+                      ? 'No callbacks due today. Set "Call back on" in the wrap-up (or a task due date) and they land here.'
                       : 'Nothing completed yet.'}
                   </div>
                 ) : entries.map(e => {
@@ -277,6 +280,7 @@ export default function CallListsTab({ agent, onDialEntry, onMessage }) {
                   const open = expanded === e.id
                   return (
                     <div key={e.id} style={{ borderBottom: `1px solid ${C.borderItem}`, opacity: view === 'done' ? 0.65 : 1 }}>
+                      {/* 'today' rows render exactly like 'open' rows */}
                       <div style={{ ...S.row, background: open ? C.hover : 'transparent' }} onClick={() => toggleExpand(e)}>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
@@ -287,7 +291,7 @@ export default function CallListsTab({ agent, onDialEntry, onMessage }) {
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 3, fontSize: 11, color: C.textSec, flexWrap: 'wrap' }}>
                             <span>{fmtPhone(e.phone_number)}</span>
                             <LocalTime tz={e.tz} C={C} />
-                            {view === 'open' ? (
+                            {view !== 'done' ? (
                               <>
                                 {e.callback_at && <span style={{ color: due ? '#f59e0b' : C.textSec, fontWeight: due ? 700 : 500 }}>{due ? '⏰ call back ' : '↩ call back '}{fmtWhen(e.callback_at)}</span>}
                                 {e.attempts > 0
@@ -300,7 +304,7 @@ export default function CallListsTab({ agent, onDialEntry, onMessage }) {
                             )}
                           </div>
                         </div>
-                        {view === 'open' ? (
+                        {view !== 'done' ? (
                           <button style={{ ...S.callBtn, opacity: heldByOther ? 0.4 : 1 }} disabled={!!heldByOther} onClick={ev => { ev.stopPropagation(); dial(e) }} title="Call">📞</button>
                         ) : (
                           <button style={{ ...S.smallBtn, color: C.btnText, background: C.btnBg, border: `1px solid ${C.btnBorder}` }} onClick={ev => { ev.stopPropagation(); reopenEntry(e) }}>Reopen</button>
@@ -314,7 +318,7 @@ export default function CallListsTab({ agent, onDialEntry, onMessage }) {
                             {e.region && <span>{e.region}</span>}
                             <span style={{ flex: 1 }} />
                             {onMessage && <button style={{ ...S.linkBtn, color: '#4f9cf9' }} onClick={() => onMessage(e.phone_number)}>Message</button>}
-                            {view === 'open' && <button style={{ ...S.linkBtn, color: C.textMuted }} onClick={() => removeEntry(e)}>Remove from list</button>}
+                            {view !== 'done' && <button style={{ ...S.linkBtn, color: C.textMuted }} onClick={() => removeEntry(e)}>Remove from list</button>}
                           </div>
                           {attempts[e.id] === null ? <div>Loading history…</div>
                           : (attempts[e.id] || []).length === 0 ? <div style={{ color: C.textMuted }}>No attempts yet.</div>

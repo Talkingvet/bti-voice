@@ -29,9 +29,11 @@ test('callback requested stores the date', () => {
   assert.equal(r.callback_at.toISOString(), '2026-10-07T18:00:00.000Z');
 });
 
-test('callback date is ignored for other outcomes', () => {
-  const r = applyOutcome(entry(), { outcome: 'no_answer', callback_at: '2026-10-07T18:00:00Z' });
-  assert.equal(r.callback_at, null);
+test('callback date sticks for other retaining outcomes, ignored for closing ones', () => {
+  const r = applyOutcome(entry(), { outcome: 'left_voicemail', callback_at: '2026-10-07T18:00:00Z' });
+  assert.equal(r.callback_at.toISOString(), '2026-10-07T18:00:00.000Z');
+  assert.equal(applyOutcome(entry(), { outcome: 'demo_scheduled', callback_at: '2026-10-07T18:00:00Z' }).callback_at, null);
+  assert.equal(applyOutcome(entry(), { outcome: 'no_answer', callback_at: 'garbage' }).callback_at, null);
 });
 
 test('max attempts closes a retaining outcome', () => {

@@ -139,7 +139,11 @@ router.delete('/:id', async (req, res) => {
 // ── One list with entries ─────────────────────────────────────────────────────
 router.get('/:id', async (req, res) => {
   const listId = intOrNull(req.params.id);
-  const view = req.query.view === 'done' ? 'done' : 'open';
+  const view = req.query.view === 'done' ? 'done' : req.query.view === 'today' ? 'today' : 'open';
+  // "Today" = open entries whose callback is due by the end of the CLIENT's day
+  // (the client sends its local end-of-day as ?before=ISO), overdue included.
+  const before = req.query.before && !Number.isNaN(new Date(req.query.before).getTime())
+    ? new Date(req.query.before) : new Date(Date.now() + 24 * 3600 * 1000);
   try {
     const l = await loadVisibleList(listId, req.agent.id);
     if (!l) return res.status(404).json({ error: 'List not found' });
@@ -149,7 +153,8 @@ router.get('/:id', async (req, res) => {
       '    WHERE o.phone_number = e.phone_number AND o.list_id <> e.list_id AND o.status = \'open\' AND ol.archived_at IS NULL)::int AS on_other_lists ' +
       'FROM call_list_entries e ' +
       'LEFT JOIN agents h ON h.id = e.held_by_agent_id LEFT JOIN agents c ON c.id = e.closed_by_agent_id ' +
-      'WHERE e.list_id = $1 AND e.status = $2', [listId, view]);
+      'WHERE e.list_id = $1 AND e.status = $2 AND ($3::boolean = false OR (e.callback_at IS NOT NULL AND e.callback_at <= $4))',
+      [listId, view === 'today' ? 'open' : view, view === 'today', before]);
     const now = Date.now();
     const staleCut = now - HOLD_STALE_MIN * 60 * 1000;
     const out = entries.map(e => ({
@@ -160,11 +165,13 @@ router.get('/:id', async (req, res) => {
       held_by_name:     e.held_at && new Date(e.held_at).getTime() < staleCut ? null : e.held_by_name,
     }));
     if (view === 'open') out.sort((a, b) => CL.compareEntries(a, b, now));
+    else if (view === 'today') out.sort((a, b) => new Date(a.callback_at) - new Date(b.callback_at));
     else out.sort((a, b) => new Date(b.closed_at || 0) - new Date(a.closed_at || 0));
     const { rows: agentRows } = await pool.query('SELECT agent_id FROM call_list_agents WHERE list_id = $1', [listId]);
     const { rows: [counts] } = await pool.query(
-      'SELECT COUNT(*) FILTER (WHERE status=\'open\')::int AS open_count, COUNT(*) FILTER (WHERE status=\'done\')::int AS done_count ' +
-      'FROM call_list_entries WHERE list_id = $1', [listId]);
+      'SELECT COUNT(*) FILTER (WHERE status=\'open\')::int AS open_count, COUNT(*) FILTER (WHERE status=\'done\')::int AS done_count, ' +
+      '       COUNT(*) FILTER (WHERE status=\'open\' AND callback_at IS NOT NULL AND callback_at <= $2)::int AS today_count ' +
+      'FROM call_list_entries WHERE list_id = $1', [listId, before]);
     res.json({ ...l, ...counts, is_owner: l.owner_agent_id === req.agent.id, agent_ids: agentRows.map(r => r.agent_id), view, entries: out });
   } catch (e) { console.error('[call-lists] get', e.message); res.status(500).json({ error: e.message }); }
 });

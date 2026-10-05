@@ -17,6 +17,9 @@ import { useFeatures } from '../features'
    Submit POSTs /api/calls/:id/wrap-up which handles all the Zoho writes.
 */
 
+// Dispositions that keep a call-list entry open (so a callback date makes sense).
+const RETAINING = new Set(['callback_requested', 'left_voicemail'])
+
 export const DISPOSITIONS = [
   { code: 'demo_scheduled',             label: 'Demo scheduled' },
   { code: 'callback_requested',         label: 'Callback requested' },
@@ -194,10 +197,12 @@ export default function PostCallScreen({ call, onClose, onSaved }) {
     }
     if (listEntry) {
       payload.list_entry_id = listEntry.id
-      if (disposition === 'callback_requested' && callbackAt) {
-        const d = new Date(callbackAt)
-        if (!Number.isNaN(d.getTime())) payload.callback_at = d.toISOString()
-      }
+      // Callback date feeds the list's "Today" view. Explicit date first; else
+      // the follow-up task's due date (9:00 local) — "make a task to call back
+      // Thursday" should schedule the entry without typing the date twice.
+      let when = callbackAt ? new Date(callbackAt) : null
+      if ((!when || Number.isNaN(when.getTime())) && taskOpen && taskDueDate) when = new Date(taskDueDate + 'T09:00:00')
+      if (when && !Number.isNaN(when.getTime()) && RETAINING.has(disposition)) payload.callback_at = when.toISOString()
     }
     if (taskOpen && taskSubject.trim()) {
       payload.task = {
@@ -375,9 +380,9 @@ export default function PostCallScreen({ call, onClose, onSaved }) {
 
           {/* Callback date — list calls only; keeps the entry on the list and
               sorts it to the top when due. */}
-          {listEntry && disposition === 'callback_requested' && (
+          {listEntry && RETAINING.has(disposition) && (
             <div style={S.field}>
-              <label style={{ ...S.label, color: C.textMuted }}>CALL BACK ON (optional)</label>
+              <label style={{ ...S.label, color: C.textMuted }}>CALL BACK ON (optional — shows in the list's Today view when due)</label>
               <input
                 type="datetime-local"
                 style={{ ...S.input, background: C.inputBg, border: '1px solid ' + C.inputBorder, color: C.text }}

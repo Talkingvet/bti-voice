@@ -204,7 +204,7 @@ export const api = {
   createCallList:       (data)          => request('/call-lists', { method: 'POST', body: data }),
   updateCallList:       (id, data)      => request(`/call-lists/${id}`, { method: 'PATCH', body: data }),
   deleteCallList:       (id)            => request(`/call-lists/${id}`, { method: 'DELETE' }),
-  callList:             (id, view)      => request(`/call-lists/${id}?view=${view || 'open'}`),
+  callList:             (id, view)      => { const eod = new Date(); eod.setHours(23, 59, 59, 999); return request(`/call-lists/${id}?view=${view || 'open'}&before=${encodeURIComponent(eod.toISOString())}`) },
   addCallListEntries:   (id, entries)   => request(`/call-lists/${id}/entries`, { method: 'POST', body: { entries } }),
   removeCallListEntry:  (id, eid)       => request(`/call-lists/${id}/entries/${eid}`, { method: 'DELETE' }),
   removeCompletedCallListEntries: (id)  => request(`/call-lists/${id}/remove-completed`, { method: 'POST' }),

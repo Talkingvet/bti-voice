@@ -32,8 +32,10 @@ function applyOutcome(entry, { outcome, callback_at = null, max_attempts = null 
   if (CLOSING.has(outcome)) {
     status = 'done';
   } else {
-    // Retaining outcome. Callback date only sticks for callback_requested.
-    cb = outcome === 'callback_requested' && callback_at ? new Date(callback_at) : null;
+    // Retaining outcome. A callback date sticks for any of them — "left a
+    // voicemail, try again Thursday" is as real as "they asked for Thursday".
+    cb = callback_at ? new Date(callback_at) : null;
+    if (cb && Number.isNaN(cb.getTime())) cb = null;
     if (Number.isInteger(max_attempts) && max_attempts > 0 && attempts >= max_attempts) {
       status = 'done'; last_outcome = 'max_attempts'; cb = null;
     }
