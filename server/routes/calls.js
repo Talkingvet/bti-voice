@@ -5,6 +5,7 @@ const { logActivity } = require('../helpers/logActivity');
 const { syncCallToZoho, fireZohoLogCall } = require('../helpers/syncCallToZoho');
 const { updateZohoCallContact } = require('../zoho');
 const { finalizeInProgressCall } = require('./../helpers/callRows');
+const { twilioMediaUrl } = require('../helpers/twilioUrls');
 
 const router = express.Router();
 
@@ -260,6 +261,12 @@ router.get('/:id/recording', requireMediaAuth, async (req, res) => {
     // reports duration Infinity — which iOS renders as "Live Broadcast", unplayable.
     let url = call.recording_url;
     if (!/\.(mp3|wav)(\?|$)/i.test(url)) url += '.mp3';
+    // Review §5 A6: only api.twilio.com on our account gets our credentials.
+    url = twilioMediaUrl(url, sid);
+    if (!url) {
+      console.warn(`[recording proxy] refused to fetch recording for call ${req.params.id}: URL not on our Twilio account`);
+      return res.status(502).json({ error: 'Recording unavailable' });
+    }
 
     const twilioAuth = Buffer.from(sid + ':' + token).toString('base64');
     const audioRes = await fetch(url, { headers: { Authorization: 'Basic ' + twilioAuth } });

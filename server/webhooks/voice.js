@@ -9,6 +9,7 @@ const { outboundAllowed, accountStatus, featureOn, smsBlockedReason } = require(
 const {
   takeMove, getRoom, setRoom, clearRoom, conferenceTwiml, holdMusicTwiml, isCallSid,
 } = require('../helpers/callControl');
+const { twilioMediaUrl } = require('../helpers/twilioUrls');
 
 const router = express.Router();
 
@@ -739,6 +740,12 @@ router.post('/recording-complete', async (req, res) => {
   // calls must never be inserted as new voicemail rows.
   const isVoicemail = req.query.vm === '1';
   if (!RecordingUrl) return;
+  // Review §5 A6: the URL is stored and later fetched with our Twilio
+  // credentials — it must be a recording on OUR account at api.twilio.com.
+  if (!twilioMediaUrl(RecordingUrl)) {
+    console.warn(`[recording-complete] ignored RecordingUrl for ${CallSid || RecordingSid}: not a Twilio recording URL on this account`);
+    return;
+  }
 
   // Skip very short recordings (< 3s — likely silence or hangups)
   const duration = parseInt(RecordingDuration) || 0;
@@ -880,7 +887,9 @@ router.post('/recording-complete', async (req, res) => {
         `${process.env.TWILIO_ACCOUNT_SID}:${process.env.TWILIO_AUTH_TOKEN}`
       ).toString('base64');
 
-      const audioRes = await fetch(mp3Url, {
+      const safeMp3 = twilioMediaUrl(mp3Url);
+      if (!safeMp3) throw new Error('recording URL not on our Twilio account — refusing to send credentials');
+      const audioRes = await fetch(safeMp3, {
         headers: { Authorization: `Basic ${twilioAuth}` },
       });
       if (!audioRes.ok) throw new Error(`Failed to fetch recording: ${audioRes.status}`);

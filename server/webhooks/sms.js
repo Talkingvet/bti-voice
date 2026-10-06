@@ -1,4 +1,5 @@
 const express = require('express');
+const { twilioMediaUrl } = require('../helpers/twilioUrls');
 const { pool } = require('../db');
 const { getIO } = require('../socket');
 const { createNotification } = require('../notifications');
@@ -192,8 +193,13 @@ router.post('/', async (req, res) => {
     const numMedia = parseInt(req.body.NumMedia || '0', 10);
     const media = [];
     for (let i = 0; i < numMedia; i++) {
-      const url = req.body[`MediaUrl${i}`];
-      if (!url) continue;
+      // Review §5 A6: only Twilio-hosted media on OUR account may be stored —
+      // this URL is later fetched with our Twilio credentials attached.
+      const url = twilioMediaUrl(req.body[`MediaUrl${i}`]);
+      if (!url) {
+        console.warn(`[sms] dropped MediaUrl${i} for ${MessageSid}: not a Twilio media URL on this account`);
+        continue;
+      }
       let ct = req.body[`MediaContentType${i}`] || 'application/octet-stream';
       // Security: only trust known image types; anything else (e.g. text/html)
       // is stored as a generic binary so it can never execute in the app.

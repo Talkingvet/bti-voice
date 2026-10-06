@@ -1,4 +1,5 @@
 const express = require('express');
+const { twilioMediaUrl } = require('../helpers/twilioUrls');
 const { pool } = require('../db');
 const { recordConsent } = require('../helpers/consent');
 const { requireAuth , requireMediaAuth } = require('../auth');
@@ -211,8 +212,15 @@ router.get('/media/:id', requireMediaAuth, async (req, res) => {
     // Inbound media: proxy from Twilio with account credentials
     const sid = process.env.TWILIO_ACCOUNT_SID, token = process.env.TWILIO_AUTH_TOKEN;
     if (!sid || !token || !mm.twilio_url) return res.status(503).json({ error: 'Media unavailable' });
+    // Review §5 A6: never send our credentials anywhere but api.twilio.com on
+    // our own account (covers rows stored before the allow-list existed).
+    const safeUrl = twilioMediaUrl(mm.twilio_url, sid);
+    if (!safeUrl) {
+      console.warn(`[messages/media] refused to fetch media ${req.params.id}: URL not on our Twilio account`);
+      return res.status(502).json({ error: 'Media unavailable' });
+    }
     const twilioAuth = Buffer.from(`${sid}:${token}`).toString('base64');
-    const mediaRes = await fetch(mm.twilio_url, { headers: { Authorization: `Basic ${twilioAuth}` } });
+    const mediaRes = await fetch(safeUrl, { headers: { Authorization: `Basic ${twilioAuth}` } });
     if (!mediaRes.ok) return res.status(502).json({ error: 'Failed to fetch media' });
     const buf = Buffer.from(await mediaRes.arrayBuffer());
     res.send(buf);
