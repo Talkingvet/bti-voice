@@ -1,5 +1,5 @@
 /* Chat thread panel — compact Zoho-style, with Notes tab + Canned Responses */
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react'
 import { IS_TOUCH } from '../utils/touch'
 import { api } from '../api'
 import { displayName } from '../utils/phone'
@@ -95,11 +95,51 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
   }, [])
 
   const messagesEndRef = useRef(null)
+  const messagesBoxRef = useRef(null)   // the scrollable message list
   const textareaRef    = useRef(null)
   const noteRef        = useRef(null)
   const assignRef      = useRef(null)
 
-  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
+  // Scroll behaviour (Danny, 2026-10-06): opening a thread must land on the
+  // newest message instantly — no animated travel, and not "almost at the
+  // bottom" because an image finished loading after the scroll. So:
+  //   • a thread open / switch → jump straight to the bottom (no animation)
+  //   • a new message in the thread you're reading → short smooth scroll,
+  //     but only if you were already near the bottom (don't yank you down
+  //     while you're reading history)
+  //   • while pinned to the bottom, any growth of the list (images loading,
+  //     the CRM card opening) keeps you pinned — via a ResizeObserver.
+  const lastConvRef  = useRef(null)
+  const pinnedRef    = useRef(true)
+  const nearBottom = (el) => el.scrollHeight - el.scrollTop - el.clientHeight < 80
+  const jumpToBottom = () => {
+    const el = messagesBoxRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }
+  useLayoutEffect(() => {
+    const el = messagesBoxRef.current
+    if (!el) return
+    const isNewThread = lastConvRef.current !== conv?.id
+    lastConvRef.current = conv?.id
+    if (isNewThread) { pinnedRef.current = true; jumpToBottom(); return }
+    if (pinnedRef.current) messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, conv?.id])
+  useEffect(() => {
+    const el = messagesBoxRef.current
+    if (!el) return
+    const onScroll = () => { pinnedRef.current = nearBottom(el) }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    const ro = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(() => { if (pinnedRef.current) jumpToBottom() })
+      : null
+    // Observe the content, not the box: it grows when images load
+    if (ro) for (const child of el.children) ro.observe(child)
+    const mo = typeof MutationObserver !== 'undefined'
+      ? new MutationObserver(() => { if (ro) for (const child of el.children) ro.observe(child); if (pinnedRef.current) jumpToBottom() })
+      : null
+    if (mo) mo.observe(el, { childList: true })
+    return () => { el.removeEventListener('scroll', onScroll); ro?.disconnect(); mo?.disconnect() }
+  }, [conv?.id])
 
   // Close assign dropdown on outside click
   useEffect(() => {
@@ -505,7 +545,7 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
               ⚠ <strong>{warning.agent_name}</strong> already texted this contact at {formatTime(warning.sent_at)}
             </div>
           )}
-          <div style={{ ...styles.messages, background: C.msgBg }}>
+          <div ref={messagesBoxRef} style={{ ...styles.messages, background: C.msgBg }}>
             {loading && <div style={{ ...styles.loadingMsg, color: C.textMuted }}>Loading…</div>}
             {items.map((item, i) => {
               if (item.type === 'divider') {
@@ -855,7 +895,6 @@ function MsgMedia({ media }) {
             src={api.mediaUrl(mm.id)}
             alt="attachment"
             style={{ maxWidth: 220, maxHeight: 220, borderRadius: 10, display: 'block', cursor: 'pointer' }}
-            loading="lazy"
           />
         </a>
       ))}
