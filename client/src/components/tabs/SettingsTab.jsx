@@ -534,6 +534,9 @@ function MicTestCard({ C }) {
   function handleDeviceChange(id) {
     setDeviceId(id)
     localStorage.setItem('bti_mic_device', id)
+    // App.jsx listens and applies the choice to the Twilio Device, so the
+    // mic picked here is the one used on calls (it used to be test-only).
+    window.dispatchEvent(new Event('bti_mic_device_change'))
     if (testing) { stopTest(); setTimeout(startTest, 100) }
   }
 

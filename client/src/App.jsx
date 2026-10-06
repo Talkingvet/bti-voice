@@ -181,9 +181,34 @@ function AppInner() {
         const onPrefChange = () => applyAudioConstraints(device)
         window.addEventListener('bti_noise_pref_change', onPrefChange)
 
+        // Use the microphone chosen in Settings → Sound → Mic test on calls.
+        // Before 2026-10-06 the choice was saved but never handed to the SDK,
+        // so every call used the system-default mic. An empty/unknown id (e.g.
+        // the headset is unplugged) falls back to the default silently.
+        const applyInputDevice = async (dev) => {
+          let id = ''
+          try { id = localStorage.getItem('bti_mic_device') || '' } catch { /* noop */ }
+          try {
+            if (id && dev.audio.availableInputDevices?.has?.(id)) {
+              await dev.audio.setInputDevice(id)
+            } else if (!id) {
+              await dev.audio.unsetInputDevice()
+            }
+          } catch (e) { console.warn('[Twilio] setInputDevice failed:', e.message) }
+        }
+        applyInputDevice(device)
+        const onMicChange = () => applyInputDevice(device)
+        window.addEventListener('bti_mic_device_change', onMicChange)
+        // Re-apply when devices come and go (headset plugged back in)
+        device.audio.on('deviceChange', onMicChange)
+
         await device.register()
         deviceRef.current = device
-        deviceRef._cleanupNoise = () => window.removeEventListener('bti_noise_pref_change', onPrefChange)
+        deviceRef._cleanupNoise = () => {
+          window.removeEventListener('bti_noise_pref_change', onPrefChange)
+          window.removeEventListener('bti_mic_device_change', onMicChange)
+          try { device.audio.removeListener('deviceChange', onMicChange) } catch { /* noop */ }
+        }
         if (mounted) setTwilioDevice(device)
         // 'registered' event fires after register() resolves, but set it here as a fallback
         if (mounted) setDeviceStatus('registered')

@@ -63,7 +63,17 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
   // Zoho profile state
   const [zohoProfile,   setZohoProfile]  = useState(null)
   const [zohoLoading,   setZohoLoading]  = useState(false)
-  const [showZoho,      setShowZoho]     = useState(true)
+  // Collapsed by default (Danny, 2026-10-06: the open card pushed the thread
+  // down and looked heavy); the last choice is remembered per device.
+  const [showZoho,      setShowZoho]     = useState(() => {
+    try { return localStorage.getItem('bti_zoho_card_open') === '1' } catch { return false }
+  })
+  function toggleZoho() {
+    setShowZoho(v => {
+      try { localStorage.setItem('bti_zoho_card_open', v ? '0' : '1') } catch { /* private mode */ }
+      return !v
+    })
+  }
 
   // Notes state
   const [notes,       setNotes]       = useState([])
@@ -485,7 +495,7 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
       </div>
 
       {/* ── Zoho CRM Panel (only on deploys with the Zoho add-on) ── */}
-      {zohoOn && <ZohoPanel profile={zohoProfile} loading={zohoLoading} open={showZoho} onToggle={() => setShowZoho(v => !v)} onRefresh={resyncCrm} refreshing={crmSyncing} C={C} />}
+      {zohoOn && <ZohoPanel profile={zohoProfile} loading={zohoLoading} open={showZoho} onToggle={toggleZoho} onRefresh={resyncCrm} refreshing={crmSyncing} C={C} />}
 
       {/* ── Messages tab ── */}
       {activeTab === 'messages' && (
