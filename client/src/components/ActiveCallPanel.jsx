@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { playDTMF } from '../dtmf'
 import { api }      from '../api'
+import { useToast } from './Toast'
 
 const DTMF_KEYS = [
   ['1',''],    ['2','ABC'],  ['3','DEF'],
@@ -44,6 +45,7 @@ export default function ActiveCallPanel({ call, agent, callerInfo, onHangup }) {
   const [dtmfStr,      setDtmfStr]      = useState('')      // digits typed in keypad view
   const timerRef = useRef(null)
   const startRef = useRef(Date.now())
+  const { toast } = useToast()
 
   // ── Timer ───────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -83,13 +85,16 @@ export default function ActiveCallPanel({ call, agent, callerInfo, onHangup }) {
     setMuted(next)
   }
 
-  // ── Hold / Resume (server-side: redirect caller to hold music) ──────────────
+  // ── Hold / Resume ───────────────────────────────────────────────────────────
+  // Server-side (batch 4b): the first Hold moves the call into a conference
+  // room and parks the customer with music; our own leg stays connected, so
+  // this panel, the timer and wrap-up all carry on. Resume un-parks them.
   async function toggleHold() {
     if (holdBusy) return
     setHoldBusy(true)
     try {
       if (!onHold) {
-        await api.holdCall(callSid)
+        await api.holdCall(callSid, !!call?.customNoRecord)
         setOnHold(true)
       } else {
         await api.resumeCall(callSid, agent.id)
@@ -97,6 +102,7 @@ export default function ActiveCallPanel({ call, agent, callerInfo, onHangup }) {
       }
     } catch (e) {
       console.error('[hold]', e.message)
+      toast.error((onHold ? 'Resume failed: ' : 'Hold failed: ') + e.message)
     }
     setHoldBusy(false)
   }
@@ -112,6 +118,7 @@ export default function ActiveCallPanel({ call, agent, callerInfo, onHangup }) {
       onHangup()
     } catch (e) {
       console.error('[transfer]', e.message)
+      toast.error('Transfer failed: ' + e.message)
       setTransferring(null)
     }
   }
@@ -124,7 +131,12 @@ export default function ActiveCallPanel({ call, agent, callerInfo, onHangup }) {
   }
 
   // ── Hang up ──────────────────────────────────────────────────────────────────
-  function hangUp() {
+  // While the customer is on hold they are parked in the room, so ending our
+  // leg alone would leave them listening to music: end their leg first.
+  async function hangUp() {
+    if (onHold && callSid) {
+      try { await api.hangupCall(callSid) } catch (e) { console.error('[hangup]', e.message) }
+    }
     call.disconnect()
     onHangup()
   }

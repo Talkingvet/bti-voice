@@ -10,8 +10,16 @@ const dispositionLabel = code => (DISPOSITIONS.find(d => d.code === code) || {})
 
 // Authenticated recording URL — uses the short-lived media token minted by
 // api.ensureMediaToken() (audio/download links can't send Authorization headers)
-function recordingUrl(callId) {
-  return api.recordingUrl(callId)
+function recordingUrl(callId, part) {
+  const url = api.recordingUrl(callId)
+  return part > 1 ? `${url}&part=${part}` : url
+}
+
+// A call that was put on Hold is recorded in parts (batch 4b): the stretch
+// before the first Hold, then the rest. Most calls have one part.
+function recordingParts(call) {
+  const parts = Array.isArray(call.recording_parts) ? call.recording_parts : []
+  return parts.length > 1 ? parts : [{ part: 1 }]
 }
 
 /* ── Audio player ─────────────────────────────────────────────────
@@ -503,21 +511,23 @@ function CallDetailBody({ call, onDial, onMessage, C }) {
               🔇 Not recorded — agent opted out for this call
             </div>
           )}
-          {call.recording_url && (
-            <div>
+          {call.recording_url && recordingParts(call).map(({ part }, idx, all) => (
+            <div key={part}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                <div style={{ ...S.rowTime, color: C.textMuted }}>RECORDING</div>
+                <div style={{ ...S.rowTime, color: C.textMuted }}>
+                  {all.length > 1 ? `RECORDING · PART ${part} OF ${all.length}${idx > 0 ? ' (after hold)' : ''}` : 'RECORDING'}
+                </div>
                 <a
-                  href={recordingUrl(call.id)}
-                  download={`call-${call.id}.mp3`}
+                  href={recordingUrl(call.id, part)}
+                  download={all.length > 1 ? `call-${call.id}-part${part}.mp3` : `call-${call.id}.mp3`}
                   style={{ fontSize: 10, color: '#4f9cf9', textDecoration: 'none', fontWeight: 600 }}
                 >
                   ⬇ Download
                 </a>
               </div>
-              <AudioPlayer src={recordingUrl(call.id)} C={C} />
+              <AudioPlayer src={recordingUrl(call.id, part)} C={C} />
             </div>
-          )}
+          ))}
           {call.ai_summary && (
             <div>
               <div style={{ ...S.rowTime, color: C.textMuted, marginBottom: 4 }}>AI SUMMARY</div>

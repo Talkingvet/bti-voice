@@ -119,6 +119,22 @@ async function migrate() {
     ALTER TABLE calls ADD COLUMN IF NOT EXISTS recording_opt_out BOOLEAN DEFAULT false;
   `);
 
+  // Batch 4b (2026-10-06): a call put on Hold is recorded in parts — the
+  // <Dial> recording up to the first Hold, then the conference room for the
+  // rest. One row per part; calls.recording_url keeps pointing at part 1.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS call_recordings (
+      id            SERIAL PRIMARY KEY,
+      call_id       INTEGER REFERENCES calls(id) ON DELETE CASCADE,
+      part          INTEGER NOT NULL DEFAULT 1,
+      recording_sid VARCHAR(50) UNIQUE,
+      recording_url TEXT NOT NULL,
+      duration      INTEGER,
+      created_at    TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS call_recordings_call_idx ON call_recordings (call_id, part);
+  `);
+
   // Unread badge tracking
   await pool.query(`
     CREATE TABLE IF NOT EXISTS conversation_reads (

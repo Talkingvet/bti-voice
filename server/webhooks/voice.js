@@ -6,6 +6,9 @@ const { getIO } = require('../socket');
 const { createNotification } = require('../notifications');
 const { maybeRecordingNotice, recordingActive } = require('../helpers/recordingNotice');
 const { outboundAllowed, accountStatus, featureOn, smsBlockedReason } = require('../helpers/deploySettings');
+const {
+  takeMove, getRoom, setRoom, clearRoom, conferenceTwiml, holdMusicTwiml, isCallSid,
+} = require('../helpers/callControl');
 
 const router = express.Router();
 
@@ -20,12 +23,18 @@ function autoLogCall({ callSid, from, to, duration, direction, status, callStart
     try {
       const port = process.env.PORT || 3000;
 
-      // Deduplicate: if already logged by the frontend, skip
+      // Deduplicate: if already logged by the frontend, skip. A row left
+      // 'in-progress' by the Hold upgrade (batch 4b) is finalised instead.
       const { rows: existing } = await pool.query(
-        'SELECT id FROM calls WHERE twilio_call_sid = $1', [callSid]
+        'SELECT id, status FROM calls WHERE twilio_call_sid = $1', [callSid]
       );
       if (existing.length > 0) {
-        console.log(`[autoLog] ${callSid} already in DB — skipping`);
+        if (existing[0].status === 'in-progress') {
+          await finalizeInProgressCall(existing[0].id, { duration, status });
+          console.log(`[autoLog] ${callSid} finalised (${status}, ${duration}s)`);
+        } else {
+          console.log(`[autoLog] ${callSid} already in DB — skipping`);
+        }
         return;
       }
 
@@ -116,6 +125,30 @@ function autoLogCall({ callSid, from, to, duration, direction, status, callStart
   });
 }
 
+const { finalizeInProgressCall } = require('../helpers/callRows');
+
+// Shared by the three <Dial> action webhooks: when the <Dial> that just ended
+// was ended by us to move this call into a conference room (first Hold), send
+// this leg into the same room instead of hanging up. Returns true if handled.
+function joinPendingRoom(req, res, label) {
+  const move = takeMove(req.body.CallSid);
+  if (!move) return false;
+  const isAgent = req.body.CallSid === move.agentSid;
+  console.log(`[${label}] ${req.body.CallSid} → room ${move.room} (${isAgent ? 'agent' : 'customer'} leg, hold upgrade)`);
+  const twiml = conferenceTwiml(move.room, {
+    endOnExit: isAgent,
+    serverUrl: process.env.SERVER_URL || '',
+    // Part 2 of the recording: the room is recorded from the moment it starts
+    // (the <Dial> recording — part 1 — ended with the <Dial>). Conference-level
+    // attributes come from whichever leg creates the room, so both legs ask.
+    record:    recordingActive() && move.record !== false,
+    customerSid: move.rowSid,
+  });
+  res.set('Content-Type', 'text/xml');
+  res.send(twiml);
+  return true;
+}
+
 // ── Outbound: browser → PSTN ──────────────────────────────────────────────────
 router.post('/outbound', async (req, res) => {
   const { To, From } = req.body;
@@ -167,7 +200,14 @@ router.post('/outbound', async (req, res) => {
     } else {
       maybeRecordingNotice(twiml, req.body.CallSid);
     }
-    const dial = twiml.dial({ callerId, ...(optOut ? {} : recordingOpts()) });
+    // action: when this <Dial> ends we are asked what to do next. Normally
+    // nothing (hang up); after a Hold upgrade, join the conference room.
+    const dial = twiml.dial({
+      callerId,
+      action: '/webhooks/voice/outbound-done',
+      method: 'POST',
+      ...(optOut ? {} : recordingOpts()),
+    });
     dial.number(To);
     console.log(`[outbound] TwiML: dial ${To} from ${callerId}${optOut ? ' (not recorded)' : ''}`);
   } else {
@@ -177,6 +217,65 @@ router.post('/outbound', async (req, res) => {
 
   res.set('Content-Type', 'text/xml');
   res.send(twiml.toString());
+});
+
+// ── Outbound <Dial> ended ─────────────────────────────────────────────────────
+// Only reached for the agent's (parent) leg of a browser-placed call. After a
+// Hold upgrade the customer has been moved into a room; follow them there.
+// Otherwise the call is simply over.
+router.post('/outbound-done', (req, res) => {
+  console.log(`[outbound-done] DialCallStatus=${req.body.DialCallStatus} CallSid=${req.body.CallSid}`);
+  if (joinPendingRoom(req, res, 'outbound-done')) return;
+  const twiml = new twilio.twiml.VoiceResponse();
+  twiml.hangup();
+  res.set('Content-Type', 'text/xml');
+  res.send(twiml.toString());
+});
+
+// ── Conference room events (batch 4b) ────────────────────────────────────────
+//   participant-join  of the customer with holdOnJoin → put them on hold now
+//   participant-leave of the customer (they hung up)  → hang up the agent's leg
+//                     so the desktop app ends the call normally (unless we are
+//                     mid-transfer, where the customer leaving is expected)
+//   conference-end                                     → forget the room
+router.post('/conference', async (req, res) => {
+  res.sendStatus(200);
+  const { StatusCallbackEvent: ev, FriendlyName: room, CallSid, ConferenceSid } = req.body;
+  const info = room ? getRoom(room) : null;
+  console.log(`[conference] ${ev} room=${room} call=${CallSid}${info ? '' : ' (unknown room)'}`);
+  if (!info) { if (ev === 'conference-end' && room) clearRoom(room); return; }
+  if (ev === 'conference-end') { clearRoom(room); return; }
+  if (CallSid !== info.customerSid) return;          // only the customer's events matter
+
+  const client = require('twilio')(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+  if (ev === 'participant-join' && info.holdOnJoin) {
+    setRoom(room, { holdOnJoin: false, conferenceSid: ConferenceSid });
+    try {
+      await client.conferences(ConferenceSid).participants(CallSid).update({
+        hold: true, holdUrl: `${process.env.SERVER_URL || ''}/webhooks/voice/hold-music`, holdMethod: 'POST',
+      });
+      console.log(`[conference] customer ${CallSid} placed on hold in ${room}`);
+    } catch (e) {
+      console.error(`[conference] hold-on-join failed for ${CallSid}:`, e.message);
+    }
+  } else if (ev === 'participant-join') {
+    setRoom(room, { conferenceSid: ConferenceSid });
+  } else if (ev === 'participant-leave') {
+    if (info.transferring) { console.log(`[conference] customer left ${room} for a transfer`); return; }
+    try {
+      await client.calls(info.agentSid).update({ status: 'completed' });
+      console.log(`[conference] customer hung up — ended agent leg ${info.agentSid}`);
+    } catch (e) {
+      console.warn(`[conference] could not end agent leg ${info.agentSid}:`, e.message);
+    }
+    clearRoom(room);
+  }
+});
+
+// Participant holdUrl — music that loops until Resume.
+router.all('/hold-music', (req, res) => {
+  res.set('Content-Type', 'text/xml');
+  res.send(holdMusicTwiml());
 });
 
 // ── Inbound: checks IVR, falls through to default agent or all agents ─────────
@@ -397,6 +496,7 @@ router.post('/next-agent', async (req, res) => {
   const twiml = new twilio.twiml.VoiceResponse();
 
   console.log(`[next-agent] DialCallStatus=${DialCallStatus} CallSid=${CallSid}`);
+  if (joinPendingRoom(req, res, 'next-agent')) return;
 
   if (DialCallStatus === 'completed' || DialCallStatus === 'answered') {
     autoLogCall({
@@ -436,15 +536,18 @@ router.post('/no-answer', async (req, res) => {
   const twiml = new twilio.twiml.VoiceResponse();
 
   console.log(`[no-answer] DialCallStatus=${DialCallStatus} CallSid=${CallSid} From=${From}`);
+  if (joinPendingRoom(req, res, 'no-answer')) return;
 
-  // If the call was actually connected and completed, log it and return
+  // If the call was actually connected and completed, log it and return.
+  // A customer leg that has a ParentCallSid is the far end of an OUTBOUND
+  // browser call that was transferred (batch 4b): log it as outbound.
   if (DialCallStatus === 'completed' || DialCallStatus === 'answered') {
     autoLogCall({
       callSid:       CallSid,
       from:          From,
       to:            To,
       duration:      parseInt(DialCallDuration) || 0,
-      direction:     'inbound',
+      direction:     req.body.ParentCallSid ? 'outbound' : 'inbound',
       status:        'completed',
       callStartTime: req.body.CallStartTime,
     });
@@ -509,10 +612,15 @@ router.post('/status', async (req, res) => {
     try {
       // Check if this call SID was already logged (by frontend or a previous webhook)
       const existing = await pool.query(
-        'SELECT id FROM calls WHERE twilio_call_sid = $1', [CallSid]
+        'SELECT id, status FROM calls WHERE twilio_call_sid = $1', [CallSid]
       );
       if (existing.rows.length > 0) {
-        console.log(`[status] CallSid ${CallSid} already logged — skipping`);
+        if (existing.rows[0].status === 'in-progress') {
+          await finalizeInProgressCall(existing.rows[0].id, { duration, status });
+          console.log(`[status] CallSid ${CallSid} finalised (${status}, ${duration}s)`);
+        } else {
+          console.log(`[status] CallSid ${CallSid} already logged — skipping`);
+        }
         return;
       }
 
@@ -619,7 +727,11 @@ router.post('/recording-complete', async (req, res) => {
   // Respond immediately so Twilio doesn't retry
   res.sendStatus(200);
 
-  const { RecordingUrl, RecordingDuration, RecordingSid, CallSid } = req.body;
+  const { RecordingUrl, RecordingDuration, RecordingSid } = req.body;
+  // Conference recordings (part 2 of a held call, batch 4b) carry no CallSid —
+  // the SID the call row is keyed by is threaded through the query string.
+  const CallSid = (isCallSid(req.query.call) ? req.query.call : null) || req.body.CallSid;
+  const isConferencePart = req.query.part === 'conference';
   // From is never present on a recordingStatusCallback. Prefer the value we
   // threaded through the query string; fall back to the Twilio REST API below.
   const From = req.query.from || req.body.From || null;
@@ -720,11 +832,28 @@ router.post('/recording-complete', async (req, res) => {
           duration, recording_url: mp3Url, received_at: new Date().toISOString(),
         });
       } else {
-        // Update existing call record with recording URL
+        // Every recording becomes a numbered part (a call with no Hold has
+        // exactly one). calls.recording_url keeps pointing at part 1 so older
+        // clients and the Zoho sync keep working.
+        const { rows: [{ n }] } = await pool.query(
+          'SELECT COUNT(*)::int AS n FROM call_recordings WHERE call_id = $1', [callRecord.id]
+        );
+        const { rows: dup } = await pool.query(
+          'SELECT id FROM call_recordings WHERE recording_sid = $1', [RecordingSid]
+        );
+        if (dup.length === 0) {
+          await pool.query(
+            'INSERT INTO call_recordings (call_id, part, recording_sid, recording_url, duration) VALUES ($1, $2, $3, $4, $5)',
+            [callRecord.id, n + 1, RecordingSid, mp3Url, duration]
+          );
+        }
         await pool.query(
-          'UPDATE calls SET recording_url = $1, recording_sid = $2 WHERE id = $3',
+          'UPDATE calls SET recording_url = COALESCE(recording_url, $1), recording_sid = COALESCE(recording_sid, $2) WHERE id = $3',
           [mp3Url, RecordingSid, callRecord.id]
         );
+        callRecord.recording_part = dup.length === 0 ? n + 1 : n;
+        const io0 = getIO();
+        if (io0) io0.emit('call_logged', { call_id: callRecord.id });
       }
 
       // ── Transcribe with OpenAI Whisper ────────────────────────────────────
@@ -765,8 +894,17 @@ router.post('/recording-complete', async (req, res) => {
         model: 'whisper-1',
       });
 
-      const transcriptText = transcription.text || '';
+      let transcriptText = transcription.text || '';
       console.log(`[recording] Transcription done (${transcriptText.length} chars)`);
+
+      // Later parts of a held call are appended to the transcript already
+      // saved for part 1, and the summary below is rebuilt from the whole thing.
+      if ((callRecord.recording_part || 1) > 1 || isConferencePart) {
+        const { rows: [prev] } = await pool.query('SELECT transcription FROM calls WHERE id = $1', [callRecord.id]);
+        if (prev?.transcription) {
+          transcriptText = prev.transcription + '\n\n[Call resumed after hold]\n\n' + transcriptText;
+        }
+      }
 
       // ── AI Summary with GPT-4o-mini ───────────────────────────────────────
       // ai_summaries add-on: when off we keep the transcript and skip the summary.

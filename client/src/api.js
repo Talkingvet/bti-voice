@@ -145,7 +145,8 @@ export const api = {
   wrapUpCall: (id, data)  => request(`/calls/${id}/wrap-up`, { method: 'POST', body: data }),
 
   // Active call controls (hold, resume, blind transfer)
-  holdCall:          (callSid)                => request('/calls/hold',     { method: 'POST', body: { callSid } }),
+  holdCall:          (callSid, recordingOptOut = false) => request('/calls/hold', { method: 'POST', body: { callSid, recordingOptOut: !!recordingOptOut } }),
+  hangupCall:        (callSid)                => request('/calls/hangup',   { method: 'POST', body: { callSid } }),
   resumeCall:        (callSid, agentId)       => request('/calls/resume',   { method: 'POST', body: { callSid, agentId } }),
   transferCall:      (callSid, targetAgentId) => request('/calls/transfer', { method: 'POST', body: { callSid, targetAgentId } }),
 
