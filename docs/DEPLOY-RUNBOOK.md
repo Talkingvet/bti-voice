@@ -252,3 +252,5 @@ Railway's Postgres template here has **no "Credentials" tab** — the regenerate
 5. App service (e.g. `bti-voice`) → **Variables** → `DATABASE_URL`. It must be the reference `${{Postgres.DATABASE_URL}}` (service name is case-sensitive). If it is a pasted `postgresql://…` string, replace it with the reference so future rotations need no edit.
 6. App service → **Deployments** → ⋯ on the latest → **Redeploy** (a running container keeps the old password in memory until it restarts). Wait for green.
 7. Open the app and load Messages. Conversations showing = done.
+
+**No `DATABASE_PUBLIC_URL` on a Postgres service?** Public access is off (new databases start that way — `cbia-postgres` did until 2026-10-08). Postgres service → **Settings** → **Networking** → **Public Access** → **Add Public Access**. Railway then creates `DATABASE_PUBLIC_URL` on the Variables tab by itself. Needed for any script you run from a PC against that database (e.g. `server/scripts/purge-undelivered.js`); the internal `DATABASE_URL` only works inside Railway.
