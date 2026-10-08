@@ -74,6 +74,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // ── Updates ──────────────────────────────────────────────────────
   getAppVersion:    ()  => ipcRenderer.invoke('get-app-version'),
   checkForUpdates:  ()  => ipcRenderer.invoke('check-for-updates'),
+  getPendingUpdate: ()  => ipcRenderer.invoke('get-pending-update'),
   downloadUpdate:   ()  => ipcRenderer.invoke('download-update'),
   installUpdate:    ()  => ipcRenderer.invoke('install-update'),
   onUpdateAvailable: (cb) => ipcRenderer.on('update-available', (_, info) => cb(info)),

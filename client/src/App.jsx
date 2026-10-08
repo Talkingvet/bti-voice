@@ -796,6 +796,9 @@ function AppInner() {
     }}>
       <TitleBar agent={agent} unreadCount={unreadCount} onBellClick={handleBellClick} agentStatus={agentStatus} onStatusChange={handleStatusChange} deviceStatus={deviceStatus} />
 
+      {/* ── Desktop update banner (installed app only) ─────────────── */}
+      {window.electronAPI && <UpdateBanner isDark={isDark} />}
+
       {/* ── Subscription renewal / grace / restricted banner ─────────── */}
       {showAccountBanner && (
         <div style={{
@@ -977,6 +980,74 @@ function AppInner() {
           callId={listOutcome.callId}
           onDone={() => { setListOutcome(null); setActiveTab('lists') }}
         />
+      )}
+    </div>
+  )
+}
+
+// ── Desktop update banner ─────────────────────────────────────────────────────
+// The Electron shell checks for updates on launch / every 4 h / on wake and
+// sends 'update-available'; this banner is mounted for the whole session so
+// the prompt is seen wherever you are in the app (the About tab's own listener
+// only worked while About was open). "Later" hides that version until the next
+// check finds a newer one. Download + install reuse the About-tab IPCs.
+function UpdateBanner({ isDark }) {
+  const [version,  setVersion]  = useState(null)
+  const [stage,    setStage]    = useState('idle')   // idle | available | downloading | ready | error
+  const [percent,  setPercent]  = useState(0)
+  const snoozedRef = useRef((() => { try { return localStorage.getItem('bti_update_snoozed') || '' } catch { return '' } })())
+
+  useEffect(() => {
+    const api = window.electronAPI
+    if (!api) return
+    const offer = (v) => {
+      if (!v || v === snoozedRef.current) return
+      setVersion(v)
+      setStage(s => (s === 'downloading' || s === 'ready') ? s : 'available')
+    }
+    api.getPendingUpdate?.().then(info => offer(info?.version)).catch(() => {})
+    api.onUpdateAvailable?.(({ version: v }) => offer(v))
+    api.onUpdateProgress?.(({ percent: p }) => { setPercent(p || 0); setStage('downloading') })
+    api.onUpdateDownloaded?.(() => setStage('ready'))
+  }, [])
+
+  if (stage === 'idle' || !version) return null
+
+  async function updateNow() {
+    setStage('downloading'); setPercent(0)
+    try {
+      const r = await window.electronAPI.downloadUpdate()
+      if (r && r.status === 'error') setStage('error')
+    } catch { setStage('error') }
+  }
+  function later() {
+    snoozedRef.current = version
+    try { localStorage.setItem('bti_update_snoozed', version) } catch {}
+    setStage('idle')
+  }
+  const btn = { border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px', flexShrink: 0, fontSize: 12,
+      background: 'rgba(79,156,249,0.14)', borderBottom: '1px solid rgba(79,156,249,0.35)',
+      color: isDark ? '#bfdbfe' : '#1e3a8a',
+    }}>
+      <span style={{ flexShrink: 0 }}>{'\u2B06\uFE0F'}</span>
+      <span style={{ flex: 1 }}>
+        {stage === 'available'   && <>{BRAND} {version} is available.</>}
+        {stage === 'downloading' && <>Downloading {BRAND} {version}… {percent ? `${percent}%` : ''}</>}
+        {stage === 'ready'       && <>{BRAND} {version} is ready to install — it takes about a minute and the app will reopen.</>}
+        {stage === 'error'       && <>Couldn’t download {BRAND} {version}. Try again from Settings → About.</>}
+      </span>
+      {stage === 'available' && <>
+        <button style={{ ...btn, background: '#4f9cf9', color: '#fff' }} onClick={updateNow}>Update now</button>
+        <button style={{ ...btn, background: 'transparent', color: 'inherit', opacity: 0.8 }} onClick={later}>Later</button>
+      </>}
+      {stage === 'ready' && (
+        <button style={{ ...btn, background: '#4f9cf9', color: '#fff' }} onClick={() => window.electronAPI.installUpdate()}>Restart to update</button>
+      )}
+      {stage === 'error' && (
+        <button style={{ ...btn, background: 'transparent', color: 'inherit', opacity: 0.8 }} onClick={() => setStage('idle')}>Dismiss</button>
       )}
     </div>
   )

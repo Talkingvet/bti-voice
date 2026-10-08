@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, Notification, screen, shell } = require('electron')
+const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, Notification, screen, shell, powerMonitor } = require('electron')
 const path = require('path')
 const fs   = require('fs')
 const os   = require('os')
@@ -748,24 +748,41 @@ app.whenReady().then(() => {
     }
   })
 
-  // Auto-check for updates 10 seconds after launch (gives the app time to load)
-  setTimeout(async () => {
-    try {
-      const res  = await fetch(`${APP_URL}/api/updates/latest`)
-      if (!res.ok) return
-      const data = await res.json()
-      if (!data.version) return
-      const toNum  = v => v.split('.').map(Number)
-      const [ma, mi, pa] = toNum(data.version)
-      const [ca, ci, cp] = toNum(app.getVersion())
-      const isNewer = ma > ca || (ma === ca && mi > ci) || (ma === ca && mi === ci && pa > cp)
-      if (isNewer) {
-        pendingUpdateInfo = data
-        mainWindow?.webContents.send('update-available', { version: data.version })
-      }
-    } catch (_) { /* silent on startup */ }
-  }, 10000)
+  // Automatic update checks (Windows; the feed serves a Windows exe).
+  // 10 s after launch, then every 4 hours while running (the app lives in the
+  // tray for days, so "at launch" alone missed most releases), and again when
+  // the PC wakes from sleep. A hit is remembered in pendingUpdateInfo and
+  // pushed to the page, which shows a banner anywhere in the app (App.jsx
+  // UpdateBanner) — before 1.6.2 only the About tab listened, so the launch
+  // check fired into nothing (Danny, 2026-10-08).
+  const UPDATE_CHECK_EVERY = 4 * 60 * 60 * 1000
+  setTimeout(checkForUpdateQuietly, 10000)
+  setInterval(checkForUpdateQuietly, UPDATE_CHECK_EVERY)
+  powerMonitor.on('resume', () => setTimeout(checkForUpdateQuietly, 15000))
 })
+
+async function checkForUpdateQuietly() {
+  if (process.platform !== 'win32') return
+  try {
+    const res  = await fetch(`${APP_URL}/api/updates/latest`)
+    if (!res.ok) return
+    const data = await res.json()
+    if (!data.version) return
+    const toNum  = v => v.split('.').map(Number)
+    const [ma, mi, pa] = toNum(data.version)
+    const [ca, ci, cp] = toNum(app.getVersion())
+    const isNewer = ma > ca || (ma === ca && mi > ci) || (ma === ca && mi === ci && pa > cp)
+    if (!isNewer) return
+    pendingUpdateInfo = data
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('update-available', { version: data.version })
+    }
+  } catch (_) { /* silent — next check in 4 h */ }
+}
+
+// The page asks for this on load (and after a reload) so a check that fired
+// before the React app was listening isn't lost.
+ipcMain.handle('get-pending-update', () => (pendingUpdateInfo ? { version: pendingUpdateInfo.version } : null))
 
 app.on('window-all-closed', () => { /* stay in tray */ })
 app.on('activate',          () => { mainWindow?.show(); mainWindow?.focus() })
