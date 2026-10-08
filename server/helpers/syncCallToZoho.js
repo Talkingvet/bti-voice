@@ -49,7 +49,11 @@ async function syncCallToZoho(callId, port) {
     const isConnected  = call.status === 'completed';
     const isLongEnough = (call.duration || 0) >= WRAP_UP_MIN_DURATION_SEC;
 
-    if (isConnected && isLongEnough) {
+    // batch 8: only defer when this deploy actually shows the wrap-up screen;
+    // otherwise nobody would ever clear the flag and the sweep would wait 60 s
+    // for nothing.
+    const wrapUpOn = require('./deploySettings').wrapUpEnabled();
+    if (wrapUpOn && isConnected && isLongEnough) {
       // Defer — let the wrap-up handler or the 60s sweep fire the actual sync
       await pool.query(
         'UPDATE calls SET needs_wrap_up = TRUE WHERE id = $1',

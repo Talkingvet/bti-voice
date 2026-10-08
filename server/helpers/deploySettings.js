@@ -39,7 +39,78 @@ const FEATURE_KEYS = ['zoho', 'recording', 'ai_summaries', 'sms', 'voicemail_tra
 const DEFAULT_ROW = {
   id: 1, features: {}, seat_limit: null, enabled_through: null, grace_days: 14,
   suspended: false, company_name: null, brand_name: null, notes: null,
+  // batch 8 (brand sweep): wrap-up OFF and no outcomes unless the portal says so.
+  wrap_up_enabled: false, dispositions: null,
+  support_name: null, support_email: null, support_url: null,
 };
+
+// Wrap-up outcome rules (batch 8). Portal stores [{ code, label, keep_open }].
+// Codes are slugs made from the label (lowercase, underscores) so a label edit
+// keeps old call rows readable through LEGACY_LABELS + humanize().
+const MAX_DISPOSITIONS = 20;
+const MAX_LABEL_LEN    = 40;
+// Codes the app used before outcomes were configurable (Talkingvet sales set +
+// the Call Lists quick-strip outcomes). Only used to label OLD rows.
+const LEGACY_LABELS = {
+  demo_scheduled: 'Demo scheduled', callback_requested: 'Callback requested',
+  not_interested: 'Not interested', existing_customer_support: 'Existing customer — support',
+  left_voicemail: 'Left voicemail', wrong_number: 'Wrong number', other: 'Other',
+  no_answer: 'No answer', busy: 'Busy', max_attempts: 'Max attempts reached', removed: 'Removed',
+};
+
+function slugCode(label) {
+  return String(label || '').toLowerCase().normalize('NFKD').replace(/[^\w\s-]/g, '')
+    .trim().replace(/[\s-]+/g, '_').slice(0, 50);
+}
+
+// Validates + normalises a dispositions array from the portal. Returns
+// { ok: true, value } or { ok: false, error }. null/[] = no outcomes.
+function normalizeDispositions(input) {
+  if (input === null || input === undefined) return { ok: true, value: null };
+  if (!Array.isArray(input)) return { ok: false, error: 'dispositions must be an array' };
+  if (input.length > MAX_DISPOSITIONS) return { ok: false, error: `At most ${MAX_DISPOSITIONS} outcomes` };
+  const out = [], seen = new Set();
+  for (const d of input) {
+    const label = typeof d === 'string' ? d : d && typeof d.label === 'string' ? d.label : '';
+    const clean = label.replace(/\s+/g, ' ').trim();
+    if (!clean) continue;
+    if (clean.length > MAX_LABEL_LEN) return { ok: false, error: `Outcome "${clean.slice(0, 20)}…" is longer than ${MAX_LABEL_LEN} characters` };
+    const code = (d && typeof d.code === 'string' && /^[a-z0-9_]{1,50}$/.test(d.code)) ? d.code : slugCode(clean);
+    if (!code) return { ok: false, error: `Outcome "${clean}" needs at least one letter or number` };
+    if (seen.has(code)) return { ok: false, error: `Duplicate outcome "${clean}"` };
+    seen.add(code);
+    out.push({ code, label: clean, keep_open: !!(d && d.keep_open) });
+  }
+  return { ok: true, value: out.length ? out : null };
+}
+
+// What the client + call-list rules read. Never throws, never hits the DB.
+function wrapUp(row = cached) {
+  const list = Array.isArray(row.dispositions) ? row.dispositions : [];
+  return {
+    enabled: !!row.wrap_up_enabled,
+    dispositions: list.filter(d => d && d.code && d.label).map(d => ({ code: d.code, label: d.label, keep_open: !!d.keep_open })),
+  };
+}
+function wrapUpEnabled() { return wrapUp().enabled; }
+function findDisposition(code, row = cached) { return wrapUp(row).dispositions.find(d => d.code === code) || null; }
+function dispositionLabel(code, row = cached) {
+  if (!code) return '';
+  const d = findDisposition(code, row);
+  return d ? d.label : (LEGACY_LABELS[code] || String(code).replace(/_/g, ' '));
+}
+
+function support(env = process.env) {
+  const email = cached.support_email || env.SUPPORT_EMAIL || 'helpdesk@businesstechnologyinsight.com';
+  const url   = cached.support_url   || env.SUPPORT_URL   || null;
+  const name  = cached.support_name  || env.SUPPORT_NAME  || 'Business Technology Insight';
+  return { name, email, url };
+}
+// "contact <who>" for subscription / blocked messages: email when we have one.
+function supportContact() {
+  const s = support();
+  return s.email ? `${s.name} (${s.email})` : s.name;
+}
 
 let cached    = { ...DEFAULT_ROW };
 let loadedAt  = 0;
@@ -122,9 +193,11 @@ function computeAccountStatus(row = cached, now = new Date()) {
     days_until_renewal: null,
     suspended: !!row.suspended,
   };
+  const brand = displayNames().brand;
+  const who   = supportContact();
   if (row.suspended) {
     return { ...base, state: 'blocked', outbound_allowed: false, login_allowed: false,
-             message: 'This account has been suspended. Please contact BTI.' };
+             message: `This account has been suspended. Please contact ${who}.` };
   }
   if (!row.enabled_through) {
     return { ...base, state: 'active', outbound_allowed: true, login_allowed: true, message: null };
@@ -141,19 +214,19 @@ function computeAccountStatus(row = cached, now = new Date()) {
 
   if (now > blockFrom) {
     return { ...base, state: 'blocked', outbound_allowed: false, login_allowed: false,
-             message: `This BTI Voice subscription ended on ${renewOn}. Please contact BTI to reactivate your account.` };
+             message: `This ${brand} subscription ended on ${renewOn}. Please contact ${who} to reactivate your account.` };
   }
   if (now > graceEnd) {
     return { ...base, state: 'restricted', outbound_allowed: false, login_allowed: true,
-             message: `Your BTI Voice subscription ended on ${renewOn}. Outbound calls and texts are paused — incoming calls still ring. Please contact BTI to renew.` };
+             message: `Your ${brand} subscription ended on ${renewOn}. Outbound calls and texts are paused — incoming calls still ring. Please contact ${who} to renew.` };
   }
   if (now > through) {
     return { ...base, state: 'grace', outbound_allowed: true, login_allowed: true,
-             message: `Your BTI Voice subscription renewal was due ${renewOn}. Please contact BTI to renew and avoid interruption.` };
+             message: `Your ${brand} subscription renewal was due ${renewOn}. Please contact ${who} to renew and avoid interruption.` };
   }
   if (daysLeft <= RENEWS_SOON_DAYS) {
     return { ...base, state: 'renews_soon', outbound_allowed: true, login_allowed: true,
-             message: `Your BTI Voice subscription renews on ${renewOn}.` };
+             message: `Your ${brand} subscription renews on ${renewOn}.` };
   }
   return { ...base, state: 'active', outbound_allowed: true, login_allowed: true, message: null };
 }
@@ -169,7 +242,7 @@ function loginAllowed()    { return accountStatus().login_allowed; }
 
 // Convenience for SMS send sites: one reason string or null.
 function smsBlockedReason() {
-  if (!featureOn('sms')) return 'Text messaging is not enabled on this account. Please contact BTI.';
+  if (!featureOn('sms')) return `Text messaging is not enabled on this account. Please contact ${supportContact()}.`;
   const st = accountStatus();
   if (!st.outbound_allowed) return st.message;
   return null;
@@ -188,5 +261,8 @@ module.exports = {
   resolveFeatures, featureOn,
   computeAccountStatus, accountStatus, outboundAllowed, loginAllowed, smsBlockedReason,
   displayNames, toISODate,
+  // batch 8
+  MAX_DISPOSITIONS, MAX_LABEL_LEN, LEGACY_LABELS, slugCode, normalizeDispositions,
+  wrapUp, wrapUpEnabled, findDisposition, dispositionLabel, support, supportContact,
   _setCacheForTests: (row) => { cached = { ...DEFAULT_ROW, ...row }; },
 };

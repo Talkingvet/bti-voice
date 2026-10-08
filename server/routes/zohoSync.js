@@ -5,8 +5,7 @@
 const express = require('express');
 const router  = express.Router();
 // Human label for a wrap-up disposition code (shared with Call Lists).
-const { OUTCOME_LABELS } = require('../helpers/callLists');
-const outcomeLabel = (code) => code ? (OUTCOME_LABELS[code] || String(code).replace(/_/g, ' ')) : '';
+const { dispositionLabel: outcomeLabel } = require('../helpers/deploySettings');
 
 const { internalOrAuth } = require('../auth');
 const { pool } = require('../db');

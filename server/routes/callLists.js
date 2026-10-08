@@ -308,7 +308,7 @@ router.get('/:id/export.csv', async (req, res) => {
     const iso = v => v ? new Date(v).toISOString() : '';
     const lines = [['Name','Company','Phone','Status','Attempts','Last outcome','Last attempt','Callback at','Closed by','Closed at','Added at','Zoho record'].join(',')];
     for (const e of rows) {
-      lines.push([e.display_name, e.company, e.phone_number, e.status, e.attempts, CL.OUTCOME_LABELS[e.last_outcome] || e.last_outcome,
+      lines.push([e.display_name, e.company, e.phone_number, e.status, e.attempts, CL.outcomeLabel(e.last_outcome),
         iso(e.last_attempt_at), iso(e.callback_at), e.closed_by_name, iso(e.closed_at), iso(e.added_at), e.zoho_record_id].map(q).join(','));
     }
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');

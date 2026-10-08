@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs');
 const { pool } = require('../db');
 const { generateToken, requireAuth, generateMediaToken, MEDIA_TOKEN_TTL_SEC } = require('../auth');
 const { logActivity } = require('../helpers/logActivity');
-const { loginAllowed, accountStatus, featureOn } = require('../helpers/deploySettings');
+const { loginAllowed, accountStatus, featureOn, supportContact } = require('../helpers/deploySettings');
 const sessions = require('../helpers/sessions');
 const { throttled, recordFailure, clearFailures } = require('../helpers/loginThrottle');
 
@@ -24,7 +24,7 @@ router.post('/login', async (req, res) => {
   // Browser + desktop send nothing. Enforced at login so a customer who hasn't
   // bought the mobile add-on gets a clear message instead of a half-working app.
   if ((platform === 'ios' || platform === 'android') && !featureOn('mobile_apps')) {
-    return res.status(403).json({ error: 'The mobile apps are not enabled on this account. Please sign in from the desktop app or a browser, or contact BTI.', code: 'mobile_disabled' });
+    return res.status(403).json({ error: `The mobile apps are not enabled on this account. Please sign in from the desktop app or a browser, or contact ${supportContact()}.`, code: 'mobile_disabled' });
   }
   // Brute-force throttle (review §5 A4): 10 failed attempts per username per
   // 15 minutes, same as the admin portal. Checked before the password so a

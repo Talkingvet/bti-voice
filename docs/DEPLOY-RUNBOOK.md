@@ -43,8 +43,12 @@ voice-first; enable SMS when the campaign approves.
 4. Service → Variables: paste from `server/.env.example` and fill in. Minimum for
    first boot: `DATABASE_URL` (reference the Postgres plugin), `JWT_SECRET`
    (`openssl rand -hex 32`), `NODE_ENV=production`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`,
-   `COMPANY_NAME`, `BRAND_NAME`/`VITE_BRAND_NAME` (if white-labeling), `SERVER_URL`
-   (add after Railway assigns the domain in step 5).
+   `COMPANY_NAME`, `SERVER_URL` (add after Railway assigns the domain in step 5).
+   White-labeling (`BRAND_NAME`), the support contact (`SUPPORT_NAME`/`SUPPORT_EMAIL`/
+   `SUPPORT_URL`) and the wrap-up screen are **portal settings** since batch 8
+   (portal → customer → **Branding**) — no env var, no redeploy. The env vars still
+   work as fallbacks; `VITE_BRAND_NAME` only matters for the half-second before the
+   app has asked the server.
    **Never set `SEED_DEMO` on a customer deploy.**
 5. Service → Settings → Networking → Generate Domain (or attach a custom domain).
    Put that URL (https, no trailing slash) into `SERVER_URL` and redeploy.
@@ -104,6 +108,12 @@ Do all of this INSIDE a new subaccount, from BTI's parent console:
    - **Canned responses.**
 4. Every user: log in, change password (banner nags until they do), test mic
    (Settings → Audio), make a test call.
+5. Portal → customer → **Branding** (batch 8): product name (blank = BTI Voice),
+   the customer's company name (shows on their login screen), support name +
+   email (About → "Need help?" and every "contact …" message), and whether the
+   **wrap-up screen** opens after calls — **off by default**; turn it on only for
+   a sales / call-list team, and give them their outcomes there ("Use starter set"
+   = Resolved · Follow-up needed · Left voicemail · Wrong number · Other).
 
 ## 5. Zoho CRM add-on (optional — only if the customer runs Zoho)
 
@@ -199,6 +209,7 @@ The portal is BTI's control plane (plan §3/§7). Code: `admin/` in this repo. I
 - Customer wants more seats → Features → raise **Seat limit**.
 - Dashboard shows **Unreachable** → their Railway service is down or the URL changed → click the tenant → **Health → Test connection** for the exact error.
 - Rotated a customer's `TENANT_ADMIN_KEY` → tenant → **Setup** → paste the new key → Save.
+- Customer wants a different product name / company name on the login screen, a different help contact, or outcomes after calls → **Branding** (live within 30 s, no redeploy).
 
 ## 9. Fast path: a demo / trial deploy for a prospect (~45 min, voice same day)
 
@@ -237,6 +248,7 @@ Twilio properly per §3 under their identity; the Railway service and portal rec
 2. **Features**: leave on except Zoho (not available anyway). **Seat limit** 3.
 3. **Billing** → Enabled through = **today + 30 days**. Plan `Trial`. Notes: who the contact is, what they're evaluating.
 4. **Users** → Add user for the prospect's contact → send them the temp password + the URL. (The `admin` bootstrap login is BTI's; keep it.)
+5. **Branding** → Customer's company name = the prospect's name (support defaults to BTI + `helpdesk@businesstechnologyinsight.com`, nothing to set); leave **Wrap-up after calls** OFF unless they asked for outcomes.
 
 ### 9d. Hand-over
 - They get: the URL, their username, temp password (forced change), the phone number.

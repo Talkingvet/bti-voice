@@ -6,7 +6,7 @@ const { getIO } = require('../socket');
 const { createNotification } = require('../notifications');
 const { notifyTargetsFor } = require('../helpers/notifyTargets');
 const { maybeRecordingNotice, recordingActive } = require('../helpers/recordingNotice');
-const { outboundAllowed, accountStatus, featureOn, smsBlockedReason } = require('../helpers/deploySettings');
+const { outboundAllowed, accountStatus, featureOn, smsBlockedReason, support } = require('../helpers/deploySettings');
 const {
   takeMove, getRoom, setRoom, clearRoom, conferenceTwiml, holdMusicTwiml, isCallSid,
 } = require('../helpers/callControl');
@@ -178,7 +178,7 @@ router.post('/outbound', async (req, res) => {
   // that path never touches this handler). Spoken to the agent, then hang up.
   if (!outboundAllowed()) {
     console.log(`[outbound] blocked — account ${accountStatus().state}`);
-    twiml.say({ voice: 'Polly.Joanna-Neural' }, 'Outbound calling is paused on this account. Please contact BTI to renew your subscription.');
+    twiml.say({ voice: 'Polly.Joanna-Neural' }, `Outbound calling is paused on this account. Please contact ${support().name} to renew your subscription.`);
     twiml.hangup();
     res.set('Content-Type', 'text/xml');
     return res.send(twiml.toString());

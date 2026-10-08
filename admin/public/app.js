@@ -34,6 +34,7 @@ const I = {
   health:'<path d="M3 12h4l2-6 4 12 2-6h6"/>',
   log:   '<path d="M5 6h14M5 12h14M5 18h9"/>',
   setup: '<circle cx="12" cy="12" r="3"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4"/>',
+  brand: '<path d="M4 20l4-1 10-10-3-3L5 16l-1 4z"/><path d="M13 7l3 3"/>',
   back:  '<path d="M15 6l-6 6 6 6"/>',
   sun:   '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
   moon:  '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>',
@@ -120,7 +121,7 @@ const FEATURE_LABELS = {
   huddle: ['BTI Huddle (video, screen share, team chat)', 'Also needs ENABLE_HUDDLE=true on the deploy — this switch can only turn it off.'],
   call_lists: ['Call lists (dialer lists)', 'Also needs ENABLE_CALL_LISTS=true on the deploy — this switch can only turn it off. BTI-only for now.'],
 };
-const SECTIONS = [['usage', 'Usage', I.usage], ['users', 'Users', I.people], ['features', 'Features', I.feat], ['billing', 'Billing', I.bill], ['health', 'Health', I.health], ['log', 'Activity', I.log], ['setup', 'Setup', I.setup]];
+const SECTIONS = [['usage', 'Usage', I.usage], ['users', 'Users', I.people], ['features', 'Features', I.feat], ['branding', 'Branding', I.brand], ['billing', 'Billing', I.bill], ['health', 'Health', I.health], ['log', 'Activity', I.log], ['setup', 'Setup', I.setup]];
 
 // ── frame (sidebar + title bar) ──────────────────────────────────────────────
 function pillFor(a) { // mirrors helpers/status.js
@@ -274,7 +275,7 @@ async function customerView(id, section) {
       sub: [h('a', { href: reg.url, target: '_blank', rel: 'noopener' }, host(reg.url)), reg.plan ? ` — ${reg.plan}` : '', reg.last_ok_at ? ` — reached ${ago(reg.last_ok_at)}` : ''],
       actions: [!reg.is_active ? h('span', { class: 'pill grey' }, 'Archived') : null, h('span', { class: 'muted' }, label)] },
     reg.last_error ? h('div', { class: 'alert error' }, reg.last_error) : null, body));
-  const views = { usage: usageTab, users: usersTab, features: featuresTab, billing: billingTab, health: healthTab, log: logTab, setup: setupTab };
+  const views = { usage: usageTab, users: usersTab, features: featuresTab, branding: brandingTab, billing: billingTab, health: healthTab, log: logTab, setup: setupTab };
   try { body.replaceChildren(await views[section](id, reg)); } catch (e) { body.replaceChildren(errorBox(e)); }
 }
 
@@ -386,6 +387,58 @@ async function featuresTab(id) {
         h('div', { class: 'row' }, field('Seat limit', seat, null, { inline: true }), h('button', { class: 'btn primary', onclick: async () => { try { await PATCH(`/tenants/${id}/settings`, { seat_limit: seat.value ? parseInt(seat.value, 10) : null }); toast('Seat limit saved'); } catch (e) { oops(e); } } }, 'Save'))),
       h('div', { class: 'panel' }, h('h2', 'In effect right now'), h('p', { class: 'muted' }, 'What the deploy actually resolves, after credentials are taken into account.'),
         Object.entries(s.resolved_features).map(([k, v]) => h('div', { style: 'padding:.3rem 0' }, h('span', { class: 'dot ' + (v ? 'on' : 'off') }), FEATURE_LABELS[k]?.[0] || k)))));
+}
+
+// Branding (batch 8 — brand sweep) --------------------------------------------
+// What the customer's app shows for itself: product name, their company name,
+// who they contact for help, and whether a wrap-up screen opens after calls
+// (with which outcomes). All live on the deploy within 30 s, no redeploy.
+async function brandingTab(id) {
+  const s = await GET(`/tenants/${id}/settings`);
+  const st = s.settings, env = s.env_defaults, eff = s.effective || {};
+  const save = async (body, msg) => { try { await PATCH(`/tenants/${id}/settings`, body); toast(msg); customerView(id, 'branding'); } catch (e) { oops(e); } };
+  const orNull = (el) => el.value.trim() || null;
+
+  // Identity
+  const brand   = inp({ value: st.brand_name || '', placeholder: env.brand_name || 'BTI Voice' });
+  const company = inp({ value: st.company_name || '', placeholder: env.company_name || 'e.g. Collier Building Industry Association' });
+  const sName   = inp({ value: st.support_name || '', placeholder: env.support_name || 'Business Technology Insight' });
+  const sEmail  = inp({ type: 'email', value: st.support_email || '', placeholder: env.support_email || 'helpdesk@businesstechnologyinsight.com' });
+  const sUrl    = inp({ type: 'url', value: st.support_url || '', placeholder: env.support_url || 'https://… (optional help page)' });
+  const identity = h('div', { class: 'panel' }, h('h2', 'Identity'),
+    h('p', { class: 'muted' }, 'Blank fields fall back to the deploy’s environment variables (shown greyed), then to BTI’s defaults.'),
+    field('Product name', brand, 'The wordmark on the login screen, title bar, splash and About. Leave blank for "BTI Voice".'),
+    field('Customer’s company name', company, 'Shown under the product name on the login screen.'),
+    field('Support name', sName, 'Who the app says to contact: "Support by …", subscription notices, blocked-sign-in messages.'),
+    field('Support email', sEmail, 'About → "Need help?" opens a new email to this address. Blank hides the link.'),
+    field('Support web page', sUrl, 'Used for "Need help?" only when there is no support email.'),
+    h('div', { class: 'row end' }, h('button', { class: 'btn primary', onclick: () => save({ brand_name: orNull(brand), company_name: orNull(company), support_name: orNull(sName), support_email: orNull(sEmail), support_url: orNull(sUrl) }, 'Identity saved') }, 'Save identity')),
+    h('p', { class: 'hint', style: 'margin-top:.9rem' }, `In effect right now: ${eff.brand || '—'} · ${eff.company || 'no company name'} · support ${eff.support?.name || '—'}${eff.support?.email ? ' (' + eff.support.email + ')' : ''}`));
+
+  // Wrap-up after calls
+  const wrapCb = h('input', { type: 'checkbox', checked: !!st.wrap_up_enabled, onchange: async () => { wrapCb.disabled = true; try { await PATCH(`/tenants/${id}/settings`, { wrap_up_enabled: wrapCb.checked }); toast(`Wrap-up turned ${wrapCb.checked ? 'on' : 'off'}`); } catch (e) { wrapCb.checked = !wrapCb.checked; oops(e); } finally { wrapCb.disabled = false; } } });
+  const wrapRow = h('div', { class: 'toggle' }, h('div', h('div', { class: 't' }, 'Wrap-up screen after calls'), h('div', { class: 'd' }, 'After a connected call of 15 seconds or more, the app slides up a screen to pick the contact, choose an outcome and leave a note. Off = nothing interrupts the user (most customers). On = sales / call-list teams.')), h('label', { class: 'switch' }, wrapCb, h('span')));
+
+  // Outcomes editor — rows of label + "expects a callback" checkbox
+  let rows = (st.dispositions || []).map(d => ({ ...d }));
+  const list = h('div');
+  const draw = () => list.replaceChildren(...rows.map((d, i) => {
+    const label = inp({ class: 'input bare', value: d.label, placeholder: 'Outcome label', maxlength: 40, style: 'flex:1', oninput: () => { d.label = label.value; } });
+    const keep = h('input', { type: 'checkbox', checked: !!d.keep_open, onchange: () => { d.keep_open = keep.checked; } });
+    return h('div', { class: 'row', style: 'margin-bottom:.55rem' }, label,
+      h('label', { class: 'row', style: 'gap:.4rem;font-size:.88rem;white-space:nowrap;cursor:pointer' }, keep, 'expects a callback'),
+      h('button', { class: 'btn sm danger', type: 'button', title: 'Remove', onclick: () => { rows.splice(i, 1); draw(); } }, '✕'));
+  }), rows.length ? null : h('p', { class: 'muted' }, 'No outcomes — the wrap-up screen shows just the contact and a note.'));
+  draw();
+  const addBtn = h('button', { class: 'btn sm', type: 'button', onclick: () => { rows.push({ label: '', keep_open: false }); draw(); list.querySelector('input[type=text]:last-of-type')?.focus(); } }, '+ Add outcome');
+  const presets = h('button', { class: 'btn sm', type: 'button', title: 'Resolved · Follow-up needed · Left voicemail · Wrong number · Other', onclick: () => { if (rows.length && !confirm('Replace the current outcomes with the starter set?')) return; rows = [['Resolved', false], ['Follow-up needed', true], ['Left voicemail', true], ['Wrong number', false], ['Other', false]].map(([label, keep_open]) => ({ label, keep_open })); draw(); } }, 'Use starter set');
+  const saveOutcomes = h('button', { class: 'btn primary', type: 'button', onclick: () => save({ dispositions: rows.filter(r => r.label.trim()).map(r => ({ code: r.code, label: r.label.trim(), keep_open: !!r.keep_open })) }, 'Outcomes saved') }, 'Save outcomes');
+  const wrap = h('div', { class: 'panel' }, h('h2', 'Wrap-up after calls'), wrapRow,
+    h('h3', { style: 'margin:1.4rem 0 .3rem' }, 'Outcomes'),
+    h('p', { class: 'muted' }, 'The buttons on the wrap-up screen. "Expects a callback" keeps a call-list entry on the list and asks for a call-back date; any other outcome closes it. Renaming keeps the history of old calls intact; removing one only hides the button.'),
+    list, h('div', { class: 'row', style: 'margin-top:.6rem' }, addBtn, presets), h('div', { class: 'row end', style: 'margin-top:1rem' }, saveOutcomes));
+
+  return h('div', { class: 'grid two' }, identity, wrap);
 }
 
 // Billing ---------------------------------------------------------------------

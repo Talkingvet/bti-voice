@@ -18,7 +18,12 @@ const DEFAULTS = {
   sms_configured: true, // batch 7 (F1): false when the server has no Twilio credentials
 
   call_lists: false, // dialer lists — BTI only, ENABLE_CALL_LISTS=true on the deploy
-  brand: null, account: null, loaded: false,
+  brand: null, company: null, account: null, loaded: false,
+  // batch 8 (brand sweep): who to contact for help + the deploy's wrap-up
+  // config. Wrap-up is OFF unless the portal turned it on; outcomes come from
+  // the portal too ([] = the screen shows contact + note only).
+  support: null,                               // { name, email, url } | null
+  wrap_up: { enabled: false, dispositions: [] }, // [{ code, label, keep_open }]
 }
 
 let current   = { ...DEFAULTS }
@@ -30,7 +35,13 @@ function emit() { listeners.forEach(fn => fn(current)) }
 export function loadFeatures(force = false) {
   if (inflight && !force) return inflight
   inflight = api.features()
-    .then(f => { current = { ...DEFAULTS, ...f, loaded: true }; emit(); return current })
+    .then(f => {
+      current = { ...DEFAULTS, ...f, loaded: true }
+      // Remember the brand so the next launch never flashes the wrong name
+      // (see brand.js).
+      if (f && f.brand) { try { localStorage.setItem('bti_brand', f.brand) } catch {} ; if (document.title !== f.brand) document.title = f.brand }
+      emit(); return current
+    })
     .catch(e => { console.warn('[features] fetch failed:', e.message); current = { ...DEFAULTS, loaded: true }; emit(); return current })
   return inflight
 }

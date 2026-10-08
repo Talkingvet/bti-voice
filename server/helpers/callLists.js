@@ -6,22 +6,28 @@
 // Spec: docs/BTI-Voice-Call-Lists-Plan.md §3 step 3.
 const { pool } = require('../db');
 
-// Dispositions that take the entry OFF the list (→ status 'done').
-const CLOSING = new Set([
-  'demo_scheduled', 'not_interested', 'wrong_number', 'existing_customer_support',
-  'other', 'max_attempts', 'removed',
-]);
-// Outcomes that keep the entry on the list and bump the attempt count.
-const RETAINING = new Set(['left_voicemail', 'callback_requested', 'no_answer', 'busy']);
+const ds = require('./deploySettings');
 
-const OUTCOME_LABELS = {
-  demo_scheduled: 'Demo scheduled', callback_requested: 'Callback requested',
-  not_interested: 'Not interested', existing_customer_support: 'Existing customer — support',
-  left_voicemail: 'Left voicemail', wrong_number: 'Wrong number', other: 'Other',
-  no_answer: 'No answer', busy: 'Busy', max_attempts: 'Max attempts reached', removed: 'Removed',
-};
+// Built-in outcomes: the quick strip (no answer / voicemail / busy / wrong
+// number) plus the two the server writes itself. Everything else comes from
+// the deploy's configured wrap-up outcomes (batch 8): an outcome marked
+// keep_open ("expects a callback") keeps the entry on the list, any other
+// closes it.
+const CLOSING   = new Set(['wrong_number', 'max_attempts', 'removed']);
+const RETAINING = new Set(['left_voicemail', 'no_answer', 'busy']);
 
-function isKnownOutcome(o) { return CLOSING.has(o) || RETAINING.has(o); }
+// Labels for the built-ins + anything stored before outcomes were configurable.
+const OUTCOME_LABELS = ds.LEGACY_LABELS;
+
+function isKnownOutcome(o) { return CLOSING.has(o) || RETAINING.has(o) || !!ds.findDisposition(o); }
+function isClosing(o) {
+  if (CLOSING.has(o)) return true;
+  if (RETAINING.has(o)) return false;
+  const d = ds.findDisposition(o);
+  return d ? !d.keep_open : false;
+}
+// Label for any outcome code: configured → legacy → humanised.
+const outcomeLabel = (code) => ds.dispositionLabel(code);
 
 // applyOutcome(entry, { outcome, callback_at, max_attempts }) → the fields to
 // write on the entry. Never mutates its input.
@@ -29,7 +35,7 @@ function applyOutcome(entry, { outcome, callback_at = null, max_attempts = null 
   if (!isKnownOutcome(outcome)) throw new Error('unknown outcome: ' + outcome);
   const attempts = (entry.attempts || 0) + (outcome === 'removed' ? 0 : 1);
   let status = 'open', last_outcome = outcome, cb = null;
-  if (CLOSING.has(outcome)) {
+  if (isClosing(outcome)) {
     status = 'done';
   } else {
     // Retaining outcome. A callback date sticks for any of them — "left a
@@ -105,4 +111,4 @@ function notifyList(listId) {
   }
 }
 
-module.exports = { CLOSING, RETAINING, OUTCOME_LABELS, isKnownOutcome, applyOutcome, compareEntries, recordOutcome, notifyList };
+module.exports = { CLOSING, RETAINING, OUTCOME_LABELS, isKnownOutcome, isClosing, outcomeLabel, applyOutcome, compareEntries, recordOutcome, notifyList };

@@ -12,12 +12,12 @@ import { useFeatures } from '../../features'
 import { getSocket } from '../../socket'
 import { useToast } from '../Toast'
 
-export const OUTCOME_LABELS = {
-  demo_scheduled: 'Demo scheduled', callback_requested: 'Callback', not_interested: 'Not interested',
-  existing_customer_support: 'Existing customer', left_voicemail: 'Left voicemail', wrong_number: 'Wrong number',
-  other: 'Other', no_answer: 'No answer', busy: 'Busy', max_attempts: 'Max attempts', removed: 'Removed',
-}
-const outcomeLabel = c => OUTCOME_LABELS[c] || (c ? c.replace(/_/g, ' ') : '')
+import { dispositionLabel } from '../PostCallScreen'
+// batch 8: outcome labels come from the deploy's configured wrap-up outcomes
+// (plus the built-in strip outcomes / legacy codes). Short forms for the
+// built-ins so rows stay compact.
+const SHORT = { callback_requested: 'Callback', existing_customer_support: 'Existing customer', max_attempts: 'Max attempts' }
+const outcomeLabel = c => SHORT[c] || dispositionLabel(c)
 
 function fmtPhone(p) {
   const d = String(p || '').replace(/\D/g, '')
@@ -422,7 +422,7 @@ function ListEditor({ C, agent, editing, onClose, onSaved }) {
   return (
     <Modal C={C} title={editing ? 'Edit list' : 'New call list'} onClose={onClose}>
       <label style={{ ...S.label, color: C.textMuted }}>NAME</label>
-      <input autoFocus style={inputStyle(C)} placeholder="e.g. Florida vets — no PIMS" value={name} onChange={e => setName(e.target.value)} onKeyDown={e => e.key === 'Enter' && save()} />
+      <input autoFocus style={inputStyle(C)} placeholder="e.g. October follow-ups" value={name} onChange={e => setName(e.target.value)} onKeyDown={e => e.key === 'Enter' && save()} />
       <label style={{ ...S.label, color: C.textMuted, marginTop: 10 }}>NOTES / TALKING POINTS (optional)</label>
       <textarea style={{ ...inputStyle(C), minHeight: 56, resize: 'vertical' }} placeholder="Shown at the top of the list while you work it" value={notes} onChange={e => setNotes(e.target.value)} />
       <label style={{ ...S.label, color: C.textMuted, marginTop: 10 }}>WHO CAN SEE AND WORK THIS LIST</label>
@@ -546,7 +546,7 @@ function NumberAdder({ C, list, onClose, onDone }) {
   return (
     <Modal C={C} title={'Add to "' + list.name + '"'} onClose={onClose}>
       <div style={{ fontSize: 12, color: C.textSec, marginBottom: 6 }}>One per line: <code>Name, Company, phone</code> — or just a phone number. Paste from a spreadsheet works.</div>
-      <textarea autoFocus style={{ ...inputStyle(C), minHeight: 120, resize: 'vertical', fontFamily: 'inherit' }} value={text} onChange={e => setText(e.target.value)} placeholder={'Dr. Smith, Coastal Animal Hospital, (239) 555-1212\n239-555-3434'} />
+      <textarea autoFocus style={{ ...inputStyle(C), minHeight: 120, resize: 'vertical', fontFamily: 'inherit' }} value={text} onChange={e => setText(e.target.value)} placeholder={'Jane Smith, Acme Plumbing, (239) 555-1212\n239-555-3434'} />
       <div style={S.modalBtns}>
         <button style={{ ...S.smallBtn, color: C.textSec }} onClick={onClose} disabled={busy}>Cancel</button>
         <button style={{ ...S.primaryBtn, opacity: busy || !text.trim() ? 0.5 : 1 }} onClick={run} disabled={busy || !text.trim()}>{busy ? 'Adding…' : 'Add'}</button>

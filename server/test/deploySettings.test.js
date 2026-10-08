@@ -61,7 +61,7 @@ test('grace + 30 days → blocked: login refused, nothing deleted', () => {
   const s = computeAccountStatus(row({ enabled_through: '2026-10-10' }), at('2026-11-24'));
   assert.equal(s.state, 'blocked');
   assert.equal(s.login_allowed, false);
-  assert.match(s.message, /contact BTI/i);
+  assert.match(s.message, /contact Business Technology Insight/i); // batch 8: support name, not "BTI"
 });
 
 test('custom grace_days is honoured', () => {

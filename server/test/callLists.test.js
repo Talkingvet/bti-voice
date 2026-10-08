@@ -5,6 +5,15 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const { applyOutcome, compareEntries, isKnownOutcome } = require('../helpers/callLists');
 const { tzForPhone } = require('../helpers/areaCodeTz');
+const ds = require('../helpers/deploySettings');
+
+// batch 8: outcomes come from the deploy's configured list. These tests use the
+// old Talkingvet set so the rules below read the same as before.
+ds._setCacheForTests({ wrap_up_enabled: true, dispositions: [
+  { code: 'demo_scheduled', label: 'Demo scheduled', keep_open: false },
+  { code: 'callback_requested', label: 'Callback requested', keep_open: true },
+  { code: 'not_interested', label: 'Not interested', keep_open: false },
+] });
 
 const entry = (o = {}) => ({ attempts: 0, callback_at: null, last_attempt_at: null, added_at: '2026-10-01T10:00:00Z', ...o });
 

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { BRAND } from './brand'
+import { BRAND, useBrand } from './brand'
 import { IS_TOUCH } from './utils/touch'
+import BrandMark from './components/BrandMark'
 
 document.title = BRAND
 import { Device } from '@twilio/voice-sdk'
@@ -25,7 +26,7 @@ import SettingsTab                 from './components/tabs/SettingsTab'
 import CallListsTab                from './components/tabs/CallListsTab'
 import ListOutcomeStrip            from './components/ListOutcomeStrip'
 import { api, ensureMediaToken, clearMediaToken } from './api'
-import { loadFeatures, resetFeatures, useFeatures } from './features'
+import { loadFeatures, resetFeatures, useFeatures, getFeatures } from './features'
 import { applyFont } from './utils/font'
 
 const BASE_AT_KEY   = 'bti_notif_base_at'
@@ -245,6 +246,18 @@ function AppInner() {
   const features = useFeatures()
   const account  = features.account
   const showAccountBanner = account && account.message && account.state !== 'active'
+  const brand    = useBrand()
+
+  // batch 8: the wrap-up must never stand between the agent and a call. Its
+  // backdrop sits above the incoming-call overlay, so the moment a call rings
+  // or connects, close it (same as Skip — the Needs wrap-up badge keeps it
+  // reachable from the Calls tab).
+  useEffect(() => {
+    if (!wrapUpCall || !(incomingCall || activeCall)) return
+    const le = wrapUpCall.list_entry
+    if (le && !wrapUpCall._saved) api.releaseCallListEntry(le.list_id, le.id).catch(() => {})
+    setWrapUpCall(null)
+  }, [incomingCall, activeCall]) // eslint-disable-line
 
   // ── Default-password nag banner ──────────────────────────────────────────────
   const [defaultPw, setDefaultPw] = useState(false)
@@ -685,7 +698,11 @@ function AppInner() {
 
       // v1.4.0 trigger: open the post-call wrap-up screen for connected calls >= 15s.
       // Status='completed' means connected (vs 'missed', 'voicemail', 'failed').
-      if (callRecord && callRecord.id && status === 'completed' && duration >= 15) {
+      // batch 8: only on deploys where BTI turned wrap-up on in the portal
+      // (OpenPhone-style default is no post-call screen). A list call on a
+      // deploy without wrap-up still gets the quick outcome strip below.
+      const wrapUpOn = !!(getFeatures().wrap_up && getFeatures().wrap_up.enabled)  // not the closure — SDK callbacks can be stale
+      if (wrapUpOn && callRecord && callRecord.id && status === 'completed' && duration >= 15) {
         setWrapUpCall({
           id:           callRecord.id,
           phone:        phone,
@@ -766,8 +783,8 @@ function AppInner() {
     return preAuthShell(
       <div style={{ ...S.splash, ...(window.electronAPI ? {} : { minHeight: '100vh' }), background: isDark ? '#161b24' : '#f4f6f9' }}>
         <div style={S.spinWrap}>
-          <div style={S.logoMark}>B</div>
-          <div style={{ ...S.splashText, color: isDark ? 'white' : '#1e293b' }}>{BRAND}</div>
+          <BrandMark size={52} />
+          <div style={{ ...S.splashText, color: isDark ? 'white' : '#1e293b', visibility: brand.pending ? 'hidden' : 'visible' }}>{brand.name}</div>
           {reconnecting && (
             <div style={{ textAlign: 'center', marginTop: 6 }}>
               <div style={{ fontSize: 13, color: isDark ? 'rgba(255,255,255,0.55)' : '#64748b' }}>
@@ -992,6 +1009,7 @@ function AppInner() {
 // only worked while About was open). "Later" hides that version until the next
 // check finds a newer one. Download + install reuse the About-tab IPCs.
 function UpdateBanner({ isDark }) {
+  const BRAND = useBrand().name
   const [version,  setVersion]  = useState(null)
   const [stage,    setStage]    = useState('idle')   // idle | available | downloading | ready | error
   const [percent,  setPercent]  = useState(0)

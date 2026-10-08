@@ -1,5 +1,7 @@
 // VITE_API_URL is set at build time for the Electron desktop build.
 // When served from the Railway server directly it is empty → relative /api is used.
+import { BRAND } from './brand'
+
 const SERVER = import.meta.env.VITE_API_URL || ''
 const BASE   = `${SERVER}/api`
 
@@ -51,7 +53,7 @@ async function request(path, options = {}) {
     // fetch() itself failed → no network / DNS / server unreachable.
     // Callers use err.network to tell "you're offline" apart from "you're
     // logged out" (a 401). Never treat this as an auth failure.
-    const err = new Error('Can\u2019t reach BTI Voice \u2014 check your internet connection')
+    const err = new Error(`Can\u2019t reach ${BRAND} \u2014 check your internet connection`)
     err.network = true
     throw err
   }

@@ -4,9 +4,7 @@ import { IS_TOUCH as T } from '../../utils/touch'
 import { api } from '../../api'
 import { useColors } from '../../useColors'
 import { getSocket } from '../../socket'
-import { DISPOSITIONS } from '../PostCallScreen'
-
-const dispositionLabel = code => (DISPOSITIONS.find(d => d.code === code) || {}).label || (code ? code.replace(/_/g, ' ') : '')
+import { dispositionLabel } from '../PostCallScreen'   // batch 8: per-deploy outcomes + legacy codes
 
 // Authenticated recording URL — uses the short-lived media token minted by
 // api.ensureMediaToken() (audio/download links can't send Authorization headers)

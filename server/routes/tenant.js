@@ -66,8 +66,16 @@ function settingsPayload() {
       company_name:    row.company_name,
       brand_name:      row.brand_name,
       notes:           row.notes,
+      // batch 8 (brand sweep)
+      wrap_up_enabled: !!row.wrap_up_enabled,
+      dispositions:    ds.wrapUp(row).dispositions,
+      support_name:    row.support_name,
+      support_email:   row.support_email,
+      support_url:     row.support_url,
       updated_at:      row.updated_at,
     },
+    // What the app resolves after env fallbacks (so the portal can show it).
+    effective: { ...ds.displayNames(), support: ds.support() },
     resolved_features: ds.resolveFeatures(),
     feature_keys:      ds.FEATURE_KEYS,
     account:           ds.accountStatus(),
@@ -78,6 +86,9 @@ function settingsPayload() {
       messaging_service: !!process.env.TWILIO_MESSAGING_SERVICE_SID,
       company_name:     process.env.COMPANY_NAME || null,
       brand_name:       process.env.BRAND_NAME || null,
+      support_name:     process.env.SUPPORT_NAME || null,
+      support_email:    process.env.SUPPORT_EMAIL || null,
+      support_url:      process.env.SUPPORT_URL || null,
     },
   };
 }
@@ -128,11 +139,23 @@ router.patch('/settings', async (req, res) => {
       if (typeof b.suspended !== 'boolean') return res.status(400).json({ error: 'suspended must be true or false' });
       set('suspended', b.suspended);
     }
-    for (const col of ['company_name', 'brand_name', 'notes']) {
+    for (const col of ['company_name', 'brand_name', 'notes', 'support_name', 'support_email', 'support_url']) {
       if (b[col] !== undefined) {
         if (b[col] !== null && typeof b[col] !== 'string') return res.status(400).json({ error: `${col} must be a string or null` });
-        set(col, b[col] ? b[col].trim() || null : null);
+        const v = b[col] ? b[col].trim() || null : null;
+        if (col === 'support_email' && v && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return res.status(400).json({ error: 'support_email must look like an email address' });
+        if (col === 'support_url' && v && !/^https?:\/\/\S+$/i.test(v)) return res.status(400).json({ error: 'support_url must start with http:// or https://' });
+        set(col, v);
       }
+    }
+    if (b.wrap_up_enabled !== undefined) {
+      if (typeof b.wrap_up_enabled !== 'boolean') return res.status(400).json({ error: 'wrap_up_enabled must be true or false' });
+      set('wrap_up_enabled', b.wrap_up_enabled);
+    }
+    if (b.dispositions !== undefined) {
+      const r = ds.normalizeDispositions(b.dispositions);
+      if (!r.ok) return res.status(400).json({ error: r.error });
+      set('dispositions', r.value === null ? null : JSON.stringify(r.value));
     }
     if (!sets.length) return res.status(400).json({ error: 'Nothing to update' });
 

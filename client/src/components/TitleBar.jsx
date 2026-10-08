@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import { BRAND } from '../brand'
+import { useBrand } from '../brand'
+import BrandMark from './BrandMark'
 import { createPortal } from 'react-dom'
 import { useTheme } from '../ThemeContext'
 
@@ -34,6 +35,9 @@ const DEVICE_STATUS_UI = {
 }
 
 export default function TitleBar({ agent, unreadCount = 0, onBellClick, agentStatus = 'available', onStatusChange, deviceStatus = 'idle' }) {
+  // batch 8: live brand (portal / env), blank until known so nothing flashes.
+  const brand = useBrand()
+  const BRAND = brand.pending ? '' : brand.name
   const { theme } = useTheme()
   const isDark = theme === 'dark'
   const [maximized,    setMaximized]    = useState(false)
@@ -123,11 +127,7 @@ export default function TitleBar({ agent, unreadCount = 0, onBellClick, agentSta
         <div style={{ width: 78, flexShrink: 0 }} aria-hidden="true" />
       ) : (
         <div style={S.left}>
-          <div style={S.mark}>
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.42 2 2 0 0 1 3.58 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 9.91a16 16 0 0 0 6.16 6.16l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
-            </svg>
-          </div>
+          <BrandMark size={20} radius={5} />
           <span style={{ ...S.brand, ...T.brand }}>{BRAND}</span>
         </div>
       )}

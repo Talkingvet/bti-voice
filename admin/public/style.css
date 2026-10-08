@@ -131,6 +131,9 @@ td .sub { display: block; color: var(--text-2); font-size: .88rem; margin-top: .
 .field.inline { display: inline-block; margin: 0; vertical-align: middle; }
 .row { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; } .row.end { justify-content: flex-end; } .row.between { justify-content: space-between; }
 .row .field { margin: 0; } .row .field .input { width: auto; } .row .field[style*="flex"] .input { width: 100%; }
+/* plain single-line input outside a .field (batch 8: outcomes editor) */
+.input.bare { padding: .6rem .85rem; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: var(--r-sm) var(--r-sm) 0 0; background: var(--raised); min-height: 2.6rem; }
+.input.bare:focus { outline: none; border-bottom-color: var(--accent); }
 .check { display: inline-flex; align-items: center; gap: .55rem; cursor: pointer; } .check input { width: 18px; height: 18px; accent-color: var(--accent); }
 
 .toggle { display: flex; align-items: center; justify-content: space-between; gap: 1.25rem; padding: .95rem 0; border-bottom: 1px solid var(--line); }

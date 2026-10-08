@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { api } from '../api'
 import { useTheme } from '../ThemeContext'
 import { IS_TOUCH } from '../utils/touch'
+import { useBrand } from '../brand'
+import BrandMark from '../components/BrandMark'
 
 const REMEMBER_KEY = 'bti_remember'
 
@@ -10,6 +12,11 @@ const REMEMBER_KEY = 'bti_remember'
 export default function Login({ onLogin, embedded = false }) {
   const { theme } = useTheme()
   const isDark = theme === 'dark'
+  // batch 8: wordmark follows the deploy's brand (portal / env), the subline is
+  // the customer's company name when BTI set one. While the brand is still
+  // unknown (first launch, before /api/features answers) only the mark shows,
+  // so a white-labelled deploy never flashes "BTI Voice".
+  const brand = useBrand()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [remember, setRemember] = useState(() => localStorage.getItem(REMEMBER_KEY) !== '0')
@@ -47,9 +54,9 @@ export default function Login({ onLogin, embedded = false }) {
   return (
     <div style={{ ...styles.page, ...(embedded ? { flex: 1, minHeight: 0 } : {}) }}>
       <div style={{ ...styles.card, ...T.card }}>
-        <div style={styles.logo}>📞</div>
-        <h1 style={{ ...styles.brand, ...T.brand }}><span style={{ color: '#4f9cf9' }}>BTI</span> Voice</h1>
-        <p style={{ ...styles.sub, ...T.sub }}>Shared SMS & Call Inbox</p>
+        <BrandMark size={48} style={{ margin: '0 auto 14px' }} />
+        <h1 style={{ ...styles.brand, ...T.brand, visibility: brand.pending ? 'hidden' : 'visible', marginBottom: brand.company ? 4 : 28 }}>{brand.name}</h1>
+        {brand.company && <p style={{ ...styles.sub, ...T.sub }}>{brand.company}</p>}
 
         <form onSubmit={handleSubmit} style={styles.form}>
           <div style={styles.field}>
@@ -57,7 +64,7 @@ export default function Login({ onLogin, embedded = false }) {
             <input
               style={{ ...styles.input, ...T.input }}
               type="text"
-              placeholder="e.g. shawn"
+              placeholder="Username"
               value={username}
               onChange={e => setUsername(e.target.value)}
               autoFocus={!IS_TOUCH}
@@ -110,9 +117,8 @@ const styles = {
     boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
     textAlign: 'center',
   },
-  logo: { fontSize: 40, marginBottom: 8 },
-  brand: { fontSize: 28, fontWeight: 700, marginBottom: 4 },
-  sub: { color: '#888', fontSize: 13, marginBottom: 28 },
+  brand: { fontSize: 24, fontWeight: 700, marginBottom: 4, letterSpacing: '-0.2px' },
+  sub: { color: '#888', fontSize: 13, marginBottom: 24 },
   form: { textAlign: 'left' },
   field: { marginBottom: 16 },
   label: { display: 'block', fontSize: 12, fontWeight: 600, color: '#555', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.5px' },

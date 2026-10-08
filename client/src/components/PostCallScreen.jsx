@@ -2,7 +2,7 @@ import { IS_TOUCH } from '../utils/touch'
 import { useState, useEffect, useMemo } from 'react'
 import { api } from '../api'
 import { useColors } from '../useColors'
-import { useFeatures } from '../features'
+import { useFeatures, getFeatures } from '../features'
 
 /* v1.4.0 — Post-call wrap-up screen.
    Solves the shared-phone-number problem in Zoho where calls auto-attach to
@@ -17,18 +17,23 @@ import { useFeatures } from '../features'
    Submit POSTs /api/calls/:id/wrap-up which handles all the Zoho writes.
 */
 
-// Dispositions that keep a call-list entry open (so a callback date makes sense).
-const RETAINING = new Set(['callback_requested', 'left_voicemail'])
-
-export const DISPOSITIONS = [
-  { code: 'demo_scheduled',             label: 'Demo scheduled' },
-  { code: 'callback_requested',         label: 'Callback requested' },
-  { code: 'not_interested',             label: 'Not interested' },
-  { code: 'existing_customer_support',  label: 'Existing customer — support' },
-  { code: 'left_voicemail',             label: 'Left voicemail' },
-  { code: 'wrong_number',               label: 'Wrong number' },
-  { code: 'other',                      label: 'Other' },
-]
+// batch 8 (brand sweep): outcomes are a per-deploy setting from the BTI portal
+// (features.wrap_up.dispositions = [{ code, label, keep_open }]); nothing is
+// hard-coded here any more. keep_open ("expects a callback") shows the
+// callback-date field for list calls and keeps the entry on the list.
+// Labels for codes stored before outcomes were configurable, so old calls in
+// the history still read properly.
+export const LEGACY_LABELS = {
+  demo_scheduled: 'Demo scheduled', callback_requested: 'Callback requested',
+  not_interested: 'Not interested', existing_customer_support: 'Existing customer — support',
+  left_voicemail: 'Left voicemail', wrong_number: 'Wrong number', other: 'Other',
+  no_answer: 'No answer', busy: 'Busy', max_attempts: 'Max attempts reached', removed: 'Removed',
+}
+export function dispositionLabel(code, dispositions = getFeatures().wrap_up?.dispositions) {
+  if (!code) return ''
+  const d = (dispositions || []).find(x => x.code === code)
+  return d ? d.label : (LEGACY_LABELS[code] || String(code).replace(/_/g, ' '))
+}
 
 function fmtDuration(sec) {
   const n = Number(sec) || 0
@@ -39,7 +44,10 @@ function fmtDuration(sec) {
 export default function PostCallScreen({ call, onClose, onSaved }) {
   const C = useColors()
   // Without the Zoho add-on the screen is local-only: contact name, disposition, note.
-  const zohoOn = !!useFeatures().zoho
+  const features = useFeatures()
+  const zohoOn = !!features.zoho
+  const DISPOSITIONS = (features.wrap_up && features.wrap_up.dispositions) || []
+  const keepsOpen = code => !!DISPOSITIONS.find(d => d.code === code && d.keep_open)
 
   const [contacts,    setContacts]    = useState([])     // [{ id, Full_Name, Email, Account_Name, ... }]
   const [chosenId,    setChosenId]    = useState('')     // Zoho contact id (string)
@@ -202,7 +210,7 @@ export default function PostCallScreen({ call, onClose, onSaved }) {
       // Thursday" should schedule the entry without typing the date twice.
       let when = callbackAt ? new Date(callbackAt) : null
       if ((!when || Number.isNaN(when.getTime())) && taskOpen && taskDueDate) when = new Date(taskDueDate + 'T09:00:00')
-      if (when && !Number.isNaN(when.getTime()) && RETAINING.has(disposition)) payload.callback_at = when.toISOString()
+      if (when && !Number.isNaN(when.getTime()) && keepsOpen(disposition)) payload.callback_at = when.toISOString()
     }
     if (taskOpen && taskSubject.trim()) {
       payload.task = {
@@ -328,7 +336,7 @@ export default function PostCallScreen({ call, onClose, onSaved }) {
                 </div>
                 <input
                   style={{ ...S.input, background: C.inputBg, border: '1px solid ' + C.inputBorder, color: C.text }}
-                  placeholder="Account / Hospital (optional)"
+                  placeholder="Company (optional)"
                   value={newAccount}
                   onChange={e => setNewAccount(e.target.value)}
                 />
@@ -356,8 +364,8 @@ export default function PostCallScreen({ call, onClose, onSaved }) {
             )}
           </div>
 
-          {/* Disposition */}
-          <div style={S.field}>
+          {/* Disposition — only when this deploy has outcomes configured */}
+          {DISPOSITIONS.length > 0 && <div style={S.field}>
             <label style={{ ...S.label, color: C.textMuted }}>OUTCOME</label>
             <div style={S.pillRow}>
               {DISPOSITIONS.map(d => {
@@ -376,11 +384,11 @@ export default function PostCallScreen({ call, onClose, onSaved }) {
                 )
               })}
             </div>
-          </div>
+          </div>}
 
           {/* Callback date — list calls only; keeps the entry on the list and
               sorts it to the top when due. */}
-          {listEntry && RETAINING.has(disposition) && (
+          {listEntry && keepsOpen(disposition) && (
             <div style={S.field}>
               <label style={{ ...S.label, color: C.textMuted }}>CALL BACK ON (optional — shows in the list's Today view when due)</label>
               <input

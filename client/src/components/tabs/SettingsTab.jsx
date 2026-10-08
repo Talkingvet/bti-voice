@@ -1,7 +1,8 @@
 /* Settings tab — single scrollable page, sections grouped */
 import { IS_TOUCH } from '../../utils/touch'
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { BRAND } from '../../brand'
+import { useBrand } from '../../brand'
+import BrandMark from '../BrandMark'
 import { useTheme }    from '../../ThemeContext'
 import { useColors }   from '../../useColors'
 import { useFeatures } from '../../features'
@@ -663,6 +664,7 @@ function Radio({ selected }) {
 }
 
 function StartupCard({ C }) {
+  const BRAND = useBrand().name
   const [autoLaunch, setAutoLaunch] = useState(false)
   useEffect(() => { window.electronAPI?.getAutoLaunch?.().then(v => setAutoLaunch(!!v)).catch(() => {}) }, [])
   async function toggle(val) {
@@ -1814,6 +1816,13 @@ function CannedResponsesSection({ C }) {
 
 function AboutSection({ C }) {
   const isElectron = !!window.electronAPI
+  // batch 8 (brand sweep): brand + support come from the deploy (portal /
+  // env). No personal credits, no hard-coded BTI link — a customer sees the
+  // name they bought it under and the help contact BTI set for them.
+  const { name: BRAND, support } = useBrand()
+  const supportEmail = support && support.email
+  const supportUrl   = support && support.url
+  const supportName  = (support && support.name) || 'Business Technology Insight'
   // Updates are Windows-only for now (the update feed serves a Windows .exe);
   // showing the button on Mac would download an installer it can't run.
   const canUpdate = isElectron && window.electronAPI?.platform === 'win32'
@@ -1913,20 +1922,23 @@ function AboutSection({ C }) {
       <SectionHeader title="ABOUT" C={C} />
       <Card C={C}>
         <div style={S.aboutHero}>
-          <div style={S.aboutLogo}>{(BRAND || 'B').trim()[0].toUpperCase()}</div>
+          <BrandMark size={48} radius={12} style={{ marginBottom: 6 }} />
           <div style={{ ...S.rowLabel, color: C.text, fontSize: 15, fontWeight: 700 }}>{BRAND}</div>
           <div style={{ ...S.rowDesc, color: C.textMuted }}>Version {version}</div>
           <div style={{ ...S.rowDesc, color: C.textMuted, marginTop: 4 }}>
-            Created by Danny Roche · Business Technology Insight, LLC
+            Support by {supportName}
           </div>
-          <a
-            href="https://businesstechnologyinsight.com/"
-            target="_blank"
-            rel="noreferrer"
-            style={{ color: '#4f9cf9', fontSize: 13, marginTop: 8, textDecoration: 'none', fontWeight: 600 }}
-          >
-            Need Help? →
-          </a>
+          {(supportEmail || supportUrl) && (
+            <a
+              href={supportEmail ? `mailto:${supportEmail}?subject=${encodeURIComponent(BRAND + ' help')}` : supportUrl}
+              target={supportEmail ? undefined : '_blank'}
+              rel="noreferrer"
+              style={{ color: '#4f9cf9', fontSize: 13, marginTop: 8, textDecoration: 'none', fontWeight: 600 }}
+              title={supportEmail || supportUrl}
+            >
+              Need help? {supportEmail || 'Open the help site'} →
+            </a>
+          )}
 
           {/* Report a problem — sends the in-app log buffer to the server.
               Primarily for TestFlight testers, who have no other way to

@@ -411,6 +411,18 @@ async function migrate() {
       CONSTRAINT deploy_settings_single_row CHECK (id = 1)
     );
     INSERT INTO deploy_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+    -- Review Pass 2 batch 8 (brand sweep, 2026-10-08): per-deploy wrap-up +
+    -- support identity, all edited from the BTI portal (Branding section).
+    --   wrap_up_enabled  false = no post-call screen (OpenPhone-style default).
+    --   dispositions     JSON array of { code, label, keep_open }; NULL/[] =
+    --                    no outcome pills (the screen is contact + note only).
+    --   support_*        who the customer contacts for help (About screen,
+    --                    subscription messages). NULL = env SUPPORT_* defaults.
+    ALTER TABLE deploy_settings ADD COLUMN IF NOT EXISTS wrap_up_enabled BOOLEAN NOT NULL DEFAULT false;
+    ALTER TABLE deploy_settings ADD COLUMN IF NOT EXISTS dispositions    JSONB;
+    ALTER TABLE deploy_settings ADD COLUMN IF NOT EXISTS support_name    VARCHAR(120);
+    ALTER TABLE deploy_settings ADD COLUMN IF NOT EXISTS support_email   VARCHAR(200);
+    ALTER TABLE deploy_settings ADD COLUMN IF NOT EXISTS support_url     VARCHAR(300);
     -- Portal-driven user management: a BTI password reset hands out a one-time
     -- temporary password and forces a change on next login; last_login_at
     -- feeds the portal's "active users" count.

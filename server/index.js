@@ -95,7 +95,11 @@ app.get('/api/features', (req, res) => {
     // batch 7 (F1): lets the composer explain "texting isn't set up" instead
     // of letting a send fail. Per-agent number is checked client-side.
     sms_configured: twilioConfigured(),
-    brand: deploySettings.displayNames().brand,
+    brand:   deploySettings.displayNames().brand,
+    company: deploySettings.displayNames().company,
+    // batch 8 (brand sweep): who to contact + the per-deploy wrap-up config.
+    support: deploySettings.support(),
+    wrap_up: deploySettings.wrapUp(),
     account: {
       state: st.state, message: st.message, enabled_through: st.enabled_through,
       grace_ends: st.grace_ends, outbound_allowed: st.outbound_allowed,

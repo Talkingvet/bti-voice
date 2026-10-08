@@ -690,8 +690,7 @@ router.post('/:id/wrap-up', requireAuth, async (req, res) => {
       if (body.disposition && call.zoho_call_id) {
         setImmediate(async function() {
           try {
-            const { OUTCOME_LABELS } = require('../helpers/callLists');
-            const outcome = OUTCOME_LABELS[body.disposition] || String(body.disposition).replace(/_/g, ' ');
+            const outcome = require('../helpers/deploySettings').dispositionLabel(body.disposition);
             const { rows: [info] } = await pool.query(
               'SELECT ca.direction, ca.status, a.name AS agent_name, co.name AS contact_name, co.phone_number ' +
               'FROM calls ca LEFT JOIN agents a ON a.id = ca.agent_id ' +
