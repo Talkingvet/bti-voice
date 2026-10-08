@@ -1,6 +1,7 @@
 const express = require('express');
 const { twilioMediaUrl } = require('../helpers/twilioUrls');
 const { smsSendBlock } = require('../helpers/smsConfig');
+const { withStatusCallback, initialStatus } = require('../helpers/smsStatus');
 const { pool } = require('../db');
 const { recordConsent } = require('../helpers/consent');
 const { requireAuth , requireMediaAuth } = require('../auth');
@@ -68,6 +69,7 @@ router.post('/send', requireAuth, async (req, res) => {
     }
 
     let twilioSid = null;
+    let twilioStatus = 'sent';
 
     // Review §3 B2 / §6 F1: never store a text that can't actually be sent.
     // Without Twilio credentials or an agent number the client gets a 409
@@ -94,9 +96,12 @@ router.post('/send', requireAuth, async (req, res) => {
       if (process.env.TWILIO_MESSAGING_SERVICE_SID) {
         params.messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
       }
+      // Batch 7b: ask Twilio to report carrier delivery status back to us
+      withStatusCallback(params);
       try {
         const msg = await twilio.messages.create(params);
         twilioSid = msg.sid;
+        twilioStatus = initialStatus(msg);
       } catch (twErr) {
         if (twErr.code === 21610) {
           // Recipient opted out at the Twilio/carrier level — mirror it locally
@@ -114,10 +119,10 @@ router.post('/send', requireAuth, async (req, res) => {
     // Save to database
     const { rows: [message] } = await pool.query(`
       INSERT INTO messages
-        (conversation_id, agent_id, direction, body, from_number, to_number, twilio_sid)
-      VALUES ($1, $2, 'outbound', $3, $4, $5, $6)
+        (conversation_id, agent_id, direction, body, from_number, to_number, twilio_sid, status)
+      VALUES ($1, $2, 'outbound', $3, $4, $5, $6, $7)
       RETURNING *
-    `, [conversation_id, agent.id, text, agent.phone_number, conv.to_number, twilioSid]);
+    `, [conversation_id, agent.id, text, agent.phone_number, conv.to_number, twilioSid, twilioStatus]);
 
     // Attach uploaded media to the saved message
     if (mediaRows.length) {

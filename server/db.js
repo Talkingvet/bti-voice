@@ -117,6 +117,10 @@ async function migrate() {
     ALTER TABLE calls ADD COLUMN IF NOT EXISTS recording_sid   VARCHAR(50);
     -- Agent chose "Don't record this call" on the Dialpad (per-call opt-out)
     ALTER TABLE calls ADD COLUMN IF NOT EXISTS recording_opt_out BOOLEAN DEFAULT false;
+    -- Review batch 7b: carrier delivery status via Twilio status callback
+    ALTER TABLE messages ADD COLUMN IF NOT EXISTS error_code        VARCHAR(10);
+    ALTER TABLE messages ADD COLUMN IF NOT EXISTS status_updated_at TIMESTAMPTZ;
+    CREATE INDEX IF NOT EXISTS idx_messages_twilio_sid ON messages (twilio_sid);
   `);
 
   // Batch 4b (2026-10-06): a call put on Hold is recorded in parts — the

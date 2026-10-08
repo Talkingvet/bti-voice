@@ -13,6 +13,8 @@ const { pool } = require('../db');
 const { recordConsent } = require('../helpers/consent');
 const { getIO } = require('../socket');
 const { phoneVariants } = require('../helpers/phone');
+const { smsSendBlock } = require('../helpers/smsConfig');
+const { withStatusCallback, initialStatus } = require('../helpers/smsStatus');
 
 const router = express.Router();
 
@@ -142,15 +144,22 @@ router.post('/send', async (req, res) => {
 
     // Send via Twilio (Messaging Service routing, same as messages.js /send)
     let twilioSid = null;
-    if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) {
+    let twilioStatus = 'sent';
+    // Review §3 B2 / §6 F1 (missed in batch 7): never store a text that can't
+    // actually go out — same 409 as the composer and New Message.
+    const notConfigured = smsSendBlock({ agent });
+    if (notConfigured) return res.status(409).json({ error: notConfigured.error, code: notConfigured.code, reason: notConfigured.reason });
+    {
       const twilio = require('twilio')(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
       const params = { body: text, from: agent.phone_number, to: contact.phone_number };
       if (process.env.TWILIO_MESSAGING_SERVICE_SID) {
         params.messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
       }
+      withStatusCallback(params); // batch 7b: carrier delivery status
       try {
         const msg = await twilio.messages.create(params);
         twilioSid = msg.sid;
+        twilioStatus = initialStatus(msg);
       } catch (twErr) {
         if (twErr.code === 21610) {
           await pool.query(
@@ -164,9 +173,9 @@ router.post('/send', async (req, res) => {
     }
 
     const { rows: [message] } = await pool.query(
-      "INSERT INTO messages (conversation_id, agent_id, direction, body, from_number, to_number, twilio_sid) " +
-      "VALUES ($1, $2, 'outbound', $3, $4, $5, $6) RETURNING *",
-      [conv.id, agent.id, text, agent.phone_number, contact.phone_number, twilioSid]
+      "INSERT INTO messages (conversation_id, agent_id, direction, body, from_number, to_number, twilio_sid, status) " +
+      "VALUES ($1, $2, 'outbound', $3, $4, $5, $6, $7) RETURNING *",
+      [conv.id, agent.id, text, agent.phone_number, contact.phone_number, twilioSid, twilioStatus]
     );
     await pool.query(
       'UPDATE conversations SET last_message_at = NOW(), last_agent_id = $1 WHERE id = $2',

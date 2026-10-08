@@ -75,6 +75,10 @@ Do all of this INSIDE a new subaccount, from BTI's parent console:
 5. **Number webhooks** (every voice number):
    - Voice → A call comes in: `SERVER_URL/webhooks/voice/inbound` (POST)
    - Messaging → A message comes in: `SERVER_URL/webhooks/sms` (POST)
+   - Delivery status: **nothing to set.** The app passes `SERVER_URL/webhooks/sms/status` as the
+     per-message `StatusCallback` on every send (review batch 7b), which overrides any status
+     callback configured on the number or the Messaging Service — so a shared service (BTI +
+     demo deploys) still reports each message back to the deploy that sent it. Needs `SERVER_URL`.
    (`server/scripts/fix-sms-urls.js` can copy SMS config across numbers later.)
 6. **A2P 10DLC** (SMS — the long pole, all under the CUSTOMER's identity):
    - Trust Hub → Secondary Customer Profile with the customer's EIN/legal name/rep.

@@ -5,6 +5,7 @@ const { getIO } = require('../socket');
 const { createNotification } = require('../notifications');
 const { notifyTargetsFor } = require('../helpers/notifyTargets');
 const { recordConsent } = require('../helpers/consent');
+const { withStatusCallback, initialStatus, normalizeStatus, shouldApply, isFailure, errorText } = require('../helpers/smsStatus');
 
 // Fire-and-forget Zoho sync — never blocks the Twilio webhook response
 function syncSMSToZoho(messageId) {
@@ -78,6 +79,7 @@ async function maybeSendAfterHoursReply({ conv, contact, From, To, keyword }) {
     if (process.env.TWILIO_MESSAGING_SERVICE_SID) {
       params.messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
     }
+    withStatusCallback(params); // batch 7b: carrier delivery status
 
     let sent;
     try {
@@ -95,10 +97,10 @@ async function maybeSendAfterHoursReply({ conv, contact, From, To, keyword }) {
 
     // Record as an outbound message (agent_id null = system/auto)
     const { rows: [m] } = await pool.query(`
-      INSERT INTO messages (conversation_id, direction, body, from_number, to_number, twilio_sid)
-      VALUES ($1, 'outbound', $2, $3, $4, $5)
+      INSERT INTO messages (conversation_id, direction, body, from_number, to_number, twilio_sid, status)
+      VALUES ($1, 'outbound', $2, $3, $4, $5, $6)
       RETURNING *
-    `, [conv.id, params.body, To, From, sent.sid]);
+    `, [conv.id, params.body, To, From, sent.sid, initialStatus(sent)]);
     await pool.query(
       'UPDATE conversations SET last_auto_reply_at = NOW(), last_message_at = NOW() WHERE id = $1', [conv.id]
     );
@@ -121,6 +123,46 @@ router.get('/', (req, res) => {
   res.set('Content-Type', 'text/xml')
   res.send('<Response></Response>')
 })
+
+// ── Delivery status callback (Review batch 7b) ───────────────────────────────
+// Twilio posts here (statusCallback on every messages.create) as the carrier
+// moves the text along: queued → sending → sent → delivered | undelivered |
+// failed. We store the furthest-along status, the Twilio error code on a
+// failure, and tell open threads over the socket. Always 200 — Twilio retries
+// non-2xx responses and there is nothing a retry would fix here.
+router.post('/status', async (req, res) => {
+  res.status(200).send('');
+  const b = req.body || {};
+  const sid = b.MessageSid || b.SmsSid;
+  const status = normalizeStatus(b.MessageStatus || b.SmsStatus);
+  if (!sid || !status) { console.warn('[sms/status] ignored payload', JSON.stringify(b).slice(0, 200)); return; }
+  const errorCode = b.ErrorCode ? String(b.ErrorCode).slice(0, 10) : null;
+  try {
+    const { rows: [m] } = await pool.query(
+      'SELECT id, conversation_id, status FROM messages WHERE twilio_sid = $1 ORDER BY id DESC LIMIT 1', [sid]
+    );
+    if (!m) { console.log(`[sms/status] ${sid} ${status} — no local message (auto-text or pre-7b send)`); return; }
+    if (!shouldApply(m.status, status)) { console.log(`[sms/status] ${sid} ${status} ignored (already ${m.status})`); return; }
+    await pool.query(
+      'UPDATE messages SET status = $2, error_code = COALESCE($3, error_code), status_updated_at = NOW() WHERE id = $1',
+      [m.id, status, errorCode]
+    );
+    if (isFailure(status)) {
+      console.warn(`[sms/status] message ${m.id} ${status}${errorCode ? ` (${errorCode}: ${errorText(errorCode)})` : ''} to ${b.To || '?'}`);
+    } else {
+      console.log(`[sms/status] message ${m.id} → ${status}`);
+    }
+    const io = getIO();
+    if (io) {
+      io.to(`conv_${m.conversation_id}`).emit('message_status', {
+        id: m.id, conversation_id: m.conversation_id, status,
+        error_code: errorCode, error_text: errorText(errorCode),
+      });
+    }
+  } catch (e) {
+    console.error('[sms/status]', e.message);
+  }
+});
 
 router.post('/', async (req, res) => {
   const { From, To, Body, MessageSid } = req.body;

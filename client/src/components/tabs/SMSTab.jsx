@@ -88,15 +88,24 @@ export default function SMSTab({ agent, navConvId, onNavConvConsumed, device, on
       setMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg])
       api.markConvRead(selectedId).catch(() => {})
     }
+    // Batch 7b: carrier delivery status (Sending… → Delivered / Not delivered)
+    const onMessageStatus = (u) => {
+      if (u.conversation_id !== selectedId) return
+      setMessages(prev => prev.map(m => m.id === u.id
+        ? { ...m, status: u.status, error_code: u.error_code ?? m.error_code, error_text: u.error_text ?? m.error_text }
+        : m))
+    }
     // socket.io re-connects after a network blip but does NOT auto re-join
     // rooms — without this an open thread silently stops receiving messages.
     const onReconnect = () => socket.emit('join_conversation', selectedId)
     socket.on('new_message', onNewMessage)
+    socket.on('message_status', onMessageStatus)
     socket.on('connect', onReconnect)
     return () => {
       cancelled = true
       socket.emit('leave_conversation', selectedId)
       socket.off('new_message', onNewMessage)
+      socket.off('message_status', onMessageStatus)
       socket.off('connect', onReconnect)
     }
   }, [selectedId])

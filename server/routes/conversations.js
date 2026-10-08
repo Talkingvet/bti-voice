@@ -4,6 +4,7 @@ const { recordConsent } = require('../helpers/consent');
 const { requireAuth } = require('../auth');
 const { createNotification } = require('../notifications');
 const { smsSendBlock } = require('../helpers/smsConfig')
+const { withStatusCallback, initialStatus } = require('../helpers/smsStatus')
 
 const router = express.Router();
 
@@ -118,7 +119,7 @@ router.get('/:id/messages', requireAuth, async (req, res) => {
   try {
     const { rows } = await pool.query(`
       SELECT
-        m.id, m.direction, m.body, m.sent_at, m.status,
+        m.id, m.direction, m.body, m.sent_at, m.status, m.error_code,
         m.from_number, m.to_number,
         (
           SELECT json_agg(json_build_object('id', mm.id, 'content_type', mm.content_type))
@@ -177,6 +178,7 @@ router.post('/new-message', requireAuth, async (req, res) => {
     const { rows: [agent] } = await pool.query('SELECT * FROM agents WHERE id = $1', [agentId])
     if (!agent) return res.status(404).json({ error: 'Agent not found' })
     let twilioSid = null
+    let twilioStatus = 'sent'
     // Review §3 B2 / §6 F1: 409 instead of a fake "sent" row (see helpers/smsConfig.js)
     const smsBlock = smsSendBlock({ agent })
     if (smsBlock) return res.status(409).json({ error: smsBlock.error, code: smsBlock.code, reason: smsBlock.reason })
@@ -187,9 +189,11 @@ router.post('/new-message', requireAuth, async (req, res) => {
       if (process.env.TWILIO_MESSAGING_SERVICE_SID) {
         params.messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID
       }
+      withStatusCallback(params) // batch 7b: carrier delivery status
       try {
         const msg = await twilio.messages.create(params)
         twilioSid = msg.sid
+        twilioStatus = initialStatus(msg)
       } catch (twErr) {
         if (twErr.code === 21610) {
           await pool.query('UPDATE contacts SET opted_out = true, opted_out_at = NOW() WHERE id = $1', [contact.id])
@@ -200,8 +204,8 @@ router.post('/new-message', requireAuth, async (req, res) => {
       }
     }
     await pool.query(
-      'INSERT INTO messages (conversation_id, agent_id, direction, body, from_number, to_number, twilio_sid) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-      [conv.id, agent.id, 'outbound', body, agent.phone_number, contact.phone_number, twilioSid]
+      'INSERT INTO messages (conversation_id, agent_id, direction, body, from_number, to_number, twilio_sid, status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
+      [conv.id, agent.id, 'outbound', body, agent.phone_number, contact.phone_number, twilioSid, twilioStatus]
     )
     await pool.query('UPDATE conversations SET last_message_at = NOW(), last_agent_id = $1 WHERE id = $2', [agent.id, conv.id])
     await pool.query('INSERT INTO conversation_agents (conversation_id, agent_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [conv.id, agent.id])

@@ -9,6 +9,7 @@
 const { pool }    = require('../db');
 const { getIO }   = require('../socket');
 const { recordConsent } = require('../helpers/consent');
+const { withStatusCallback, initialStatus } = require('../helpers/smsStatus');
 
 const SWEEP_INTERVAL_MS = 30 * 1000;
 
@@ -52,6 +53,7 @@ async function sendDueMessage(sm) {
   if (process.env.TWILIO_MESSAGING_SERVICE_SID) {
     params.messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
   }
+  withStatusCallback(params); // batch 7b: carrier delivery status
 
   let sent;
   try {
@@ -72,10 +74,10 @@ async function sendDueMessage(sm) {
 
   // Record in the conversation as a normal outbound message
   const { rows: [message] } = await pool.query(`
-    INSERT INTO messages (conversation_id, agent_id, direction, body, from_number, to_number, twilio_sid)
-    VALUES ($1, $2, 'outbound', $3, $4, $5, $6)
+    INSERT INTO messages (conversation_id, agent_id, direction, body, from_number, to_number, twilio_sid, status)
+    VALUES ($1, $2, 'outbound', $3, $4, $5, $6, $7)
     RETURNING *
-  `, [sm.conversation_id, sm.agent_id, sm.body, sm.from_number, sm.to_number, sent.sid]);
+  `, [sm.conversation_id, sm.agent_id, sm.body, sm.from_number, sm.to_number, sent.sid, initialStatus(sent)]);
 
   await pool.query(
     "UPDATE scheduled_messages SET status = 'sent', sent_at = NOW(), twilio_sid = $2 WHERE id = $1",

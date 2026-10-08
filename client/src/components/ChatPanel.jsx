@@ -327,6 +327,21 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
     setAttachments(a => a.filter(x => x.id !== id))
   }
 
+  // ── Delivery status (batch 7b): the newest outbound bubble is the only one
+  // that shows "Delivered" (OpenPhone/iMessage pattern — one calm label at the
+  // bottom of the thread, not a chip on every message).
+  const latestOutboundId = (() => {
+    for (let i = messages.length - 1; i >= 0; i--) if (messages[i].direction === 'outbound') return messages[i].id
+    return null
+  })()
+  const [retrying, setRetrying] = useState(null)
+  async function retryMessage(msg) {
+    if (retrying || !msg?.body?.trim()) return
+    setRetrying(msg.id)
+    try { await onSend(msg.body.trim(), []) } catch { /* toast already shown by onSend */ }
+    finally { setRetrying(null) }
+  }
+
   // ── SMS send
   async function handleSend(e) {
     e?.preventDefault()
@@ -565,7 +580,8 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
               const { msg } = item
               return msg.direction === 'inbound'
                 ? <InboundMsg  key={msg.id} msg={msg} conv={conv} C={C} />
-                : <OutboundMsg key={msg.id} msg={msg} currentAgentId={currentAgent.id} C={C} />
+                : <OutboundMsg key={msg.id} msg={msg} currentAgentId={currentAgent.id} C={C}
+                    isLatestOutbound={msg.id === latestOutboundId} onRetry={retryMessage} />
             })}
             <div ref={messagesEndRef} />
           </div>
@@ -952,22 +968,52 @@ function InboundMsg({ msg, conv, C }) {
     </div>
   )
 }
-function OutboundMsg({ msg, currentAgentId, C }) {
+// Carrier delivery status → what the bubble says (batch 7b).
+//   queued/accepted/sending  → "Sending…"  (quiet, inside the bubble meta)
+//   sent                     → nothing     (carrier accepted, no receipt yet)
+//   delivered                → "Delivered" on the latest outbound bubble only
+//   undelivered/failed       → "Not delivered · reason" + Retry (text-only)
+const PENDING_STATUSES = new Set(['queued', 'accepted', 'scheduled', 'sending'])
+const FAILED_STATUSES  = new Set(['undelivered', 'failed'])
+const ERROR_TEXT = {
+  30003: 'phone off or unreachable', 30004: 'blocked by the recipient', 30005: 'unknown or inactive number',
+  30006: 'landline — can\u2019t receive texts', 30007: 'filtered by the carrier', 30008: 'carrier error',
+  30034: 'number not registered for A2P', 21610: 'recipient opted out', 21614: 'not a mobile number',
+}
+function deliveryReason(msg) {
+  if (msg.error_text) return msg.error_text.toLowerCase()
+  const code = Number(msg.error_code)
+  if (!code) return null
+  return ERROR_TEXT[code] || `carrier error ${code}`
+}
+
+function OutboundMsg({ msg, currentAgentId, C, isLatestOutbound, onRetry }) {
   const isMe = msg.agent_id === currentAgentId
+  const status = (msg.status || 'sent').toLowerCase()
+  const failed  = FAILED_STATUSES.has(status)
+  const pending = PENDING_STATUSES.has(status)
+  const reason  = failed ? deliveryReason(msg) : null
+  const hasMedia = Array.isArray(msg.media) && msg.media.length > 0
   return (
     <div style={{ ...styles.msgGroup, alignItems: 'flex-end' }}>
-      <div style={{ ...styles.bubbleOut, background: msg.agent_color || '#4f9cf9' }}>
+      <div style={{ ...styles.bubbleOut, background: msg.agent_color || '#4f9cf9', opacity: pending ? 0.85 : 1 }}>
         <MsgMedia media={msg.media} />
         <div>{msg.body}</div>
         <div style={styles.bubbleMetaOut}>
           {msg.agent_name ? <>Sent By {msg.agent_name}{isMe ? ' (you)' : ''}</> : 'Automated'} · {formatTime(msg.sent_at)}
-          {msg.status && msg.status !== 'sent' && msg.status !== 'delivered' && (
-            <span title={msg.status} style={{ marginLeft: 6, padding: '0 5px', borderRadius: 4, background: 'rgba(255,255,255,0.9)', color: '#b91c1c', fontWeight: 700 }}>
-              {msg.status === 'sending' || msg.status === 'queued' ? 'Sending\u2026' : 'Not delivered'}
-            </span>
-          )}
+          {pending && <span style={{ marginLeft: 6, opacity: 0.9 }}>· Sending…</span>}
+          {status === 'delivered' && isLatestOutbound && <span style={{ marginLeft: 6, opacity: 0.9 }}>· Delivered</span>}
         </div>
       </div>
+      {failed && (
+        <div style={{ ...styles.deliveryFail, color: C.textMuted }}>
+          <span style={{ color: '#dc2626', fontWeight: 600 }}>Not delivered</span>
+          {reason && <span> · {reason}</span>}
+          {onRetry && (hasMedia
+            ? <span> · re-attach the photo and send again</span>
+            : <> · <button type="button" onClick={() => onRetry(msg)} style={styles.retryBtn}>Retry</button></>)}
+        </div>
+      )}
     </div>
   )
 }
@@ -1242,6 +1288,8 @@ const styles = {
   bubbleOut: { alignSelf: 'flex-end', maxWidth: 'min(85%, 520px)', padding: '9px 12px', borderRadius: '14px 4px 14px 14px', color: 'white', fontSize: 13, lineHeight: 1.45 },
   bubbleMeta:    { fontSize: 10, marginTop: 4 },
   bubbleMetaOut: { fontSize: 10, color: 'rgba(255,255,255,0.75)', marginTop: 4 },
+  deliveryFail: { fontSize: 11, marginTop: 3, marginRight: 4, textAlign: 'right' },
+  retryBtn: { background: 'none', border: 'none', padding: 0, font: 'inherit', fontWeight: 600, color: '#4f9cf9', cursor: 'pointer', textDecoration: 'underline' },
 
   compose: { padding: '8px 10px', flexShrink: 0 },
   fromHint: { fontSize: 10, display: 'flex', alignItems: 'center', gap: 5, marginBottom: 6, fontWeight: 500 },
