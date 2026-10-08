@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // ── System settings ──────────────────────────────────────────────
   getAutoLaunch: ()        => ipcRenderer.invoke('get-auto-launch'),
   setAutoLaunch: (enabled) => ipcRenderer.invoke('set-auto-launch', enabled),
+  getKeepOnTop:  ()        => ipcRenderer.invoke('get-keep-on-top'),
+  setKeepOnTop:  (enabled) => ipcRenderer.invoke('set-keep-on-top', enabled),
 
   // ── UI density / zoom ────────────────────────────────────────────
   setZoom: (factor, width, height) => ipcRenderer.send('set-zoom', { factor, width, height }),

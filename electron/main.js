@@ -47,6 +47,26 @@ process.on('unhandledRejection', (reason) => console.error('[unhandledRejection]
 const WINDOW_STATE_FILE = () => path.join(app.getPath('userData'), 'window-state.json')
 const DEFAULT_BOUNDS = { width: 470, height: 805 } // Danny's preferred default (2026-08-18)
 
+// ── App preferences (small JSON next to window-state.json) ────────
+// keepOnTop (Danny, 2026-10-08): the main window stays above other apps
+// unless you minimize it — like a softphone. Default ON; Settings → Startup
+// & window has the switch for anyone who doesn't want that.
+const PREFS_FILE = () => path.join(app.getPath('userData'), 'prefs.json')
+const DEFAULT_PREFS = { keepOnTop: true }
+function loadPrefs() {
+  try { return { ...DEFAULT_PREFS, ...JSON.parse(fs.readFileSync(PREFS_FILE(), 'utf8')) } }
+  catch { return { ...DEFAULT_PREFS } }
+}
+function savePrefs(p) {
+  try { fs.writeFileSync(PREFS_FILE(), JSON.stringify(p)) } catch (_) { /* not worth crashing */ }
+}
+function applyKeepOnTop(on) {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  // Plain 'floating' level: above normal app windows, but the incoming-call
+  // banner and call widget (screen-saver level on Mac) still sit above us.
+  mainWindow.setAlwaysOnTop(!!on, 'floating')
+}
+
 function loadWindowState() {
   try {
     const raw = fs.readFileSync(WINDOW_STATE_FILE(), 'utf8')
@@ -109,7 +129,7 @@ function createWindow() {
   })
 
   mainWindow.loadURL(APP_URL)
-  mainWindow.once('ready-to-show', () => mainWindow.show())
+  mainWindow.once('ready-to-show', () => { mainWindow.show(); applyKeepOnTop(loadPrefs().keepOnTop) })
 
   // Security: never let a link inside the remote page open a new Electron
   // window (which would inherit the preload + full electronAPI) or navigate
@@ -543,6 +563,16 @@ ipcMain.on('set-zoom', (_, { factor, width, height }) => {
   mainWindow.webContents.setZoomFactor(factor)
   mainWindow.setSize(width, height)
   mainWindow.setMinimumSize(Math.round(width * 0.85), Math.round(height * 0.85))
+})
+
+// ── IPC: keep on top ──────────────────────────────────────────────
+ipcMain.handle('get-keep-on-top', () => loadPrefs().keepOnTop)
+ipcMain.handle('set-keep-on-top', (_, enabled) => {
+  const prefs = loadPrefs()
+  prefs.keepOnTop = !!enabled
+  savePrefs(prefs)
+  applyKeepOnTop(prefs.keepOnTop)
+  return prefs.keepOnTop
 })
 
 // ── IPC: auto-launch ──────────────────────────────────────────────

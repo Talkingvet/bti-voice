@@ -636,9 +636,19 @@ function StartupCard({ C }) {
   async function toggle(val) {
     try { await window.electronAPI?.setAutoLaunch?.(val); setAutoLaunch(val) } catch {}
   }
+  // Keep on top (desktop 1.6.1+): older shells have no getKeepOnTop → row hidden.
+  const hasKeepOnTop = typeof window.electronAPI?.getKeepOnTop === 'function'
+  const [keepOnTop, setKeepOnTop] = useState(true)
+  useEffect(() => { if (hasKeepOnTop) window.electronAPI.getKeepOnTop().then(v => setKeepOnTop(!!v)).catch(() => {}) }, [hasKeepOnTop])
+  async function toggleKeepOnTop(val) {
+    try { await window.electronAPI.setKeepOnTop(val); setKeepOnTop(val) } catch {}
+  }
   return (
     <Card C={C}>
-      <ToggleRow label="Launch at login" desc={`Open ${BRAND} automatically when you log in to Windows`} value={autoLaunch} onChange={toggle} C={C} last />
+      <ToggleRow label="Launch at login" desc={`Open ${BRAND} automatically when you log in to Windows`} value={autoLaunch} onChange={toggle} C={C} last={!hasKeepOnTop} />
+      {hasKeepOnTop && (
+        <ToggleRow label="Keep on top of other windows" desc={`${BRAND} stays visible when you click into another app — minimize it to get it out of the way`} value={keepOnTop} onChange={toggleKeepOnTop} C={C} last />
+      )}
     </Card>
   )
 }
