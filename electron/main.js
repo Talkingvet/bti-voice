@@ -732,9 +732,16 @@ app.whenReady().then(() => {
     // Only our own remote origin may use the mic — a phished/injected page can't.
     callback(allowed.includes(permission) && isAppOrigin(webContents))
   })
+  // Chromium consults THIS handler (not the request handler above) before it
+  // reveals microphone names/IDs to enumerateDevices(). Electron passes
+  // requestingOrigin as a URL with a trailing slash ("https://host/"), so a
+  // plain === against APP_ORIGIN ("https://host") always failed → the mic
+  // worked but every device was nameless and ID-less in Settings → Audio
+  // (Danny, 2026-10-08). Compare origins properly.
+  const sameOrigin = (o) => { try { return new URL(o).origin === APP_ORIGIN } catch { return false } }
   session.defaultSession.setPermissionCheckHandler((webContents, permission, requestingOrigin) => {
     const allowed = ['media', 'microphone', 'audioCapture', 'notifications']
-    return allowed.includes(permission) && requestingOrigin === APP_ORIGIN
+    return allowed.includes(permission) && (sameOrigin(requestingOrigin) || isAppOrigin(webContents))
   })
 
   createWindow()
