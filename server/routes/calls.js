@@ -214,6 +214,7 @@ router.get('/voicemails', requireAuth, async (req, res) => {
       SELECT
         ca.id, ca.duration, ca.recording_url, ca.started_at AS received_at,
         ca.played,
+        ca.transcription,
         co.name        AS contact_name,
         co.phone_number AS from,
         cv.id          AS conversation_id

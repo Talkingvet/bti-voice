@@ -423,7 +423,8 @@ function AppInner() {
   // Clear badge when user opens the notifications tab
   useEffect(() => {
     if (activeTab === 'sms')           setUnreadSms(0)
-    if (activeTab === 'calls')         setUnreadVm(0)
+    // batch 7 (F26): the voicemail badge clears as each voicemail is actually
+    // played (see below), not just because the Calls tab was opened.
     // Touch devices: dismiss the keyboard when changing tabs
     if (IS_TOUCH && document.activeElement && document.activeElement.blur) document.activeElement.blur()
   }, [activeTab])
@@ -478,8 +479,10 @@ function AppInner() {
       .catch(() => {})
     const socket = getSocket()
     const onNewVm = () => setUnreadVm(c => c + 1)
+    const onPlayed = () => setUnreadVm(c => Math.max(0, c - 1))
     socket.on('new_voicemail', onNewVm)
-    return () => socket.off('new_voicemail', onNewVm)
+    window.addEventListener('bti-voicemail-played', onPlayed)
+    return () => { socket.off('new_voicemail', onNewVm); window.removeEventListener('bti-voicemail-played', onPlayed) }
   }, [agent])
 
   // Sync own status in real-time when another session changes it

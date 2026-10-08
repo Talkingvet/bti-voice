@@ -15,6 +15,8 @@ import { api } from './api'
 const DEFAULTS = {
   zoho: false, zoho_widget: false, recording: true,
   sms: true, ai_summaries: true, voicemail_transcription: true, mobile_apps: true,
+  sms_configured: true, // batch 7 (F1): false when the server has no Twilio credentials
+
   call_lists: false, // dialer lists — BTI only, ENABLE_CALL_LISTS=true on the deploy
   brand: null, account: null, loaded: false,
 }

@@ -1,5 +1,6 @@
 const express = require('express');
 const { twilioMediaUrl } = require('../helpers/twilioUrls');
+const { smsSendBlock } = require('../helpers/smsConfig');
 const { pool } = require('../db');
 const { recordConsent } = require('../helpers/consent');
 const { requireAuth , requireMediaAuth } = require('../auth');
@@ -68,11 +69,12 @@ router.post('/send', requireAuth, async (req, res) => {
 
     let twilioSid = null;
 
-    // Send via Twilio if credentials and a real number are configured
-    const hasTwilio = process.env.TWILIO_ACCOUNT_SID &&
-                      process.env.TWILIO_AUTH_TOKEN &&
-                      agent.phone_number !== 'TBD';
-    if (hasTwilio) {
+    // Review §3 B2 / §6 F1: never store a text that can't actually be sent.
+    // Without Twilio credentials or an agent number the client gets a 409
+    // and shows the reason in the composer instead of a fake "sent" bubble.
+    const notConfigured = smsSendBlock({ agent });
+    if (notConfigured) return res.status(409).json({ error: notConfigured.error, code: notConfigured.code, reason: notConfigured.reason });
+    {
       const twilio = require('twilio')(
         process.env.TWILIO_ACCOUNT_SID,
         process.env.TWILIO_AUTH_TOKEN
@@ -293,9 +295,8 @@ router.post('/schedule', requireAuth, async (req, res) => {
       return res.status(403).json({ error: 'This contact has opted out of SMS (replied STOP). They must text START to resume messaging.' });
     }
     const { rows: [agent] } = await pool.query('SELECT * FROM agents WHERE id = $1', [req.agent.id]);
-    if (!agent?.phone_number || agent.phone_number === 'TBD') {
-      return res.status(400).json({ error: 'Your agent profile has no phone number assigned' });
-    }
+    const schedBlock = smsSendBlock({ agent });
+    if (schedBlock) return res.status(409).json({ error: schedBlock.error, code: schedBlock.code, reason: schedBlock.reason });
     const { rows: [sm] } = await pool.query(`
       INSERT INTO scheduled_messages (conversation_id, agent_id, body, from_number, to_number, send_at)
       VALUES ($1, $2, $3, $4, $5, $6)

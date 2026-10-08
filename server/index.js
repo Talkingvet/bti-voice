@@ -87,10 +87,14 @@ app.get('/api/health', (req, res) => res.json({ ok: true }));
 // grace / restricted banner (plan §4a #3). No customer-controllable inputs.
 const { isZohoConfigured } = require('./zoho');
 const deploySettings = require('./helpers/deploySettings');
+const { twilioConfigured } = require('./helpers/smsConfig');
 app.get('/api/features', (req, res) => {
   const st = deploySettings.accountStatus();
   res.json({
     ...deploySettings.resolveFeatures(),
+    // batch 7 (F1): lets the composer explain "texting isn't set up" instead
+    // of letting a send fail. Per-agent number is checked client-side.
+    sms_configured: twilioConfigured(),
     brand: deploySettings.displayNames().brand,
     account: {
       state: st.state, message: st.message, enabled_through: st.enabled_through,

@@ -59,6 +59,13 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
 
   const features = useFeatures()
   const zohoOn = !!features.zoho
+  // batch 7 (F1): say why texting can't work instead of storing a fake "sent"
+  // bubble — Twilio missing on the deploy, or this agent has no number yet.
+  const smsUnavailable = features.sms_configured === false
+    ? 'Texting isn\u2019t set up on this server yet \u2014 ask your admin.'
+    : !(currentAgent?.phone_number || '').startsWith('+')
+      ? 'Texting isn\u2019t set up for your number yet \u2014 ask your admin to assign you a phone number.'
+      : null
 
   // Zoho profile state
   const [zohoProfile,   setZohoProfile]  = useState(null)
@@ -590,6 +597,10 @@ export default function ChatPanel({ conv, messages, loading, currentAgent, agent
               <div style={{ ...styles.composeRow, justifyContent: 'center', alignItems: 'center', padding: '12px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: 10, color: '#ef4444', fontSize: 12.5, fontWeight: 600, textAlign: 'center' }}>
                 This contact opted out of SMS (replied STOP). Messaging is blocked until they text START.
               </div>
+            ) : smsUnavailable ? (
+              <div style={{ ...styles.composeRow, justifyContent: 'center', alignItems: 'center', padding: '12px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 10, color: '#b45309', fontSize: 12.5, fontWeight: 600, textAlign: 'center' }}>
+                {smsUnavailable}
+              </div>
             ) : (<>
             {scheduled.length > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6 }}>
@@ -950,6 +961,11 @@ function OutboundMsg({ msg, currentAgentId, C }) {
         <div>{msg.body}</div>
         <div style={styles.bubbleMetaOut}>
           {msg.agent_name ? <>Sent By {msg.agent_name}{isMe ? ' (you)' : ''}</> : 'Automated'} · {formatTime(msg.sent_at)}
+          {msg.status && msg.status !== 'sent' && msg.status !== 'delivered' && (
+            <span title={msg.status} style={{ marginLeft: 6, padding: '0 5px', borderRadius: 4, background: 'rgba(255,255,255,0.9)', color: '#b91c1c', fontWeight: 700 }}>
+              {msg.status === 'sending' || msg.status === 'queued' ? 'Sending\u2026' : 'Not delivered'}
+            </span>
+          )}
         </div>
       </div>
     </div>

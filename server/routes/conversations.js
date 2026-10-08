@@ -3,6 +3,7 @@ const { pool } = require('../db')
 const { recordConsent } = require('../helpers/consent');
 const { requireAuth } = require('../auth');
 const { createNotification } = require('../notifications');
+const { smsSendBlock } = require('../helpers/smsConfig')
 
 const router = express.Router();
 
@@ -23,11 +24,14 @@ router.get('/', requireAuth, async (req, res) => {
         a.name  AS last_agent_name,
         a.color AS last_agent_color,
         a.initials AS last_agent_initials,
-        (
-          SELECT body FROM messages m
-          WHERE m.conversation_id = c.id
-          ORDER BY m.sent_at DESC LIMIT 1
-        ) AS last_message,
+        lm.body      AS last_message,
+        -- batch 7 (F2): who actually wrote the last message, so the list can
+        -- prefix "You:" / "Mike:" only for outbound and never pin the
+        -- customer's words on an agent.
+        lm.direction AS last_message_direction,
+        lm.agent_id  AS last_message_agent_id,
+        lm.agent_name AS last_message_agent_name,
+        lm.agent_color AS last_message_agent_color,
         (
           SELECT json_agg(json_build_object(
             'id', ag.id, 'name', ag.name,
@@ -61,6 +65,13 @@ router.get('/', requireAuth, async (req, res) => {
       JOIN contacts co ON co.id = c.contact_id
       LEFT JOIN agents a ON a.id = c.last_agent_id
       LEFT JOIN agents assign_a ON assign_a.id = c.assigned_agent_id
+      LEFT JOIN LATERAL (
+        SELECT m.body, m.direction, m.agent_id, ag.name AS agent_name, ag.color AS agent_color
+        FROM messages m
+        LEFT JOIN agents ag ON ag.id = m.agent_id
+        WHERE m.conversation_id = c.id
+        ORDER BY m.sent_at DESC LIMIT 1
+      ) lm ON true
       WHERE EXISTS (
         SELECT 1 FROM messages m WHERE m.conversation_id = c.id
       )
@@ -166,8 +177,10 @@ router.post('/new-message', requireAuth, async (req, res) => {
     const { rows: [agent] } = await pool.query('SELECT * FROM agents WHERE id = $1', [agentId])
     if (!agent) return res.status(404).json({ error: 'Agent not found' })
     let twilioSid = null
-    const hasTwilio = process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && agent.phone_number !== 'TBD'
-    if (hasTwilio) {
+    // Review §3 B2 / §6 F1: 409 instead of a fake "sent" row (see helpers/smsConfig.js)
+    const smsBlock = smsSendBlock({ agent })
+    if (smsBlock) return res.status(409).json({ error: smsBlock.error, code: smsBlock.code, reason: smsBlock.reason })
+    {
       const twilio = require('twilio')(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
       const params = { body, from: agent.phone_number, to: contact.phone_number }
       // Route through the A2P-registered Messaging Service when configured

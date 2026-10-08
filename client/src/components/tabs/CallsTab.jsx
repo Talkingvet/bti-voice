@@ -32,7 +32,8 @@ function recordingParts(call) {
 
    The <audio> element is still what plays; it's just hidden. Media
    elements do not need to be visible to produce sound.                 */
-function AudioPlayer({ src, C, autoPlay = false }) {
+function AudioPlayer({ src, C, autoPlay = false, onFirstPlay }) {
+  const firedRef = useRef(false)
   const audioRef = useRef(null)
   const [playing, setPlaying] = useState(false)
   const [current, setCurrent] = useState(0)
@@ -75,7 +76,7 @@ function AudioPlayer({ src, C, autoPlay = false }) {
         onLoadedMetadata={e => setTotal(e.target.duration || 0)}
         onDurationChange={e => setTotal(e.target.duration || 0)}
         onTimeUpdate={e => setCurrent(e.target.currentTime || 0)}
-        onPlay={() => setPlaying(true)}
+        onPlay={() => { setPlaying(true); if (!firedRef.current) { firedRef.current = true; onFirstPlay && onFirstPlay() } }}
         onPause={() => setPlaying(false)}
         onEnded={() => { setPlaying(false); setCurrent(0) }}
         onError={() => setFailed(true)}
@@ -182,15 +183,19 @@ export default function CallsTab({ agent, onWrapUpClick, onDial, onMessage }) {
   }, [])
   const selectedCall = isWide ? calls.find(c => c.id === expandedCall) || null : null
 
-  // When user opens the voicemail sub-tab, mark all unplayed voicemails as played in DB
-  useEffect(() => {
-    if (subTab !== 'voicemails') return
-    const unplayed = voicemails.filter(v => !v.played)
-    if (unplayed.length === 0) return
-    unplayed.forEach(v => api.markVoicemailPlayed(v.id).catch(() => {}))
-    setVoicemails(prev => prev.map(v => ({ ...v, played: true })))
-    setUnreadVm(0)
-  }, [subTab]) // eslint-disable-line
+  // batch 7 (F26): a voicemail counts as played when its audio actually
+  // starts — not because the sub-tab was opened. The App-level badge listens
+  // for the same event.
+  const voicemailsRef = useRef([])
+  voicemailsRef.current = voicemails
+  const markPlayed = useCallback((id) => {
+    const vm = voicemailsRef.current.find(v => v.id === id)
+    if (!vm || vm.played) return
+    api.markVoicemailPlayed(id).catch(() => {})
+    setVoicemails(prev => prev.map(v => v.id === id ? { ...v, played: true } : v))
+    setUnreadVm(n => Math.max(0, n - 1))
+    try { window.dispatchEvent(new CustomEvent('bti-voicemail-played', { detail: { id } })) } catch {}
+  }, [])
 
   const loadCalls = useCallback(() => {
     api.calls().then(setCalls).catch(console.error)
@@ -212,6 +217,7 @@ export default function CallsTab({ agent, onWrapUpClick, onDial, onMessage }) {
       setCalls(prev => prev.map(c =>
         c.id === call_id ? { ...c, transcription, ai_summary } : c
       ))
+      setVoicemails(prev => prev.map(v => v.id === call_id ? { ...v, transcription } : v))
     }
     socket.on('call_logged', loadCalls)
     socket.on('new_voicemail', onNewVm)
@@ -229,7 +235,7 @@ export default function CallsTab({ agent, onWrapUpClick, onDial, onMessage }) {
   const needsWrapUpCount = calls.filter(c => c.needs_wrap_up).length
 
   const filteredCalls = calls.filter(c => {
-    if (filter === 'missed')   return c.status === 'missed'
+    if (filter === 'missed')   return c.status === 'missed' || c.status === 'voicemail'
     if (filter === 'inbound')  return c.direction === 'inbound'
     if (filter === 'outbound') return c.direction === 'outbound'
     if (filter === 'wrap_up')  return !!c.needs_wrap_up
@@ -347,6 +353,7 @@ export default function CallsTab({ agent, onWrapUpClick, onDial, onMessage }) {
                   vm={row.data}
                   isPlaying={playingVm === row.data.id}
                   onToggle={() => setPlayingVm(p => p === row.data.id ? null : row.data.id)}
+                  onPlayed={() => markPlayed(row.data.id)}
                   C={C}
                 />
               )
@@ -367,7 +374,7 @@ export default function CallsTab({ agent, onWrapUpClick, onDial, onMessage }) {
               <div style={{ fontSize: 11, color: C.textSec, marginTop: 2 }}>
                 {selectedCall.contact_name && selectedCall.contact_number ? selectedCall.contact_number + ' · ' : ''}
                 {selectedCall.direction === 'inbound' ? 'Inbound' : 'Outbound'}
-                {selectedCall.status === 'missed' ? ' · Missed' : selectedCall.duration ? ` · ${fmtDuration(selectedCall.duration)}` : ''}
+                {selectedCall.status === 'missed' ? ' · Missed' : selectedCall.status === 'voicemail' ? ' · Voicemail' : selectedCall.duration ? ` · ${fmtDuration(selectedCall.duration)}` : ''}
                 {' · '}{fmtTime(selectedCall.started_at)}
                 {selectedCall.agent_name && <span style={{ color: selectedCall.agent_color, fontWeight: 600 }}> · {selectedCall.agent_name}</span>}
               </div>
@@ -400,8 +407,9 @@ function DateHeader({ label, C }) {
 /* ── Call row ────────────────────────────────────────────────────── */
 function CallRow({ call, expanded, inlineExpand = true, onToggle, onWrapUp, onDial, onMessage, C }) {
   const isMissed  = call.status === 'missed'
+  const isVoicemail = call.status === 'voicemail'   // batch 7 (F3): not an answered call
   const isInbound = call.direction === 'inbound'
-  const color     = isMissed ? '#ef4444' : isInbound ? '#22c55e' : '#4f9cf9'
+  const color     = isMissed ? '#ef4444' : isVoicemail ? '#f59e0b' : isInbound ? '#22c55e' : '#4f9cf9'
   const duration  = fmtDuration(call.duration)
   // Every row expands now — the detail area always offers Call/Message actions,
   // plus recording/summary/transcript when present.
@@ -414,7 +422,7 @@ function CallRow({ call, expanded, inlineExpand = true, onToggle, onWrapUp, onDi
         onClick={hasDetail ? onToggle : undefined}
       >
         <div style={{ ...S.callIcon, color }}>
-          <CallDirIcon direction={call.direction} missed={isMissed} />
+          {isVoicemail ? <VmIcon /> : <CallDirIcon direction={call.direction} missed={isMissed} />}
         </div>
         <div style={S.rowInfo}>
           <div style={{ ...S.rowName, color: C.text, display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -459,7 +467,9 @@ function CallRow({ call, expanded, inlineExpand = true, onToggle, onWrapUp, onDi
           <div style={{ ...S.rowTime, color: C.textMuted }}>{fmtTime(call.started_at)}</div>
           {isMissed
             ? <div style={{ ...S.rowDur, color: '#ef4444' }}>Missed</div>
-            : <div style={{ ...S.rowDur, color: C.textSec }}>⏱ {duration || '0:00'}</div>
+            : isVoicemail
+              ? <div style={{ ...S.rowDur, color: '#f59e0b' }}>Voicemail{duration ? ` · ${duration}` : ''}</div>
+              : <div style={{ ...S.rowDur, color: C.textSec }}>⏱ {duration || '0:00'}</div>
           }
         </div>
         {hasDetail && inlineExpand && (
@@ -545,9 +555,11 @@ function CallDetailBody({ call, onDial, onMessage, C }) {
 }
 
 /* ── Voicemail row ───────────────────────────────────────────────── */
-function VmRow({ vm, isPlaying, onToggle, C }) {
+function VmRow({ vm, isPlaying, onToggle, onPlayed, C }) {
   const isNew = !vm.played
   const time  = vm.received_at || vm.date
+  const [showFull, setShowFull] = useState(false)
+  const transcript = (vm.transcription || '').trim()
 
   return (
     <>
@@ -572,6 +584,19 @@ function VmRow({ vm, isPlaying, onToggle, C }) {
           {vm.from && vm.contact_name && vm.from !== vm.contact_name && (
             <div style={{ ...S.rowMeta, color: C.textSec }}>{vm.from}</div>
           )}
+          {/* batch 7 (F3): the transcript was always stored, never shown */}
+          {transcript && (
+            <div
+              onClick={e => { e.stopPropagation(); setShowFull(f => !f) }}
+              title={showFull ? 'Show less' : 'Show full transcript'}
+              style={{
+                fontSize: 11.5, lineHeight: 1.45, color: C.textSec, marginTop: 3, cursor: 'pointer', whiteSpace: showFull ? 'pre-wrap' : 'normal',
+                ...(showFull ? {} : { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }),
+              }}
+            >
+              {transcript}
+            </div>
+          )}
         </div>
         <div style={S.rowRight}>
           <div style={{ ...S.rowTime, color: C.textMuted }}>{time ? fmtTime(time) : ''}</div>
@@ -591,7 +616,7 @@ function VmRow({ vm, isPlaying, onToggle, C }) {
         <div style={{ ...S.miniPlayer, background: C.surface, borderBottom: `1px solid ${C.border}` }}>
           {vm.recording_url ? (
             <>
-              <AudioPlayer src={recordingUrl(vm.id)} C={C} autoPlay />
+              <AudioPlayer src={recordingUrl(vm.id)} C={C} autoPlay onFirstPlay={onPlayed} />
               <a
                 href={recordingUrl(vm.id)}
                 download={`voicemail-${vm.id}.mp3`}

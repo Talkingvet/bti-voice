@@ -220,9 +220,12 @@ function ConvItem({ conv, active, onClick, currentAgent, C }) {
           <span style={{ ...S.time, color: isUnread ? '#4f9cf9' : C.textMuted }}>{fmtDate(conv.last_message_at)}</span>
         </div>
         <div style={{ ...S.preview, color: isUnread ? C.text : C.textSec, fontWeight: isUnread ? 600 : 400 }}>
-          {conv.last_agent_name && (
-            <span style={{ color: conv.last_agent_color || C.textSec, fontWeight: 600, marginRight: 3 }}>
-              {conv.last_agent_name.split(' ')[0]}:
+          {/* batch 7 (F2): prefix only what WE sent — never the customer's words */}
+          {conv.last_message_direction === 'outbound' && (
+            <span style={{ color: conv.last_message_agent_id === currentAgent?.id ? C.textSec : (conv.last_message_agent_color || C.textSec), fontWeight: 600, marginRight: 3 }}>
+              {conv.last_message_agent_id === currentAgent?.id
+                ? 'You:'
+                : conv.last_message_agent_name ? `${conv.last_message_agent_name.split(' ')[0]}:` : 'Auto:'}
             </span>
           )}
           <span>{preview}</span>
