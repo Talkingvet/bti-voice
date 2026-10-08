@@ -476,6 +476,7 @@ function MicTestCard({ C }) {
   const [testing,    setTesting]    = useState(false)
   const [level,      setLevel]      = useState(0)         // 0–100
   const [error,      setError]      = useState('')
+  const [listNote,   setListNote]   = useState('')        // why the list may be empty/unnamed
 
   const streamRef   = useRef(null)
   const ctxRef      = useRef(null)
@@ -492,19 +493,34 @@ function MicTestCard({ C }) {
   useEffect(() => {
     let cancelled = false
     async function load() {
+      let note = ''
       try {
+        if (!navigator.mediaDevices?.enumerateDevices) { setListNote('This browser can’t list microphones.'); return }
         let all = await navigator.mediaDevices.enumerateDevices()
         let mics = all.filter(d => d.kind === 'audioinput')
-        if (mics.length && mics.every(d => !d.label)) {
+        if (!mics.length || mics.every(d => !d.label)) {
           try {
             const s = await navigator.mediaDevices.getUserMedia({ audio: true })
             s.getTracks().forEach(t => t.stop())
             all = await navigator.mediaDevices.enumerateDevices()
             mics = all.filter(d => d.kind === 'audioinput')
-          } catch { /* permission denied — keep the placeholder list */ }
+          } catch (e) {
+            note = e.name === 'NotAllowedError'
+              ? 'Microphone access is blocked — allow it in Windows Settings → Privacy → Microphone (and for this app/browser).'
+              : `Couldn’t open the microphone to read device names (${e.name}: ${e.message}).`
+          }
         }
-        if (!cancelled) setDevices(mics.filter(d => d.deviceId))
-      } catch {}
+        console.log('[mic] audioinput devices:', mics.map(d => ({ id: d.deviceId.slice(0, 8), label: d.label })), note)
+        if (cancelled) return
+        // Keep placeholder rows (empty id/label) only when we have nothing better,
+        // so the list is never blank without saying why.
+        const named = mics.filter(d => d.deviceId)
+        setDevices(named.length ? named : mics)
+        if (!mics.length && !note) note = 'No microphone found. Plug one in or check it is enabled in Windows Sound settings.'
+        setListNote(note)
+      } catch (e) {
+        if (!cancelled) setListNote(`Couldn’t list microphones (${e.name}: ${e.message}).`)
+      }
     }
     load()
     navigator.mediaDevices.addEventListener?.('devicechange', load)
@@ -590,11 +606,12 @@ function MicTestCard({ C }) {
         >
           <option value="">Default microphone</option>
           {devices.map(d => (
-            <option key={d.deviceId} value={d.deviceId}>
-              {d.label || `Microphone ${d.deviceId.slice(0, 6)}`}
+            <option key={d.deviceId || 'placeholder'} value={d.deviceId}>
+              {d.label || (d.deviceId ? `Microphone ${d.deviceId.slice(0, 6)}` : 'Microphone (name hidden until access is allowed)')}
             </option>
           ))}
         </select>
+        {listNote && <div style={{ ...S.rowDesc, color: '#f59e0b', marginTop: 6 }}>{listNote}</div>}
       </div>
 
       {/* Level meter + controls */}
