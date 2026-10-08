@@ -465,7 +465,6 @@ function AudioSection({ C }) {
       </Card>
 
       <MicTestCard C={C} />
-      {window.electronAPI && <StartupCard C={C} />}
     </div>
   )
 }
@@ -483,17 +482,33 @@ function MicTestCard({ C }) {
   const rafRef      = useRef(null)
   const analyserRef = useRef(null)
 
-  // Enumerate microphones on mount (and after permission is granted)
+  // Enumerate microphones on mount and on plug/unplug. Chromium only reveals
+  // device names (and real IDs) once the page has held the mic at least once;
+  // before that enumerateDevices() returns one nameless placeholder with an
+  // empty deviceId — the blank "Microphone" row Danny saw (2026-10-08). So if
+  // the labels are empty, open the mic for an instant to unlock them, release
+  // it, and list again. The desktop app grants this silently; Chrome reuses
+  // the permission already given for calls.
   useEffect(() => {
+    let cancelled = false
     async function load() {
       try {
-        const all = await navigator.mediaDevices.enumerateDevices()
-        setDevices(all.filter(d => d.kind === 'audioinput'))
+        let all = await navigator.mediaDevices.enumerateDevices()
+        let mics = all.filter(d => d.kind === 'audioinput')
+        if (mics.length && mics.every(d => !d.label)) {
+          try {
+            const s = await navigator.mediaDevices.getUserMedia({ audio: true })
+            s.getTracks().forEach(t => t.stop())
+            all = await navigator.mediaDevices.enumerateDevices()
+            mics = all.filter(d => d.kind === 'audioinput')
+          } catch { /* permission denied — keep the placeholder list */ }
+        }
+        if (!cancelled) setDevices(mics.filter(d => d.deviceId))
       } catch {}
     }
     load()
     navigator.mediaDevices.addEventListener?.('devicechange', load)
-    return () => navigator.mediaDevices.removeEventListener?.('devicechange', load)
+    return () => { cancelled = true; navigator.mediaDevices.removeEventListener?.('devicechange', load) }
   }, [])
 
   // Clean up when component unmounts
@@ -518,7 +533,7 @@ function MicTestCard({ C }) {
 
       // Refresh device list now that we have permission
       const all = await navigator.mediaDevices.enumerateDevices()
-      setDevices(all.filter(d => d.kind === 'audioinput'))
+      setDevices(all.filter(d => d.kind === 'audioinput' && d.deviceId))
 
       const ctx      = new AudioContext()
       const source   = ctx.createMediaStreamSource(stream)
@@ -750,6 +765,14 @@ function AppearanceSection({ C }) {
             </div>
           </div>
         </Card>
+      )}
+
+      {/* Desktop-app window behaviour — only in the installed app, not the browser */}
+      {isElectron && (
+        <>
+          <SectionHeader title="DESKTOP APP" C={C} />
+          <StartupCard C={C} />
+        </>
       )}
     </div>
   )

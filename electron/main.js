@@ -662,7 +662,12 @@ ipcMain.handle('install-update', () => {
   if (!fs.existsSync(tempPath)) return false
   const { exec } = require('child_process')
   app.isQuitting = true
-  exec(`"${tempPath}"`)   // Launch installer, let it handle the upgrade
+  // `--updated` tells electron-builder's NSIS installer this is an upgrade,
+  // not a fresh install: it then passes --keep-shortcuts to the old
+  // uninstaller, so the Start Menu / desktop shortcuts are kept in place and
+  // the taskbar pin survives. Without it every update un-pinned the app
+  // (Danny, 2026-10-08). Same flag electron-updater uses.
+  exec(`"${tempPath}" --updated`)
   setTimeout(() => app.quit(), 1500)
   return true
 })
