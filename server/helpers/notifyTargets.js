@@ -18,9 +18,16 @@
 const { pool } = require('../db');
 
 // Pure decision — unit-tested. All inputs are "what the DB said", or null.
-function pickTargets({ ownerAgentId = null, routedAgentId = null, assignedAgentId = null } = {}) {
-  const owner = toId(ownerAgentId) || toId(routedAgentId);
-  if (owner) return [owner];
+// ownerAgentIds: EVERY active agent whose own number this is — more than one
+// account can carry the same number (found 2026-10-08: Danny and a second
+// account both had +1 239 666 7033, and a LIMIT 1 lookup picked the other one,
+// so Danny never got the pop-up). All of them are owners.
+function pickTargets({ ownerAgentIds = [], ownerAgentId = null, routedAgentId = null, assignedAgentId = null } = {}) {
+  const owners = new Set();
+  for (const v of [].concat(ownerAgentIds || [], ownerAgentId)) { const id = toId(v); if (id) owners.add(id); }
+  if (owners.size) return [...owners];
+  const routed = toId(routedAgentId);
+  if (routed) return [routed];
   const assigned = toId(assignedAgentId);
   if (assigned) return [assigned];
   return null; // everyone
@@ -36,13 +43,13 @@ function toId(v) {
 async function notifyTargetsFor({ toNumber, conversationId } = {}) {
   try {
     const to = (toNumber || '').trim();
-    let ownerAgentId = null, routedAgentId = null, assignedAgentId = null;
+    let ownerAgentIds = [], routedAgentId = null, assignedAgentId = null;
     if (to && to.startsWith('+')) {
-      const { rows: [owner] } = await pool.query(
-        'SELECT id FROM agents WHERE phone_number = $1 AND is_active = true LIMIT 1', [to]
+      const { rows: owners } = await pool.query(
+        'SELECT id FROM agents WHERE phone_number = $1 AND is_active = true', [to]
       );
-      ownerAgentId = owner?.id || null;
-      if (!ownerAgentId) {
+      ownerAgentIds = owners.map(r => r.id);
+      if (!ownerAgentIds.length) {
         const { rows: [rule] } = await pool.query(
           `SELECT destination_value FROM number_routing
            WHERE phone_number = $1 AND is_active = true AND destination_type = 'agent' LIMIT 1`, [to]
@@ -50,13 +57,15 @@ async function notifyTargetsFor({ toNumber, conversationId } = {}) {
         routedAgentId = rule?.destination_value || null;
       }
     }
-    if (!ownerAgentId && !routedAgentId && conversationId) {
+    if (!ownerAgentIds.length && !routedAgentId && conversationId) {
       const { rows: [conv] } = await pool.query(
         'SELECT assigned_agent_id FROM conversations WHERE id = $1', [conversationId]
       );
       assignedAgentId = conv?.assigned_agent_id || null;
     }
-    return pickTargets({ ownerAgentId, routedAgentId, assignedAgentId });
+    const targets = pickTargets({ ownerAgentIds, routedAgentId, assignedAgentId });
+    console.log(`[notifyTargets] to=${to || '-'} conv=${conversationId || '-'} owners=[${ownerAgentIds}] routed=${routedAgentId || '-'} assigned=${assignedAgentId || '-'} → ${targets ? '[' + targets + ']' : 'everyone'}`);
+    return targets;
   } catch (e) {
     console.error('[notifyTargets]', e.message);
     return null;
