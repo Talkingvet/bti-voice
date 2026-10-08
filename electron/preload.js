@@ -44,6 +44,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('call-action', handler)
   },
 
+  // ── Desktop notifications (1.6.0) ────────────────────────────────
+  // New text / missed call / voicemail → native OS notification shown by the
+  // main process (so it carries the app's name + icon on Windows and can
+  // restore a hidden window when clicked). `nav` is handed back on click.
+  notifyDesktop: (info) => ipcRenderer.send('desktop-notify', info),
+  onNotificationClick: (cb) => {
+    const handler = (_, nav) => cb(nav)
+    ipcRenderer.on('notification-click', handler)
+    return () => ipcRenderer.removeListener('notification-click', handler)
+  },
+
   // ── Mac dock badge / menu integration ────────────────────────────
   // Tells the main process the current total unread count. On macOS this
   // is shown as a red badge on the dock icon (Mail-style). No-op on Windows.

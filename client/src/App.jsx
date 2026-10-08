@@ -9,6 +9,7 @@ import { ToastProvider } from './components/Toast'
 import { useColors }               from './useColors'
 import { getSocket, disconnectSocket } from './socket'
 import { startRingtone, stopRingtone, playConnected, playDisconnected, getSoundPrefs } from './dtmf'
+import { showDesktopNotification, onDesktopNotificationClick, requestNotificationPermission } from './utils/desktopNotify'
 import Login                       from './pages/Login'
 import TitleBar                    from './components/TitleBar'
 import BottomNav                   from './components/BottomNav'
@@ -358,6 +359,67 @@ function AppInner() {
     return () => socket.off('notification', handleNewNotif)
   }, [agent])
 
+  // ── Desktop / browser notifications ──────────────────────────────────────────
+  // New text, missed call, new voicemail → an OS pop-up when you're not already
+  // looking at it. The server says WHO it is for (`notify_agent_ids`: the owner
+  // of the number → the assigned agent → everyone); the bell/badges above stay
+  // for everyone. In the 1.6.0+ desktop app the pop-up goes through Electron
+  // (click restores the window from the tray); in a browser or an older shell
+  // the browser's own Notification API is used. utils/desktopNotify.js.
+  const activeTabRef = useRef(activeTab)
+  useEffect(() => { activeTabRef.current = activeTab }, [activeTab])
+  const openConvRef = useRef(null)   // id of the SMS thread currently open, or null
+  useEffect(() => {
+    if (!agent) return
+    const forMe = (ids) => !Array.isArray(ids) || ids.map(Number).includes(Number(agent.id))
+    const looking = () => document.visibilityState === 'visible' && document.hasFocus()
+    const socket = getSocket()
+    const onNotif = (n) => {
+      const meta = n?.meta || {}
+      if (!forMe(meta.notify_agent_ids)) return
+      if (n.type === 'sms') {
+        if (looking() && activeTabRef.current === 'sms' && openConvRef.current === meta.conversation_id) return
+        showDesktopNotification({
+          kind: 'sms', tag: `sms-${meta.conversation_id}`,
+          title: n.title, body: n.body,
+          nav: { tab: 'sms', convId: meta.conversation_id },
+        })
+      } else if (n.type === 'missed_call') {
+        if (looking() && activeTabRef.current === 'calls') return
+        showDesktopNotification({
+          kind: 'missed_call', tag: `call-${meta.call_id}`,
+          title: n.title, body: n.body,
+          nav: { tab: 'calls' },
+        })
+      }
+    }
+    const onVm = (vm) => {
+      if (!forMe(vm?.notify_agent_ids)) return
+      if (looking() && activeTabRef.current === 'calls') return
+      const secs = Number(vm.duration) || 0
+      const len  = secs ? ` (${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')})` : ''
+      showDesktopNotification({
+        kind: 'voicemail', tag: `vm-${vm.id}`,
+        title: `New voicemail – ${vm.contact_name || vm.from}`,
+        body:  `${vm.from} left a voicemail${len}.`,
+        nav: { tab: 'calls' },
+      })
+    }
+    socket.on('notification', onNotif)
+    socket.on('new_voicemail', onVm)
+    const offClick = onDesktopNotificationClick(nav => {
+      if (!nav) return
+      setActiveTab(nav.tab)
+      if (nav.tab === 'sms' && nav.convId) setNavConvId(nav.convId)
+      setNotifOpen(false)
+    })
+    return () => {
+      socket.off('notification', onNotif)
+      socket.off('new_voicemail', onVm)
+      offClick()
+    }
+  }, [agent])
+
   // Clear badge when user opens the notifications tab
   useEffect(() => {
     if (activeTab === 'sms')           setUnreadSms(0)
@@ -506,6 +568,7 @@ function AppInner() {
   }
 
   function handleLogin(agentData, token, defaultPassword) {
+    requestNotificationPermission()   // browser only; the login click is the user gesture
     localStorage.setItem('bti_token', token)
     setAgent(agentData)
     loadFeatures(true)
@@ -806,6 +869,7 @@ function AppInner() {
           navConvId={navConvId}
           onNavConvConsumed={() => setNavConvId(null)}
           onChatOpenChange={setSmsOpenChat}
+          onSelectedConvChange={id => { openConvRef.current = id }}
           device={twilioDevice}
           onCallStart={(call, phone) => {
             const info = { phone, name: null }

@@ -4,6 +4,7 @@ const twilio  = require('twilio');
 const { pool } = require('../db');
 const { getIO } = require('../socket');
 const { createNotification } = require('../notifications');
+const { notifyTargetsFor } = require('../helpers/notifyTargets');
 const { maybeRecordingNotice, recordingActive } = require('../helpers/recordingNotice');
 const { outboundAllowed, accountStatus, featureOn, smsBlockedReason } = require('../helpers/deploySettings');
 const {
@@ -324,7 +325,7 @@ router.post('/inbound', async (req, res) => {
             await dialAgent(twiml, rule.destination_value, req.body.CallSid);
             break;
           case 'voicemail':
-            sendToVoicemail(twiml, nrVoice, req.body.From || '');
+            sendToVoicemail(twiml, nrVoice, req.body.From || '', req.body.To || '');
             break;
           case 'all_agents':
           default:
@@ -471,7 +472,7 @@ router.post('/ivr-gather', async (req, res) => {
       }
 
       case 'voicemail': {
-        sendToVoicemail(twiml, voice, req.body.From || '');
+        sendToVoicemail(twiml, voice, req.body.From || '', req.body.To || '');
         break;
       }
 
@@ -702,11 +703,13 @@ router.post('/status', async (req, res) => {
         sendMissedCallAutoText(phone);
         // Create missed call notification
         const contactLabel = contact?.name || phone;
+        // Pop-up goes to the owner of the called number → assigned agent → everyone.
+        const notifyAgentIds = await notifyTargetsFor({ toNumber: To, conversationId: conv.id });
         createNotification({
           type:  'missed_call',
           title: `Missed call – ${contactLabel}`,
           body:  `${phone} called and no one answered.`,
-          meta:  { call_id: call.id, phone },
+          meta:  { call_id: call.id, phone, conversation_id: conv.id, to_number: To, notify_agent_ids: notifyAgentIds },
         });
       }
 
@@ -832,11 +835,15 @@ router.post('/recording-complete', async (req, res) => {
 
         callRecord = { ...newCall, contact_phone: phone, contact_name: contact.name || phone, contact_id: contact.id };
 
-        // Notify all agents of new voicemail
+        // Notify all agents of new voicemail. notify_agent_ids aims the desktop
+        // pop-up (owner of the dialled number → assigned agent → everyone).
         const io = getIO();
+        const vmTo = req.query.to || null;
+        const notifyAgentIds = await notifyTargetsFor({ toNumber: vmTo, conversationId: conv.id });
         if (io) io.emit('new_voicemail', {
           id: newCall.id, from: phone, contact_name: contact.name || phone,
           duration, recording_url: mp3Url, received_at: new Date().toISOString(),
+          conversation_id: conv.id, to_number: vmTo, notify_agent_ids: notifyAgentIds,
         });
       } else {
         // Every recording becomes a numbered part (a call with no Hold has
@@ -1065,10 +1072,13 @@ function recordingOpts() {
 // From/To, so carry the caller number through on the callback URL query string.
 // Without this every voicemail resolved to the literal string 'unknown' and
 // got filed against a single junk contact.
-function sendToVoicemail(twiml, voice, callerNum) {
+function sendToVoicemail(twiml, voice, callerNum, calledNum = '') {
   const serverUrl = process.env.SERVER_URL || '';
+  // `to` = the number the caller dialled, so the voicemail notification can be
+  // aimed at that number's owner (helpers/notifyTargets.js).
   const vmCallback = `${serverUrl}/webhooks/voice/recording-complete?vm=1`
-    + (callerNum ? `&from=${encodeURIComponent(callerNum)}` : '');
+    + (callerNum ? `&from=${encodeURIComponent(callerNum)}` : '')
+    + (calledNum ? `&to=${encodeURIComponent(calledNum)}` : '');
   twiml.say({ voice }, 'Please leave a message after the tone. Press pound when finished.');
   twiml.record({
     maxLength:               120,

@@ -3,6 +3,7 @@ const { twilioMediaUrl } = require('../helpers/twilioUrls');
 const { pool } = require('../db');
 const { getIO } = require('../socket');
 const { createNotification } = require('../notifications');
+const { notifyTargetsFor } = require('../helpers/notifyTargets');
 const { recordConsent } = require('../helpers/consent');
 
 // Fire-and-forget Zoho sync — never blocks the Twilio webhook response
@@ -226,11 +227,14 @@ router.post('/', async (req, res) => {
     // Create notification for inbound message
     const contactLabel = contact.name || From;
     const notifBody = (Body && Body.trim()) ? Body : (media.length ? '📷 Image' : '');
+    // notify_agent_ids decides who gets the desktop/push pop-up (owner of the
+    // texted number → assigned agent → everyone); the bell stays for everyone.
+    const notifyAgentIds = await notifyTargetsFor({ toNumber: To, conversationId: conv.id });
     createNotification({
       type:  'sms',
       title: `New message from ${contactLabel}`,
       body:  notifBody.length > 100 ? notifBody.slice(0, 100) + '…' : notifBody,
-      meta:  { conversation_id: conv.id, from_number: From },
+      meta:  { conversation_id: conv.id, from_number: From, to_number: To, notify_agent_ids: notifyAgentIds },
     });
 
     // Broadcast to all connected clients

@@ -408,6 +408,24 @@ function AudioSection({ C }) {
       </Card>
 
       <Card C={C}>
+        <ToggleRow
+          label="Desktop notifications"
+          desc="Pop-up for new texts, missed calls and voicemails when you're not looking at the app"
+          value={prefs.desktopNotifs}
+          onChange={v => update('desktopNotifs', v)}
+          C={C}
+        />
+        <ToggleRow
+          label="Show message text in notifications"
+          desc={'Off = just “New message from …” with no preview — for screens others can see'}
+          value={prefs.notifPreview}
+          onChange={v => update('notifPreview', v)}
+          C={C}
+          last
+        />
+      </Card>
+
+      <Card C={C}>
         <div style={{ ...S.cardTitle, color: C.textMuted, borderBottom: `1px solid ${C.borderSoft}` }}>DIALPAD TONE STYLE</div>
         {DTMF_STYLES.map((st, i) => (
           <div

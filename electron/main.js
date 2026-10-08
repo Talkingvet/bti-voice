@@ -29,6 +29,11 @@ const TRAY_PATH = path.join(__dirname, 'assets', 'tray.png')
 // ── Your Railway URL ──────────────────────────────────────────────
 const APP_URL = 'https://bti-voice-production.up.railway.app'
 
+// Windows shows toast notifications under an "Application User Model ID".
+// It must match the appId electron-builder stamps on the Start-menu shortcut
+// (package.json → build.appId) or Windows drops the toast / shows it nameless.
+if (process.platform === 'win32') app.setAppUserModelId('com.businesstechnologyinsight.bti-voice')
+
 // Crash safety: the app lives in the tray all day taking calls — a stray
 // error in the main process shouldn't kill it with a raw dialog.
 process.on('uncaughtException',  (err)    => console.error('[uncaughtException]', err))
@@ -484,6 +489,33 @@ ipcMain.on('incoming-call-dismiss', () => {
     incomingBanner.hide()
   }
   if (process.platform === 'win32' && mainWindow) mainWindow.flashFrame(false)
+})
+
+// ── IPC: desktop notifications (1.6.0) ────────────────────────────
+// The React app decides WHETHER to notify (who it's for, is that thread already
+// open, user's Settings → Sound toggles); we just show it natively and, on
+// click, bring the window back and tell the app where to go.
+function showWindowFromNotification() {
+  if (!mainWindow) return
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  mainWindow.show()
+  mainWindow.focus()
+}
+ipcMain.on('desktop-notify', (_, info) => {
+  if (!Notification.isSupported()) return
+  const i = info || {}
+  const title = String(i.title || 'BTI Voice').slice(0, 120)
+  const body  = String(i.body  || '').slice(0, 300)
+  try {
+    const n = new Notification({ title, body, icon: ICON_PATH, silent: !!i.silent })
+    n.on('click', () => {
+      showWindowFromNotification()
+      mainWindow?.webContents.send('notification-click', i.nav || null)
+    })
+    n.show()
+  } catch (e) {
+    console.error('[notify]', e.message)
+  }
 })
 
 // ── IPC: dock badge (Mac only — no-op elsewhere) ──────────────────

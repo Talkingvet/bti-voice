@@ -19,9 +19,9 @@ function ctx() {
 export function getSoundPrefs() {
   try {
     const s = localStorage.getItem('bti_sound_prefs')
-    const defaults = { dtmf: true, ringtone: true, callSounds: true, ringtoneChoice: 'default', dtmfStyle: 'phone', noiseSuppression: true }
+    const defaults = { dtmf: true, ringtone: true, callSounds: true, ringtoneChoice: 'default', dtmfStyle: 'phone', noiseSuppression: true, desktopNotifs: true, notifPreview: true }
     return s ? { ...defaults, ...JSON.parse(s) } : defaults
-  } catch { return { dtmf: true, ringtone: true, callSounds: true, ringtoneChoice: 'default', dtmfStyle: 'phone', noiseSuppression: true } }
+  } catch { return { dtmf: true, ringtone: true, callSounds: true, ringtoneChoice: 'default', dtmfStyle: 'phone', noiseSuppression: true, desktopNotifs: true, notifPreview: true } }
 }
 export function setSoundPref(key, val) {
   const p = getSoundPrefs(); p[key] = val

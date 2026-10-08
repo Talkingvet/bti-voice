@@ -6,7 +6,7 @@ import ConvList      from '../ConvList'
 import ChatPanel     from '../ChatPanel'
 import { useToast }  from '../Toast'
 
-export default function SMSTab({ agent, navConvId, onNavConvConsumed, device, onCallStart, onCallEnd, onChatOpenChange }) {
+export default function SMSTab({ agent, navConvId, onNavConvConsumed, device, onCallStart, onCallEnd, onChatOpenChange, onSelectedConvChange }) {
   const { toast } = useToast()
   const [conversations, setConversations] = useState([])
   const [agents,        setAgents]        = useState([])
@@ -55,6 +55,13 @@ export default function SMSTab({ agent, navConvId, onNavConvConsumed, device, on
     socket.on('conversation_updated', loadConversations)
     return () => socket.off('conversation_updated', loadConversations)
   }, [])
+
+  // Tell App which thread is open so a desktop notification isn't shown for
+  // the conversation you're already reading. Cleared when the tab unmounts.
+  useEffect(() => {
+    onSelectedConvChange?.(selectedId)
+    return () => onSelectedConvChange?.(null)
+  }, [selectedId])
 
   // Load messages when a conversation is selected
   useEffect(() => {

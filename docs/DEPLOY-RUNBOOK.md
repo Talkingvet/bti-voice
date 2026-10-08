@@ -50,6 +50,12 @@ voice-first; enable SMS when the campaign approves.
    Put that URL (https, no trailing slash) into `SERVER_URL` and redeploy.
 6. Check Deploy Logs: migrations run, `[seed] Created admin ...` appears once,
    app starts. The log prints the webhook URLs to configure in Twilio (§3.5).
+   Since 2026-10-06 the build installs with `npm ci` (exact versions from the
+   committed `package-lock.json` files). If a deploy fails with *"npm ci can only
+   install packages when your package.json and package-lock.json are in sync"*,
+   someone changed a `package.json` without its lockfile: run `npm install` in
+   that folder (`server/`, `client/`, `huddle/` or `admin/`), commit the
+   lockfile, push again.
 7. Log in at `SERVER_URL` with the admin credentials. Change anything obviously
    wrong before inviting the customer.
 
